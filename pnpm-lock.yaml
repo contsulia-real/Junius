@@ -166,9 +166,6 @@ importers:
 
   .:
     dependencies:
-      '@microsoft/mxc-sdk':
-        specifier: 0.8.0
-        version: 0.8.0
       '@modelcontextprotocol/server':
         specifier: ^2.1.0
         version: 2.1.0
@@ -343,10 +340,6 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
-
-  '@microsoft/mxc-sdk@0.8.0':
-    resolution: {integrity: sha512-pnf5QsASwp+qtRi5uth2GDjwuyG0rHWRpxCf3RbAjQ4wDTNfBX/9l0A+RVZspU2agpF3/11uWB1JisIS7WrNYg==}
-    engines: {node: '>=18.0.0'}
 
   '@modelcontextprotocol/core@2.1.0':
     resolution: {integrity: sha512-YdFj5gMRHr0gYNAhTbQDgjLHiEJdIAUYxomhKseUNye7ZGlISQmUoLh2sveFFCiQ7j2YMffT1kgSND0FSfIFjQ==}
@@ -595,11 +588,6 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
-
-  '@microsoft/mxc-sdk@0.8.0':
-    dependencies:
-      node-pty: 1.2.0-beta.15
-      semver: 7.8.5
 
   '@modelcontextprotocol/core@2.1.0':
     dependencies:
