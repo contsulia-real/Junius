@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
   lstat,
@@ -37,7 +36,6 @@ export type WorkspaceFileErrorCode =
   | "not_a_directory"
   | "not_a_file"
   | "binary_file"
-  | "stale_file"
   | "invalid_write"
   | "edit_not_found"
   | "edit_not_unique"
@@ -54,9 +52,6 @@ export class WorkspaceFileError extends Error {
   }
 }
 
-function sha256(content: Buffer | string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
 
 function pathInside(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
@@ -290,7 +285,6 @@ export interface ReadRequest {
 
 export interface ReadResult {
   readonly path: string;
-  readonly sha256: string;
   readonly startLine: number;
   readonly endLine: number;
   readonly totalLines: number;
@@ -349,7 +343,6 @@ async function readTextFile(
 
   return {
     path: target.relativePath,
-    sha256: sha256(buffer),
     startLine,
     endLine,
     totalLines,
@@ -367,14 +360,11 @@ export interface WriteRequest {
   readonly path: string;
   readonly content?: string;
   readonly edits?: readonly WriteEdit[];
-  readonly expectedSha256?: string;
 }
 
 export interface WriteResult {
   readonly path: string;
   readonly created: boolean;
-  readonly previousSha256?: string;
-  readonly sha256: string;
   readonly bytes: number;
 }
 
@@ -385,7 +375,6 @@ async function validateWrite(
   readonly targetPath: string;
   readonly relativePath: string;
   readonly created: boolean;
-  readonly previousSha256?: string;
   readonly content: Buffer;
 }> {
   const hasContent = request.content !== undefined;
@@ -408,13 +397,6 @@ async function validateWrite(
   const target = await resolver.writable(request.path);
 
   if (!target.exists) {
-    if (request.expectedSha256 !== undefined) {
-      throw new WorkspaceFileError(
-        "stale_file",
-        `File does not exist but expected_sha256 was supplied: ${request.path}`,
-      );
-    }
-
     if (request.content === undefined) {
       throw new WorkspaceFileError(
         "invalid_write",
@@ -446,17 +428,6 @@ async function validateWrite(
   const previous = await readFile(target.path);
   if (isProbablyBinary(previous)) {
     throw new WorkspaceFileError("binary_file", request.path);
-  }
-
-  const previousSha256 = sha256(previous);
-  if (
-    request.expectedSha256 !== undefined &&
-    previousSha256 !== request.expectedSha256
-  ) {
-    throw new WorkspaceFileError(
-      "stale_file",
-      `File changed since the expected SHA-256 was captured: ${request.path}`,
-    );
   }
 
   let nextText: string;
@@ -518,7 +489,6 @@ async function validateWrite(
     targetPath: target.path,
     relativePath: target.relativePath,
     created: false,
-    previousSha256,
     content,
   };
 }
@@ -812,10 +782,6 @@ export class WorkspaceFilesService {
       results.push({
         path: item.relativePath,
         created: item.created,
-        ...(item.previousSha256 === undefined
-          ? {}
-          : { previousSha256: item.previousSha256 }),
-        sha256: sha256(item.content),
         bytes: item.content.length,
       });
     }
