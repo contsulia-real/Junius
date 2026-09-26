@@ -278,6 +278,24 @@ The persistent profile belongs to the CLI-managed named browser session. It does
 
 Headed mode is the Junius default so local browser activity is visible to the user.
 
+### Task lifecycle
+
+A browser task normally follows:
+
+```text
+open
+-> navigate / snapshot / interact
+-> obtain requested result
+-> close
+-> final response
+```
+
+The MCP tool description instructs ChatGPT to close the same named session before giving the final answer unless the user explicitly asks to leave the browser open.
+
+The persistent profile is independent of the browser process lifetime. Closing a session ends the visible browser process/session but does not intentionally discard the CLI-managed persistent profile or its login state.
+
+Junius does not use an inactivity timer to infer task completion because pauses between agent steps are not a reliable task boundary.
+
 ### Local runtime files
 
 playwright-cli may generate runtime files such as snapshots relative to its working directory. Junius therefore runs it from a dedicated Local Agent state directory rather than a project Workspace.
