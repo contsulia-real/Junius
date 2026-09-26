@@ -226,6 +226,78 @@ Current timeout termination targets the directly spawned process. Junius does no
 
 Long-running job management remains future work.
 
+## Browser capability
+
+Browser automation is a first-class Local Agent capability and is not attached to a Workspace.
+
+```text
+ChatGPT
+-> playwright_cli MCP tool
+-> PlaywrightCliService
+-> locally installed playwright-cli
+-> CLI-managed browser session/profile
+```
+
+Junius deliberately keeps this adapter thin. It does not reimplement Playwright's browser/session/page model.
+
+### MCP surface
+
+Browser capability v1 adds one stable MCP tool:
+
+```text
+playwright_cli(session, command, args)
+```
+
+`session` maps directly to playwright-cli named sessions. The default is `junius`.
+
+`command` is a Junius allowlist of ordinary navigation, snapshot, element interaction, keyboard/mouse, tab, dialog, and close operations.
+
+The first version intentionally does not expose `eval`, `run-code`, storage mutation, CDP attach, request interception, or arbitrary playwright-cli commands.
+
+### Snapshot/ref flow
+
+The normal model workflow remains playwright-cli's own interaction model:
+
+```text
+open/goto
+-> snapshot
+-> receive refs such as e15
+-> click/fill/etc using refs
+-> snapshot again when needed
+```
+
+For `snapshot`, Junius adds playwright-cli's global `--raw` option so snapshot YAML is returned directly on stdout through MCP.
+
+Junius does not invent a second element-reference format.
+
+### Session persistence
+
+`open` defaults to playwright-cli `--persistent`.
+
+Persistence belongs to the CLI-managed named browser session. It does not reuse the user's ordinary Chrome/Edge browser profile and it does not make browser sessions part of Workspace state.
+
+### Local runtime files
+
+playwright-cli may generate runtime files such as snapshots relative to its working directory. Junius therefore runs it from a dedicated Local Agent state directory rather than a project Workspace.
+
+Windows default:
+
+```text
+%LOCALAPPDATA%\Junius\browser
+```
+
+Non-Windows uses the corresponding XDG/local state directory.
+
+`JUNIUS_BROWSER_STATE_PATH` can override this location.
+
+### Launcher resolution
+
+Junius first uses `JUNIUS_PLAYWRIGHT_CLI_PATH` when provided, then searches normal local executable locations/PATH.
+
+It can launch native executables or JavaScript CLI entries through the current Node executable. On Windows it also resolves npm-style `playwright-cli.cmd` shims to their underlying `playwright-cli.js` entry so execution remains `shell: false`.
+
+Browser capability v1 is implemented and awaiting black-box MCP validation.
+
 ## Job Manager
 
 Long-running process work is separated from synchronous `run_command`.
@@ -355,7 +427,7 @@ This changes the current security implementation only. It does not change Junius
 
 The next architecture work should focus on:
 
-1. browser capability;
+1. black-box validation of the browser capability;
 2. broader Local Agent capability coverage;
 3. Dashboard-based Workspace and capability management;
 4. persistent machine-level capability configuration;
