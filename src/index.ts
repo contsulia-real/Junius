@@ -13,7 +13,15 @@ import { WorkspaceProfile } from "./workspace-profile.js";
 
 const config = await loadRuntimeConfig();
 const registry = createDefaultCapabilityRegistry();
-const workspaceProfile = new WorkspaceProfile(config.workspaceRoot, ["node"]);
+const workspaceProfile = new WorkspaceProfile(config.workspaceRoot, [
+  {
+    key: "node",
+    arguments: [
+      { mode: "exact", args: ["--version"] },
+      { mode: "exact", args: ["-p", "process.platform"] },
+    ],
+  },
+]);
 const runCommandService = new RunCommandService(registry, workspaceProfile);
 const mcpRuntime = await createMcpRuntime(runCommandService);
 
@@ -45,15 +53,13 @@ const mcpHttpServer = createHttpServer((req, res) => {
 });
 
 const adminHttpServer = createHttpServer((req, res) => {
-  try {
-    handleAdminRequest(
-      req,
-      res,
-      registry,
-      workspaceProfile,
-      adminOrigin,
-    );
-  } catch (error) {
+  void handleAdminRequest(
+    req,
+    res,
+    registry,
+    workspaceProfile,
+    adminOrigin,
+  ).catch((error: unknown) => {
     console.error("[admin http]", error);
 
     if (!res.headersSent) {
@@ -62,7 +68,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     }
 
     res.destroy(error instanceof Error ? error : new Error(String(error)));
-  }
+  });
 });
 
 mcpHttpServer.listen(config.mcpPort, config.mcpHost, () => {
