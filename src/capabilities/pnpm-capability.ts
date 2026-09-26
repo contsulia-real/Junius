@@ -203,6 +203,7 @@ export function createPnpmCapability():
     // access to Workspace ancestors that Junius deliberately does not grant.
     fixedArgs: [...launcher.fixedArgs, "--dir", "."],
     readonlyPaths: launcher.readonlyPaths,
+    useWorkspacePortal: true,
     argumentPolicy: isAllowedPnpmArgs,
     timeoutMs: 120_000,
     maxOutputBytes: 512 * 1024,
