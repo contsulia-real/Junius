@@ -266,7 +266,7 @@ Junius remains a general Local Agent. The current file/process tools are the fir
 
 The local WebUI Dashboard v1 is implemented and locally validated.
 
-Machine Capability v1 is implemented and awaiting local validation.
+Machine Capability v1 is implemented and locally validated.
 
 After validation, the next work should focus on:
 
@@ -535,4 +535,20 @@ JUNIUS_MACHINE_CAPABILITY_STATE_PATH
 
 A missing state file initializes known built-in capabilities as enabled. Availability remains separate: for example, pnpm can be enabled in preferences while unavailable because no usable launcher was found.
 
-Machine Capability v1 is implemented and awaiting local WebUI/runtime validation.
+Machine Capability v1 is implemented and locally validated through the WebUI/runtime path.
+
+
+## Verified Machine Capability v1
+
+Machine Capability v1 has passed local WebUI/runtime validation.
+
+Verified behavior:
+
+- known built-in capabilities can be enabled and disabled from the local WebUI;
+- disabling a capability removes it from the live Capability Registry;
+- existing Workspace grants for the disabled capability are preserved;
+- re-enabling the capability restores those existing grants to effect;
+- the enabled/disabled preference survives a Junius restart;
+- availability remains distinct from enablement, so a capability can remain enabled while its launcher is unavailable.
+
+This validates the intended separation between machine-level capability state and per-Workspace grants.
