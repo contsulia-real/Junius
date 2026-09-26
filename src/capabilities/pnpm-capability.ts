@@ -1,6 +1,7 @@
 import {
-  existsSync,
-  readFileSync,
+  closeSync,
+  openSync,
+  readSync,
   statSync,
 } from "node:fs";
 import {
@@ -55,11 +56,19 @@ function isFile(path: string): boolean {
 }
 
 function isPortableExecutable(path: string): boolean {
+  let handle: number | undefined;
+
   try {
-    const header = readFileSync(path, { encoding: null }).subarray(0, 2);
-    return header.length === 2 && header[0] === 0x4d && header[1] === 0x5a;
+    handle = openSync(path, "r");
+    const header = Buffer.allocUnsafe(2);
+    const bytesRead = readSync(handle, header, 0, 2, 0);
+    return bytesRead === 2 && header[0] === 0x4d && header[1] === 0x5a;
   } catch {
     return false;
+  } finally {
+    if (handle !== undefined) {
+      closeSync(handle);
+    }
   }
 }
 
