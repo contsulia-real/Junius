@@ -432,6 +432,8 @@ Browser sessions are independent of Workspaces. The default session is `junius`;
 
 `open` defaults to playwright-cli persistent and headed modes so the CLI-managed profile can keep its browser state across browser restarts while the local browser window remains visible. This profile is separate from ordinary Chrome/Edge user profiles.
 
+The normal browser-task lifecycle is `open -> interact -> close`. ChatGPT should close the same named session before returning its final answer unless the user explicitly asks to leave the browser open. Closing the browser session does not discard the persistent profile or its login state.
+
 `snapshot` is invoked through playwright-cli's raw-output mode so the snapshot YAML and element refs are returned directly through MCP rather than requiring Junius to read a generated snapshot file.
 
 Junius runs playwright-cli with a dedicated local state working directory:
