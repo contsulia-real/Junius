@@ -9,11 +9,12 @@ import {
 } from "./http-bridge.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
 const config = await loadRuntimeConfig();
 const registry = createDefaultCapabilityRegistry();
-const workspaceProfile = new WorkspaceProfile(config.workspaceRoot, [
+const initialWorkspaceProfile = new WorkspaceProfile(config.workspaceRoot, [
   {
     key: "node",
     arguments: [
@@ -22,7 +23,13 @@ const workspaceProfile = new WorkspaceProfile(config.workspaceRoot, [
     ],
   },
 ]);
-const runCommandService = new RunCommandService(registry, workspaceProfile);
+const workspaceManager = new WorkspaceManager([
+  {
+    id: config.workspaceId,
+    profile: initialWorkspaceProfile,
+  },
+]);
+const runCommandService = new RunCommandService(registry, workspaceManager);
 const mcpRuntime = await createMcpRuntime(runCommandService);
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
@@ -57,7 +64,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     req,
     res,
     registry,
-    workspaceProfile,
+    workspaceManager,
     adminOrigin,
   ).catch((error: unknown) => {
     console.error("[admin http]", error);
@@ -77,7 +84,9 @@ mcpHttpServer.listen(config.mcpPort, config.mcpHost, () => {
 
 adminHttpServer.listen(config.adminPort, config.adminHost, () => {
   console.error(`Junius local admin: ${adminOrigin}/state`);
-  console.error(`Junius workspace root: ${config.workspaceRoot}`);
+  console.error(
+    `Junius initial workspace: ${config.workspaceId} -> ${config.workspaceRoot}`,
+  );
 });
 
 async function shutdown(signal: string): Promise<void> {
