@@ -1,5 +1,12 @@
 import { once } from "node:events";
-import { dirname } from "node:path";
+import {
+  mkdtemp,
+  rm,
+  symlink,
+  unlink,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import {
   createConfigFromPolicy,
@@ -20,6 +27,7 @@ export interface MxcProcessCapabilityOptions {
   readonly argumentPolicy?: (args: readonly string[]) => boolean;
   readonly fixedArgs?: readonly string[];
   readonly readonlyPaths?: readonly string[];
+  readonly useWorkspacePortal?: boolean;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
   readonly environment?: NodeJS.ProcessEnv;
@@ -27,6 +35,61 @@ export interface MxcProcessCapabilityOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
+
+interface WorkspaceRuntime {
+  readonly sandboxCwd: string;
+  readonly executorCwd: string;
+  readonly readonlyPaths: readonly string[];
+  dispose(): Promise<void>;
+}
+
+async function createWorkspaceRuntime(
+  workspaceRoot: string,
+  useWorkspacePortal: boolean,
+): Promise<WorkspaceRuntime> {
+  if (!useWorkspacePortal) {
+    return {
+      sandboxCwd: workspaceRoot,
+      executorCwd: workspaceRoot,
+      readonlyPaths: [],
+      async dispose() {},
+    };
+  }
+
+  const runtimeRoot = await mkdtemp(
+    join(tmpdir(), "junius-mxc-runtime-"),
+  );
+  const workspacePortal = join(runtimeRoot, "workspace");
+
+  try {
+    await symlink(workspaceRoot, workspacePortal, "junction");
+  } catch (error) {
+    await rm(runtimeRoot, { recursive: true, force: true });
+    throw error;
+  }
+
+  return {
+    sandboxCwd: workspacePortal,
+    executorCwd: runtimeRoot,
+    readonlyPaths: [runtimeRoot],
+    async dispose() {
+      try {
+        await unlink(workspacePortal);
+      } catch (error) {
+        if (
+          typeof error !== "object" ||
+          error === null ||
+          !("code" in error) ||
+          error.code !== "ENOENT"
+        ) {
+          throw error;
+        }
+      } finally {
+        await rm(runtimeRoot, { recursive: true, force: true });
+      }
+    },
+  };
+}
 
 function matchesAllowedVector(
   args: readonly string[],
@@ -114,6 +177,7 @@ export class MxcProcessCapability implements Capability {
   readonly #argumentPolicy?: (args: readonly string[]) => boolean;
   readonly #fixedArgs: readonly string[];
   readonly #readonlyPaths: readonly string[];
+  readonly #useWorkspacePortal: boolean;
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
   readonly #environment: NodeJS.ProcessEnv;
@@ -126,6 +190,7 @@ export class MxcProcessCapability implements Capability {
     this.#argumentPolicy = options.argumentPolicy;
     this.#fixedArgs = options.fixedArgs ?? [];
     this.#readonlyPaths = options.readonlyPaths ?? [];
+    this.#useWorkspacePortal = options.useWorkspacePortal ?? false;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#maxOutputBytes =
       options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
@@ -172,13 +237,33 @@ export class MxcProcessCapability implements Capability {
     const startedAt = performance.now();
     const durationMs = () => Math.round(performance.now() - startedAt);
 
+    let runtime: WorkspaceRuntime;
+    try {
+      runtime = await createWorkspaceRuntime(
+        context.cwd,
+        this.#useWorkspacePortal,
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        code: "spawn_failed",
+        message: error instanceof Error ? error.message : String(error),
+        exitCode: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        durationMs: durationMs(),
+      };
+    }
+
     let environment: string[];
     try {
       environment = buildExplicitEnvironment(
-        context.cwd,
+        runtime.sandboxCwd,
         this.#environment,
       );
     } catch (error) {
+      await runtime.dispose();
       return {
         ok: false,
         code: "spawn_failed",
@@ -199,6 +284,7 @@ export class MxcProcessCapability implements Capability {
           readonlyPaths: [
             dirname(this.#executable),
             ...this.#readonlyPaths,
+            ...runtime.readonlyPaths,
           ],
         },
         network: {
@@ -219,7 +305,7 @@ export class MxcProcessCapability implements Capability {
       this.#executable,
       [...this.#fixedArgs, ...args],
     );
-    config.process!.cwd = context.cwd;
+    config.process!.cwd = runtime.sandboxCwd;
     config.process!.env = environment;
 
     let child: ChildProcess;
@@ -232,9 +318,10 @@ export class MxcProcessCapability implements Capability {
           experimental: true,
           debug: false,
         },
-        context.cwd,
+        runtime.executorCwd,
       );
     } catch (error) {
+      await runtime.dispose();
       return {
         ok: false,
         code: "spawn_failed",
@@ -246,6 +333,15 @@ export class MxcProcessCapability implements Capability {
         durationMs: durationMs(),
       };
     }
+
+    const disposeRuntime = (): void => {
+      void runtime.dispose().catch((error: unknown) => {
+        console.error("[mxc runtime cleanup]", error);
+      });
+    };
+
+    child.once("close", disposeRuntime);
+    child.once("error", disposeRuntime);
 
     return new Promise<CapabilityExecution>((resolve) => {
       const stdoutChunks: Buffer[] = [];
