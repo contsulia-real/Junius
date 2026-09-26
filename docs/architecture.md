@@ -270,11 +270,13 @@ For `snapshot`, Junius adds playwright-cli's global `--raw` option so snapshot Y
 
 Junius does not invent a second element-reference format.
 
-### Session persistence
+### Session persistence and visibility
 
-`open` defaults to playwright-cli `--persistent`.
+`open` defaults to playwright-cli `--persistent --headed`.
 
-Persistence belongs to the CLI-managed named browser session. It does not reuse the user's ordinary Chrome/Edge browser profile and it does not make browser sessions part of Workspace state.
+The persistent profile belongs to the CLI-managed named browser session. It does not reuse the user's ordinary Chrome/Edge browser profile and it does not make browser sessions part of Workspace state.
+
+Headed mode is the Junius default so local browser activity is visible to the user.
 
 ### Local runtime files
 
