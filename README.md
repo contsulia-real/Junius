@@ -51,22 +51,22 @@ The execution path is:
 ChatGPT
   -> run_command(key, args)
   -> Machine Capability Registry
-  -> Workspace Profile authorization
-  -> per-capability argument policy
+  -> Workspace Profile argument grant
+  -> machine capability argument policy
   -> MxcProcessCapability
   -> MXC ProcessContainer
   -> registered executable
 ```
 
-A Workspace can authorize registered capability keys, but it cannot provide arbitrary executable paths or raw shell command lines.
+A Workspace authorizes both a registered capability key and the argument shapes it may use. The machine capability remains the upper bound, so an invocation must pass both the Workspace grant and the capability's own policy. A Workspace cannot provide arbitrary executable paths or raw shell command lines.
 
 ## Current implementation
 
 The runtime contains:
 
 - `CapabilityRegistry`: machine-level registered capabilities.
-- `WorkspaceProfile`: active Workspace root and authorized capability keys.
-- `RunCommandService`: capability resolution and Workspace authorization.
+- `WorkspaceProfile`: active Workspace root plus per-capability argument grants.
+- `RunCommandService`: capability resolution plus Workspace argument authorization before capability execution.
 - `MxcProcessCapability`: MXC-backed process execution.
 - `ProcessCapability`: plain-process baseline used only by unit-level code/tests.
 - MCP server exposing the fixed `run_command` tool.
@@ -99,30 +99,49 @@ Inspect the current state:
 Invoke-RestMethod http://127.0.0.1:8788/state
 ```
 
-Deny `node`:
+The response contains `workspaceGrants`, not a flat list of allowed keys.
+
+A grant has explicit argument rules. `exact` matches one complete argument vector; `prefix` allows additional trailing arguments, but the machine capability policy must still accept the final invocation.
+
+For example, authorize only `pnpm --version`, `pnpm run check`, and arguments passed through to that script:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/deny/node
+$body = @{
+  arguments = @(
+    @{ mode = "exact";  args = @("--version") }
+    @{ mode = "prefix"; args = @("run", "check") }
+  )
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body `
+  http://127.0.0.1:8788/workspace/grant/pnpm
 ```
 
-Allow it again:
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/allow/node
-```
-
-If `pnpm` is listed under `registeredCapabilities`, explicitly authorize it for the Workspace with:
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/allow/pnpm
-```
-
-Then the fixed MCP tool can invoke package scripts without exposing a shell:
+That Workspace may then call:
 
 ```text
 run_command
 key = pnpm
 args = ["run", "check"]
+```
+
+or:
+
+```text
+run_command
+key = pnpm
+args = ["run", "check", "--", "--fix"]
+```
+
+but `["run", "build"]` is rejected by the Workspace Profile even though the machine-level pnpm capability knows how to run package scripts.
+
+Revoke the entire pnpm grant with:
+
+```powershell
+Invoke-RestMethod -Method Delete http://127.0.0.1:8788/workspace/grant/pnpm
 ```
 
 The admin API is temporary; the final Dashboard persistence format is not frozen.
@@ -162,7 +181,7 @@ On the tested Windows BaseContainer host, the retained regressions have establis
 - `detached + unref()` descendants are terminated with the sandbox lifecycle.
 - Host loopback is unreachable from the sandbox under the default-deny policy.
 - Explicit child environments do not inherit unrelated host variables.
-- The real `run_command -> MxcProcessCapability -> MXC` path works and still enforces the argument policy.
+- The real `run_command -> Workspace argument grant -> machine argument policy -> MxcProcessCapability -> MXC` path works.
 
 ## Known MXC limitation: NTFS hard-link aliases
 
@@ -188,4 +207,4 @@ The real fixed `run_command` path has passed through MXC on Windows:
 }
 ```
 
-The first real development-tool capability, `pnpm`, is now implemented on top of this execution path. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
+The first real development-tool capability, `pnpm`, is implemented on top of this execution path. Workspace authorization is argument-scoped rather than a per-key boolean, so different Workspaces can expose different subsets of the same machine capability. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
