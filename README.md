@@ -435,3 +435,36 @@ Observed with `pnpm sandbox:mxc-tool-probe`:
 Both the direct external Node path and a Workspace junction pointing to the same external Node directory failed at descendant process creation with `ENOENT`.
 
 This rules out a reparse-point alias as the solution. MXC 0.8's Windows filesystem grant implementation defines `readonlyPaths` as read + execute, so the observed failure is treated as a descendant executable-path reachability issue rather than evidence that readonly grants intentionally forbid execution.
+
+## MXC controlled sandbox-root result
+
+The controlled sandbox-root regression passed on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-root-probe`:
+
+```json
+{
+  "conclusions": {
+    "stagedToolSpawnWorks": true,
+    "workspacePortalReadWorks": true,
+    "outsideReadBlocked": true
+  }
+}
+```
+
+The successful layout was:
+
+```text
+Junius-controlled sandbox root
+├─ tools/
+│  └─ staged authorized executable
+└─ workspace -> junction to the real Workspace
+
+real Workspace -> read/write grant
+sandbox root -> read-only grant
+outside data -> no grant
+```
+
+A staged Node executable launched successfully, could read the real Workspace through the portal, and remained unable to read the outside secret.
+
+This validates a feasible separation between the user's project tree and the sandbox's tool/runtime tree. It does not freeze the production staging strategy: caching, multi-file tool installations, DLL/runtime dependencies, version invalidation, storage cost, and update behavior still require design and testing.
