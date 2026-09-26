@@ -28,7 +28,8 @@ pnpm dev
 Default local endpoints:
 
 - MCP: `http://127.0.0.1:8787/mcp`
-- Local-only admin surface: `http://127.0.0.1:8788`
+- Local WebUI Dashboard: `http://127.0.0.1:8788/`
+- Local admin state API: `http://127.0.0.1:8788/state`
 
 Optional environment variables:
 
@@ -262,9 +263,10 @@ Startup behavior:
 
 Junius remains a general Local Agent. The current file/process tools are the first local capabilities, not the boundary of the product.
 
-The next work should focus on:
+The local WebUI Dashboard v1 is implemented and awaiting local UI validation.
 
-- local WebUI for Workspace, permission, capability, job, and browser-state management;
+After WebUI validation, the next work should focus on:
+
 - persistent machine capability configuration;
 - clearer authorization UX;
 - broader Local Agent capability coverage where it provides concrete value.
@@ -465,3 +467,29 @@ Verified behavior:
 - Closing the session did not redefine the persistent profile as disposable state.
 
 This validates the intended thin-adapter Local Agent model: Junius delegates browser automation to the mature local playwright-cli tool instead of reimplementing a second browser framework.
+
+
+## Local WebUI Dashboard
+
+Junius serves a local WebUI directly from the existing admin server:
+
+```text
+http://127.0.0.1:8788/
+```
+
+It requires no separate frontend build step and adds no frontend framework/runtime dependency.
+
+Dashboard v1 contains:
+
+- Overview: Workspace, process-capability, running-job, and browser status summaries.
+- Workspaces: register and remove Workspace roots.
+- Permissions: add/remove argument-scoped capability grant rules and revoke a Workspace capability grant.
+- Capabilities: inspect currently registered machine-level process capabilities.
+- Jobs: inspect runtime jobs, read captured stdout/stderr, and cancel running jobs.
+- Browser: inspect local playwright-cli availability and its Junius state directory.
+
+The WebUI uses the same Workspace manager, grant persistence, Job Manager, and PlaywrightCliService state as MCP/runtime code. It is not a parallel configuration system.
+
+Existing admin routes remain compatible. `/api/state` is also available as an alias of `/state` for WebUI-style API access.
+
+Dashboard v1 is implemented and awaiting local browser validation.
