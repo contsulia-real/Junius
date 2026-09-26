@@ -630,3 +630,23 @@ The desired result is:
 ```
 
 This integration is not recorded as passed until that probe succeeds on the target Windows host.
+
+## MXC run_command integration result
+
+The real fixed `run_command` path now passes through `MxcProcessCapability` on the tested Windows host.
+
+Observed with `pnpm sandbox:mxc-run-command-probe`:
+
+```json
+{
+  "conclusions": {
+    "runCommandVersionWorks": true,
+    "runCommandPlatformWorks": true,
+    "argumentPolicyStillEnforced": true
+  }
+}
+```
+
+The registered `node` capability successfully executed `--version` and `-p process.platform` through MXC ProcessContainer, while the previously disallowed `-e` vector remained rejected before execution.
+
+This closes the spike from standalone MXC probes back into Junius's real fixed-tool execution chain. The next toolchain spike is pnpm.
