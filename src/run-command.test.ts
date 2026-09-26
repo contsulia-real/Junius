@@ -109,3 +109,45 @@ test("run_command enforces grants independently per Workspace", async () => {
     );
   }
 });
+
+
+test("run_command exposes Workspace catalog", () => {
+  const manager = new WorkspaceManager([
+    {
+      id: "alpha",
+      profile: new WorkspaceProfile("C:\\alpha", [
+        {
+          key: "demo",
+          arguments: [{ mode: "exact", args: ["a"] }],
+        },
+      ]),
+    },
+    {
+      id: "beta",
+      profile: new WorkspaceProfile("C:\\beta"),
+    },
+  ]);
+
+  const service = new RunCommandService(
+    new CapabilityRegistry(),
+    manager,
+  );
+
+  assert.deepEqual(service.listWorkspaces(), [
+    {
+      id: "alpha",
+      rootPath: "C:\\alpha",
+      grants: [
+        {
+          key: "demo",
+          arguments: [{ mode: "exact", args: ["a"] }],
+        },
+      ],
+    },
+    {
+      id: "beta",
+      rootPath: "C:\\beta",
+      grants: [],
+    },
+  ]);
+});
