@@ -14,7 +14,8 @@
     "sandbox:mxc-probe": "tsx src/mxc-sandbox-probe.ts",
     "sandbox:mxc-child-probe": "tsx src/mxc-child-process-probe.ts",
     "sandbox:mxc-tool-probe": "tsx src/mxc-tool-portal-probe.ts",
-    "sandbox:mxc-root-probe": "tsx src/mxc-sandbox-root-probe.ts"
+    "sandbox:mxc-root-probe": "tsx src/mxc-sandbox-root-probe.ts",
+    "sandbox:mxc-lifecycle-probe": "tsx src/mxc-lifecycle-probe.ts"
   },
   "keywords": [],
   "author": "",
