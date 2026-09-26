@@ -56,7 +56,7 @@ test("playwright-cli snapshot uses named session and raw output", async () => {
   }
 });
 
-test("playwright-cli open defaults to a persistent CLI profile", async () => {
+test("playwright-cli open defaults to a persistent headed browser", async () => {
   const f = await fixture();
   try {
     const result = await f.service.run(
@@ -70,6 +70,7 @@ test("playwright-cli open defaults to a persistent CLI profile", async () => {
       "open",
       "https://example.com",
       "--persistent",
+      "--headed",
     ]);
   } finally {
     await f.dispose();
