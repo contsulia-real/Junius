@@ -553,3 +553,25 @@ Observed with `pnpm sandbox:mxc-env-probe`:
 The sandbox received only the explicitly supplied allowlisted environment variables. A host-only sentinel variable was present in the Junius host process before launch but was absent from the sandbox environment.
 
 This validates the production direction of constructing a minimal per-capability environment instead of inheriting the host's complete environment block.
+
+## MXC filesystem mutation-confinement result
+
+The filesystem mutation regression passed on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-mutation-probe`:
+
+```json
+{
+  "conclusions": {
+    "workspaceWriteWorks": true,
+    "directOutsideOverwriteBlocked": true,
+    "directOutsideCreateBlocked": true,
+    "reparseOutsideOverwriteBlocked": true,
+    "reparseOutsideCreateBlocked": true
+  }
+}
+```
+
+Host-side verification confirmed that the Workspace write actually landed, the pre-existing outside file remained unchanged, and neither the direct nor reparse-point outside create attempt produced a file.
+
+Together with the earlier read regressions, this validates the tested direct and junction/reparse read/write confinement cases.
