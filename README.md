@@ -95,10 +95,13 @@ For this spike only:
 1. Start Junius with `pnpm dev`.
 2. Start `tunnel-client` for the OpenAI Secure MCP Tunnel and verify that `main` resolves to `http://127.0.0.1:8787/mcp`.
 3. In ChatGPT, create/select the private MCP app using the Tunnel connection and select the same tunnel.
-4. Start with `tool_a` and confirm ChatGPT sees it.
-5. Without refreshing/reconnecting the plugin or starting a new chat, run the local switch command for `tool_b`.
-6. In the same ChatGPT conversation, check whether the model-visible MCP tool surface changes from `tool_a` to `tool_b`.
-7. Record the result.
+4. For this spike, choose **No authentication**. Do not choose OAuth and do not manually enter OAuth metadata; Junius does not implement OAuth yet.
+5. Scan the tools and confirm `tool_a` is discovered.
+6. Without refreshing/reconnecting the plugin or starting a new chat, run the local switch command for `tool_b`.
+7. In the same ChatGPT conversation, check whether the model-visible MCP tool surface changes from `tool_a` to `tool_b`.
+8. Record the result.
+
+The spike tools explicitly advertise `securitySchemes: [{ type: "noauth" }]`. OAuth discovery warnings from `tunnel-client` are therefore not a requirement for this test.
 
 The goal is specifically to test ChatGPT host behavior. A successful protocol-level notification by itself does not prove that ChatGPT refreshes the model-visible tools.
 
