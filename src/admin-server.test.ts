@@ -289,3 +289,74 @@ test("disabling a machine capability preserves Workspace grants", async () => {
     await f.dispose();
   }
 });
+
+
+test("Workspace grant API preserves exact and prefix authorization semantics", async () => {
+  const f = await fixture();
+  try {
+    const workspaceRoot = join(f.root, "workspace-auth-ux");
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(workspaceRoot, { recursive: true }),
+    );
+
+    assert.equal(
+      (
+        await fetch(f.origin + "/workspaces", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: "authux",
+            rootPath: workspaceRoot,
+          }),
+        })
+      ).status,
+      201,
+    );
+
+    assert.equal(
+      (
+        await fetch(f.origin + "/workspaces/authux/grants/node", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            arguments: [
+              { mode: "exact", args: ["--version"] },
+              { mode: "prefix", args: ["-p"] },
+            ],
+          }),
+        })
+      ).status,
+      200,
+    );
+
+    const state = await fetch(f.origin + "/state");
+    const body = await state.json() as {
+      workspaces: {
+        id: string;
+        grants: {
+          key: string;
+          arguments: {
+            mode: "exact" | "prefix";
+            args: string[];
+          }[];
+        }[];
+      }[];
+    };
+
+    const workspace = body.workspaces.find(
+      (item) => item.id === "authux",
+    );
+
+    assert.deepEqual(workspace?.grants, [
+      {
+        key: "node",
+        arguments: [
+          { mode: "exact", args: ["--version"] },
+          { mode: "prefix", args: ["-p"] },
+        ],
+      },
+    ]);
+  } finally {
+    await f.dispose();
+  }
+});
