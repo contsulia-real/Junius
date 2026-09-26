@@ -4,71 +4,106 @@ import {
   type WorkspaceCapabilityGrant,
 } from "./workspace-profile.js";
 
-function workspaceKey(rootPath: string): string {
-  return process.platform === "win32"
-    ? rootPath.toLowerCase()
-    : rootPath;
-}
+const WORKSPACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface WorkspaceState {
+  readonly id: string;
   readonly rootPath: string;
   readonly grants: readonly WorkspaceCapabilityGrant[];
-  readonly active: boolean;
 }
 
 export class WorkspaceManager {
   readonly #profiles = new Map<string, WorkspaceProfile>();
-  #activeKey: string;
 
-  constructor(initialProfile: WorkspaceProfile) {
-    const key = workspaceKey(initialProfile.rootPath);
-    this.#profiles.set(key, initialProfile);
-    this.#activeKey = key;
+  constructor(
+    initialWorkspaces: readonly {
+      readonly id: string;
+      readonly profile: WorkspaceProfile;
+    }[] = [],
+  ) {
+    for (const workspace of initialWorkspaces) {
+      this.registerProfile(workspace.id, workspace.profile);
+    }
   }
 
-  activeProfile(): WorkspaceProfile {
-    const profile = this.#profiles.get(this.#activeKey);
-    if (profile === undefined) {
-      throw new Error("active_workspace_missing");
-    }
+  get(id: string): WorkspaceProfile | undefined {
+    return this.#profiles.get(id);
+  }
 
-    return profile;
+  has(id: string): boolean {
+    return this.#profiles.has(id);
   }
 
   list(): readonly WorkspaceState[] {
     return [...this.#profiles.entries()]
-      .map(([key, profile]) => ({
+      .map(([id, profile]) => ({
+        id,
         rootPath: profile.rootPath,
         grants: profile.grants(),
-        active: key === this.#activeKey,
       }))
-      .sort((left, right) => left.rootPath.localeCompare(right.rootPath));
+      .sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  async register(rootPath: string): Promise<WorkspaceProfile> {
-    const canonicalRoot = await realpath(rootPath);
-    const key = workspaceKey(canonicalRoot);
-    const existing = this.#profiles.get(key);
+  async register(
+    id: string,
+    rootPath: string,
+  ): Promise<WorkspaceProfile> {
+    this.#assertValidId(id);
 
+    const existing = this.#profiles.get(id);
     if (existing !== undefined) {
-      return existing;
+      throw new Error(`workspace_id_already_registered: ${id}`);
+    }
+
+    const canonicalRoot = await realpath(rootPath);
+
+    for (const [existingId, profile] of this.#profiles) {
+      if (samePath(profile.rootPath, canonicalRoot)) {
+        throw new Error(
+          `workspace_root_already_registered: ${existingId}`,
+        );
+      }
     }
 
     const profile = new WorkspaceProfile(canonicalRoot);
-    this.#profiles.set(key, profile);
+    this.#profiles.set(id, profile);
     return profile;
   }
 
-  async activate(rootPath: string): Promise<WorkspaceProfile | undefined> {
-    const canonicalRoot = await realpath(rootPath);
-    const key = workspaceKey(canonicalRoot);
-    const profile = this.#profiles.get(key);
+  remove(id: string): boolean {
+    return this.#profiles.delete(id);
+  }
 
-    if (profile === undefined) {
-      return undefined;
+  private registerProfile(
+    id: string,
+    profile: WorkspaceProfile,
+  ): void {
+    this.#assertValidId(id);
+
+    if (this.#profiles.has(id)) {
+      throw new Error(`workspace_id_already_registered: ${id}`);
     }
 
-    this.#activeKey = key;
-    return profile;
+    for (const [existingId, existing] of this.#profiles) {
+      if (samePath(existing.rootPath, profile.rootPath)) {
+        throw new Error(
+          `workspace_root_already_registered: ${existingId}`,
+        );
+      }
+    }
+
+    this.#profiles.set(id, profile);
   }
+
+  #assertValidId(id: string): void {
+    if (!WORKSPACE_ID_PATTERN.test(id)) {
+      throw new Error(`invalid_workspace_id: ${id}`);
+    }
+  }
+}
+
+function samePath(left: string, right: string): boolean {
+  return process.platform === "win32"
+    ? left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0
+    : left === right;
 }
