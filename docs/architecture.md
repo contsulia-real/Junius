@@ -519,7 +519,7 @@ This changes the current security implementation only. It does not change Junius
 
 ## Current priorities
 
-Machine Capability v1 is implemented and awaiting local validation.
+Machine Capability v1 is implemented and locally validated.
 
 After validation, the next architecture work should focus on:
 
@@ -632,3 +632,26 @@ natural-language browser task
 ```
 
 This verifies the core browser adapter path and the intended task lifecycle. The browser remains a first-class Local Agent capability independent of Workspace command execution, while playwright-cli continues to own browser/session mechanics.
+
+
+## Verified Machine Capability status
+
+Machine Capability v1 has passed local validation through the WebUI and runtime path.
+
+The validated lifecycle was:
+
+```text
+WebUI capability disable
+-> remove from live Capability Registry
+-> preserve Workspace grants
+-> block new capability execution
+
+WebUI capability enable
+-> restore live Capability Registry entry
+-> preserved Workspace grants become effective again
+
+Junius restart
+-> persisted enabled/disabled preference restored
+```
+
+This confirms the intended separation between machine-level capability state, runtime availability, live registry membership, and Workspace authorization.
