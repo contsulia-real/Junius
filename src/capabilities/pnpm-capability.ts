@@ -173,10 +173,9 @@ export function resolvePnpmLauncher(
   return undefined;
 }
 
-export function createPnpmCapability():
-  | ProcessCapability
-  | undefined {
-  const launcher = resolvePnpmLauncher();
+export function createPnpmCapability(
+  launcher: PnpmLauncher | undefined = resolvePnpmLauncher(),
+): ProcessCapability | undefined {
   if (!launcher) {
     return undefined;
   }
