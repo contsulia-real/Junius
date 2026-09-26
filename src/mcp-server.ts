@@ -39,15 +39,44 @@ export function createMcpServer(service: RunCommandService): McpServer {
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Agent",
-    version: "0.4.0",
+    version: "0.5.0",
   });
+
+  server.registerTool(
+    "list_workspaces",
+    {
+      title: "List Junius Workspaces",
+      description:
+        "List registered Junius Workspaces, their roots, and the capability argument grants available in each Workspace. Use this before choosing a Workspace when the user refers to a project by name rather than by Workspace ID.",
+      inputSchema: z.object({}),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async () => ({
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            workspaces: service.listWorkspaces(),
+          }),
+        },
+      ],
+    }),
+  );
 
   server.registerTool(
     "run_command",
     {
       title: "Run Junius Capability",
       description:
-        "Run one registered Junius capability in one explicitly selected Junius Workspace. The Workspace ID and capability key must already be registered and authorized. Filesystem paths and shell command strings are not accepted as capability selectors.",
+        "Run one registered Junius capability in one explicitly selected Junius Workspace. If the user names a project rather than a Workspace ID, use list_workspaces first. The Workspace ID and capability key must already be registered and authorized. Filesystem paths and shell command strings are not accepted as capability selectors.",
       inputSchema: runCommandInputSchema,
       _meta: {
         securitySchemes: [{ type: "noauth" }],
