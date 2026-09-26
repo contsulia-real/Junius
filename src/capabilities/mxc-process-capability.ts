@@ -16,7 +16,10 @@ export interface MxcProcessCapabilityOptions {
   readonly key: string;
   readonly description: string;
   readonly executable: string;
-  readonly allowedArgVectors: readonly (readonly string[])[];
+  readonly allowedArgVectors?: readonly (readonly string[])[];
+  readonly argumentPolicy?: (args: readonly string[]) => boolean;
+  readonly fixedArgs?: readonly string[];
+  readonly readonlyPaths?: readonly string[];
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
   readonly environment?: NodeJS.ProcessEnv;
@@ -108,6 +111,9 @@ export class MxcProcessCapability implements Capability {
 
   readonly #executable: string;
   readonly #allowedArgVectors: readonly (readonly string[])[];
+  readonly #argumentPolicy?: (args: readonly string[]) => boolean;
+  readonly #fixedArgs: readonly string[];
+  readonly #readonlyPaths: readonly string[];
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
   readonly #environment: NodeJS.ProcessEnv;
@@ -116,7 +122,10 @@ export class MxcProcessCapability implements Capability {
     this.key = options.key;
     this.description = options.description;
     this.#executable = options.executable;
-    this.#allowedArgVectors = options.allowedArgVectors;
+    this.#allowedArgVectors = options.allowedArgVectors ?? [];
+    this.#argumentPolicy = options.argumentPolicy;
+    this.#fixedArgs = options.fixedArgs ?? [];
+    this.#readonlyPaths = options.readonlyPaths ?? [];
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#maxOutputBytes =
       options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
@@ -127,11 +136,13 @@ export class MxcProcessCapability implements Capability {
     args: readonly string[],
     context: CapabilityExecutionContext,
   ): Promise<CapabilityExecution> {
-    if (
-      !this.#allowedArgVectors.some((allowed) =>
+    const argumentsAllowed =
+      this.#allowedArgVectors.some((allowed) =>
         matchesAllowedVector(args, allowed),
-      )
-    ) {
+      ) ||
+      this.#argumentPolicy?.(args) === true;
+
+    if (!argumentsAllowed) {
       return {
         ok: false,
         code: "arguments_not_allowed",
@@ -185,7 +196,10 @@ export class MxcProcessCapability implements Capability {
         version: "0.8.0-alpha",
         filesystem: {
           readwritePaths: [context.cwd],
-          readonlyPaths: [dirname(this.#executable)],
+          readonlyPaths: [
+            dirname(this.#executable),
+            ...this.#readonlyPaths,
+          ],
         },
         network: {
           egress: { default: "deny" },
@@ -203,7 +217,7 @@ export class MxcProcessCapability implements Capability {
 
     config.process!.commandLine = buildWindowsCommandLine(
       this.#executable,
-      args,
+      [...this.#fixedArgs, ...args],
     );
     config.process!.cwd = context.cwd;
     config.process!.env = environment;
