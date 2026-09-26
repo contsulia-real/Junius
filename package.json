@@ -18,7 +18,8 @@
     "sandbox:mxc-lifecycle-probe": "tsx src/mxc-lifecycle-probe.ts",
     "sandbox:mxc-network-probe": "tsx src/mxc-network-probe.ts",
     "sandbox:mxc-env-probe": "tsx src/mxc-environment-probe.ts",
-    "sandbox:mxc-mutation-probe": "tsx src/mxc-filesystem-mutation-probe.ts"
+    "sandbox:mxc-mutation-probe": "tsx src/mxc-filesystem-mutation-probe.ts",
+    "sandbox:mxc-hardlink-probe": "tsx src/mxc-hardlink-probe.ts"
   },
   "keywords": [],
   "author": "",
