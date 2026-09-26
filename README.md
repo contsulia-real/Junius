@@ -414,3 +414,24 @@ Observed with `pnpm sandbox:mxc-child-probe`:
 The descendant Node executable was copied into the authorized Workspace only to isolate process-tree inheritance from external tool-path reachability. It successfully spawned, read the Workspace file, and remained unable to read the outside secret.
 
 This proves the tested descendant inherited the filesystem confinement boundary. The earlier failure to respawn the original external Node executable is therefore tracked separately as a tool-path reachability problem, not as a descendant-process sandbox escape.
+
+## MXC external tool portal result
+
+The junction-based external tool portal did **not** make an already-authorized external executable spawnable by a descendant process.
+
+Observed with `pnpm sandbox:mxc-tool-probe`:
+
+```json
+{
+  "conclusions": {
+    "directExternalSpawnWorks": false,
+    "portalSpawnWorks": false,
+    "portalInsideReadWorks": false,
+    "portalOutsideReadBlocked": false
+  }
+}
+```
+
+Both the direct external Node path and a Workspace junction pointing to the same external Node directory failed at descendant process creation with `ENOENT`.
+
+This rules out a reparse-point alias as the solution. MXC 0.8's Windows filesystem grant implementation defines `readonlyPaths` as read + execute, so the observed failure is treated as a descendant executable-path reachability issue rather than evidence that readonly grants intentionally forbid execution.
