@@ -333,3 +333,36 @@ project-name resolution
 
 A project command returning a nonzero exit code is treated as workload output, not evidence of a Junius routing/execution failure when the underlying tool actually ran and its diagnostics were returned.
 
+## Verified Workspace file-tool status
+
+The first Local Agent file capability set has passed real black-box validation through ChatGPT.
+
+The tested user-level workflows covered:
+
+```text
+project-name resolution
+-> ls
+-> read
+-> rg
+-> write(create)
+-> write(exact-text edit)
+-> Workspace path rejection outside the registered root
+```
+
+The user did not need to provide internal Workspace IDs, capability keys, raw MCP calls, SHA values, revisions, or version tokens.
+
+The same test session also confirmed that the existing multi-Workspace command path continued to route Junius and Weave independently.
+
+This verifies the intended separation:
+
+```text
+built-in file tools
+-> Junius-enforced Workspace-relative file boundary
+
+run_command
+-> authorized local process execution
+-> no claim of OS sandbox containment
+```
+
+Workspace Files v1 is therefore considered implemented and black-box verified.
+
