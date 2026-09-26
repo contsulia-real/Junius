@@ -114,7 +114,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
           <div class="panel-heading">
             <div>
               <h2>能力</h2>
-              <p>当前已在 Junius 注册的机器级进程能力。</p>
+              <p>管理 Junius 已知的机器级能力、启用状态与运行元数据。</p>
             </div>
           </div>
           <div id="capability-list" class="stack"></div>
@@ -339,7 +339,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     var running = data.jobs.filter(function (job) { return job.status === "running"; }).length;
     var cards = [
       [data.workspaces.length, "工作区"],
-      [data.registeredCapabilities.length, "进程能力"],
+      [data.machineCapabilities.filter(function (capability) { return capability.active; }).length, "已激活机器能力"],
       [running, "运行中任务"],
       [data.browser.available ? "就绪" : "缺失", "浏览器"]
     ];
@@ -378,16 +378,43 @@ export const ADMIN_DASHBOARD_JS = String.raw`
 
   function renderCapabilities() {
     var node = document.getElementById("capability-list");
-    if (data.registeredCapabilities.length === 0) {
-      node.innerHTML = '<div class="empty">尚未注册进程能力。</div>';
+    if (!data.machineCapabilities || data.machineCapabilities.length === 0) {
+      node.innerHTML = '<div class="empty">尚无可管理的机器级能力。</div>';
       return;
     }
 
-    node.innerHTML = data.registeredCapabilities.map(function (capability) {
+    node.innerHTML = data.machineCapabilities.map(function (capability) {
+      var launcher = capability.launcher
+        ? [capability.launcher.executable].concat(capability.launcher.fixedArgs || []).join(" ")
+        : "未解析";
+      var policy = (capability.policy || []).map(function (rule) {
+        return '<code>' + esc(rule) + '</code>';
+      }).join(" ");
+      var users = data.workspaces
+        .filter(function (workspace) {
+          return workspace.grants.some(function (grant) {
+            return grant.key === capability.key;
+          });
+        })
+        .map(function (workspace) { return workspace.id; });
+
       return '<div class="item"><div class="item-main">' +
         '<div class="item-title">' + esc(capability.key) + '</div>' +
         '<div class="item-meta">' + esc(capability.description) + '</div>' +
-        '</div>' + badge("available") + '</div>';
+        '<div class="item-meta">状态：' +
+        (capability.enabled ? '<span class="badge success">已启用</span>' : '<span class="badge danger">已禁用</span>') +
+        ' ' + (capability.available ? '<span class="badge success">可用</span>' : '<span class="badge danger">不可用</span>') +
+        ' ' + (capability.active ? '<span class="badge success">已激活</span>' : '<span class="badge">未激活</span>') +
+        '</div>' +
+        '<div class="item-meta">启动器：' + esc(launcher) + '</div>' +
+        '<div class="item-meta">机器策略：<span class="rule">' + (policy || '<code>无</code>') + '</span></div>' +
+        '<div class="item-meta">工作区授权：' + esc(users.length ? users.join(", ") : "无") + '</div>' +
+        '</div><div class="item-actions">' +
+        '<button class="button ' + (capability.enabled ? 'danger' : '') +
+        '" data-toggle-capability="' + esc(capability.key) +
+        '" data-enabled="' + String(capability.enabled) + '">' +
+        (capability.enabled ? '禁用' : '启用') +
+        '</button></div></div>';
     }).join("");
   }
 
@@ -634,6 +661,31 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   document.addEventListener("click", function (event) {
     var target = event.target.closest("button");
     if (!target) return;
+
+    if (target.dataset.toggleCapability) {
+      var key = target.dataset.toggleCapability;
+      var currentlyEnabled = target.dataset.enabled === "true";
+      var nextEnabled = !currentlyEnabled;
+
+      if (
+        currentlyEnabled &&
+        !confirm("确定禁用机器级能力 " + key + " 吗？已有工作区授权会保留，但该能力将无法执行。")
+      ) {
+        return;
+      }
+
+      api("/capabilities/" + encodeURIComponent(key), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: nextEnabled })
+      })
+        .then(refresh)
+        .then(function () {
+          showNotice("机器级能力 " + key + (nextEnabled ? " 已启用。" : " 已禁用。"));
+        })
+        .catch(function (error) { showNotice(error.message, true); });
+      return;
+    }
 
     if (target.dataset.removeWorkspace) {
       if (!confirm("确定删除工作区 " + target.dataset.removeWorkspace + " 吗？")) return;
