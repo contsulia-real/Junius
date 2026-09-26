@@ -1,12 +1,22 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { RunCommandService, type RunCommandResult } from "./run-command.js";
+import {
+  WorkspaceFileError,
+  WorkspaceFilesService,
+} from "./workspace-files.js";
 
 const stableIdSchema = z
   .string()
   .min(1)
   .max(64)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+
+const workspacePathSchema = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .describe("Workspace-relative path. Absolute paths are not accepted.");
 
 const runCommandInputSchema = z.object({
   workspace: stableIdSchema.describe(
@@ -57,11 +67,34 @@ export function formatRunCommandResult(
   });
 }
 
-export function createMcpServer(service: RunCommandService): McpServer {
+function fileToolError(error: unknown) {
+  if (error instanceof WorkspaceFileError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            ok: false,
+            code: error.code,
+            message: error.message,
+          }),
+        },
+      ],
+    };
+  }
+
+  throw error;
+}
+
+export function createMcpServer(
+  commands: RunCommandService,
+  files: WorkspaceFilesService,
+): McpServer {
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Agent",
-    version: "0.5.0",
+    version: "0.6.0",
   });
 
   server.registerTool(
@@ -86,11 +119,245 @@ export function createMcpServer(service: RunCommandService): McpServer {
         {
           type: "text" as const,
           text: JSON.stringify({
-            workspaces: service.listWorkspaces(),
+            workspaces: commands.listWorkspaces(),
           }),
         },
       ],
     }),
+  );
+
+  server.registerTool(
+    "ls",
+    {
+      title: "List Workspace Files",
+      description:
+        "List files and directories inside one registered Junius Workspace. Paths are Workspace-relative.",
+      inputSchema: z.object({
+        workspace: stableIdSchema,
+        path: workspacePathSchema.default("."),
+        depth: z.number().int().min(1).max(4).default(1),
+      }),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ workspace, path, depth }) => {
+      try {
+        const entries = await files.ls(workspace, path, depth);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: true,
+                workspace,
+                path,
+                entries,
+              }),
+            },
+          ],
+        };
+      } catch (error) {
+        return fileToolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "read",
+    {
+      title: "Read Workspace Files",
+      description:
+        "Read one or more UTF-8 text files from a registered Junius Workspace. Returns content hashes for safe follow-up writes.",
+      inputSchema: z.object({
+        workspace: stableIdSchema,
+        files: z
+          .array(
+            z.object({
+              path: workspacePathSchema,
+              start_line: z.number().int().min(1).optional(),
+              end_line: z.number().int().min(1).optional(),
+            }),
+          )
+          .min(1)
+          .max(16),
+      }),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ workspace, files: requests }) => {
+      try {
+        const results = await files.read(
+          workspace,
+          requests.map((request) => ({
+            path: request.path,
+            ...(request.start_line === undefined
+              ? {}
+              : { startLine: request.start_line }),
+            ...(request.end_line === undefined
+              ? {}
+              : { endLine: request.end_line }),
+          })),
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: true,
+                workspace,
+                files: results,
+              }),
+            },
+          ],
+        };
+      } catch (error) {
+        return fileToolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "write",
+    {
+      title: "Write Workspace Files",
+      description:
+        "Create or replace UTF-8 text files inside a registered Junius Workspace. Overwriting an existing file requires the sha256 returned by read, preventing stale writes. All writes are validated before any file is changed.",
+      inputSchema: z.object({
+        workspace: stableIdSchema,
+        files: z
+          .array(
+            z.object({
+              path: workspacePathSchema,
+              content: z.string().max(2 * 1024 * 1024),
+              expected_sha256: z
+                .string()
+                .regex(/^[a-f0-9]{64}$/u)
+                .optional(),
+            }),
+          )
+          .min(1)
+          .max(16),
+      }),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ workspace, files: requests }) => {
+      try {
+        const results = await files.write(
+          workspace,
+          requests.map((request) => ({
+            path: request.path,
+            content: request.content,
+            ...(request.expected_sha256 === undefined
+              ? {}
+              : { expectedSha256: request.expected_sha256 }),
+          })),
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: true,
+                workspace,
+                files: results,
+              }),
+            },
+          ],
+        };
+      } catch (error) {
+        return fileToolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "rg",
+    {
+      title: "Search Workspace Text",
+      description:
+        "Search text inside one registered Junius Workspace using ripgrep. Paths are Workspace-relative and ripgrep configuration files are disabled.",
+      inputSchema: z.object({
+        workspace: stableIdSchema,
+        query: z.string().min(1).max(4_096),
+        path: workspacePathSchema.default("."),
+        globs: z.array(z.string().min(1).max(1_024)).max(32).default([]),
+        case_sensitive: z.boolean().default(true),
+        fixed_strings: z.boolean().default(false),
+        hidden: z.boolean().default(false),
+        max_results: z.number().int().min(1).max(500).default(100),
+      }),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({
+      workspace,
+      query,
+      path,
+      globs,
+      case_sensitive,
+      fixed_strings,
+      hidden,
+      max_results,
+    }) => {
+      try {
+        const matches = await files.rg(workspace, {
+          query,
+          path,
+          globs,
+          caseSensitive: case_sensitive,
+          fixedStrings: fixed_strings,
+          hidden,
+          maxResults: max_results,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: true,
+                workspace,
+                query,
+                matches,
+              }),
+            },
+          ],
+        };
+      } catch (error) {
+        return fileToolError(error);
+      }
+    },
   );
 
   server.registerTool(
@@ -111,7 +378,7 @@ export function createMcpServer(service: RunCommandService): McpServer {
       },
     },
     async ({ workspace, key, args }) => {
-      const result = await service.run(workspace, key, args);
+      const result = await commands.run(workspace, key, args);
 
       return {
         isError: !result.ok,
