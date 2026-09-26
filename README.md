@@ -394,3 +394,23 @@ loaded Experimental_CreateProcessInSandbox from processmodel.dll
 The sandboxed Node process could read the Workspace file, while both the direct outside path and the Workspace junction pointing outside failed with `EPERM`.
 
 This validates filesystem confinement for the original regression case on this host. It does not yet prove descendant-process containment, network confinement, UI isolation, device/NT namespace behavior, hard-link behavior, or the final Junius production sandbox integration.
+
+## MXC descendant-process confinement result
+
+The descendant-process regression passed on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-child-probe`:
+
+```json
+{
+  "conclusions": {
+    "nestedSpawnWorks": true,
+    "nestedInsideReadWorks": true,
+    "nestedOutsideReadBlocked": true
+  }
+}
+```
+
+The descendant Node executable was copied into the authorized Workspace only to isolate process-tree inheritance from external tool-path reachability. It successfully spawned, read the Workspace file, and remained unable to read the outside secret.
+
+This proves the tested descendant inherited the filesystem confinement boundary. The earlier failure to respawn the original external Node executable is therefore tracked separately as a tool-path reachability problem, not as a descendant-process sandbox escape.
