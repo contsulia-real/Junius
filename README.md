@@ -2,9 +2,11 @@
 
 Architecture: [docs/architecture.md](docs/architecture.md)
 
-Junius is a Local Agent that lets ChatGPT call explicitly authorized local-computer capabilities through MCP.
+Junius is a Local Agent that lets ChatGPT use local-computer capabilities through MCP under user-controlled authorization.
 
-Junius is an **authorization-controlled local executor**, not an OS security sandbox.
+Its scope is broader than command execution: local files and processes are implemented first, with browser and other local-computer capabilities fitting the same Local Agent architecture. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
+
+The current implementation does not provide an OS security sandbox.
 
 ## Requirements
 
@@ -247,17 +249,19 @@ Startup behavior:
 
 ## Current direction
 
-Junius deliberately keeps the MCP surface stable while capabilities and Workspace policy remain runtime data.
+Junius remains a general Local Agent. The current file/process tools are the first local capabilities, not the boundary of the product.
 
 The next work should focus on:
 
-- real capability coverage;
+- broader local capability coverage;
 - long-running jobs and process lifecycle;
+- browser capability;
 - Dashboard-based Workspace/capability management;
 - persistent machine capability configuration;
-- clearer authorization UX.
+- clearer authorization UX;
+- later desktop/UI capabilities where appropriate.
 
-OS-level sandboxing is not part of the current Junius execution model.
+OS-level sandboxing is not part of the current execution implementation.
 
 ## Verified end-to-end execution
 
