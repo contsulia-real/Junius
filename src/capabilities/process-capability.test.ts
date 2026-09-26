@@ -39,3 +39,25 @@ test("ProcessCapability rejects arguments outside its policy", async () => {
     assert.equal(result.code, "arguments_not_allowed");
   }
 });
+
+
+test("ProcessCapability supports fixed launcher args and predicate policy", async () => {
+  const capability = new ProcessCapability({
+    key: "node-expression",
+    description: "test fixed args",
+    executable: process.execPath,
+    fixedArgs: ["-p"],
+    argumentPolicy: (args) =>
+      args.length === 1 && args[0] === "process.platform",
+    timeoutMs: 5_000,
+  });
+
+  const result = await capability.execute(["process.platform"], {
+    cwd: process.cwd(),
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.stdout.trim(), process.platform);
+  }
+});
