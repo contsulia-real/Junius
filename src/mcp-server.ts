@@ -9,6 +9,11 @@ import {
   WorkspaceFileError,
   WorkspaceFilesService,
 } from "./workspace-files.js";
+import {
+  PLAYWRIGHT_CLI_COMMANDS,
+  PlaywrightCliError,
+  PlaywrightCliService,
+} from "./playwright-cli.js";
 
 const stableIdSchema = z
   .string()
@@ -71,6 +76,26 @@ export function formatRunCommandResult(
   });
 }
 
+function playwrightCliToolError(error: unknown) {
+  if (error instanceof PlaywrightCliError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            ok: false,
+            code: error.code,
+            message: error.message,
+          }),
+        },
+      ],
+    };
+  }
+
+  throw error;
+}
+
 function jobToolError(error: unknown) {
   if (error instanceof JobManagerError) {
     return {
@@ -115,11 +140,12 @@ export function createMcpServer(
   commands: RunCommandService,
   files: WorkspaceFilesService,
   jobs: JobManager,
+  playwrightCli: PlaywrightCliService,
 ): McpServer {
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Agent",
-    version: "0.7.0",
+    version: "0.8.0",
   });
 
   server.registerTool(
@@ -406,6 +432,62 @@ export function createMcpServer(
         };
       } catch (error) {
         return fileToolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "playwright_cli",
+    {
+      title: "Use Local Playwright CLI",
+      description:
+        "Drive the local browser through the installed playwright-cli. This is a thin adapter over playwright-cli named sessions. Use snapshot to get element refs before element interactions. The adapter only allows normal browser-navigation and interaction commands; eval, run-code, storage manipulation, CDP attach, request interception, and arbitrary CLI commands are not exposed.",
+      inputSchema: z.object({
+        session: stableIdSchema
+          .default("junius")
+          .describe(
+            "Named playwright-cli browser session. Sessions are isolated from each other.",
+          ),
+        command: z.enum(PLAYWRIGHT_CLI_COMMANDS),
+        args: z
+          .array(z.string().max(4_096))
+          .max(8)
+          .default([])
+          .describe(
+            "Arguments for the selected allowed playwright-cli command. Use element refs such as e15 for element interactions.",
+          ),
+      }),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ session, command, args }) => {
+      try {
+        const execution = await playwrightCli.run(
+          session,
+          command,
+          args,
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: true,
+                execution,
+              }),
+            },
+          ],
+        };
+      } catch (error) {
+        return playwrightCliToolError(error);
       }
     },
   );
