@@ -50,7 +50,7 @@ test("ls lists Workspace-relative entries", async () => {
   }
 });
 
-test("read returns line ranges and a content hash", async () => {
+test("read returns line ranges", async () => {
   const f = await fixture();
   try {
     const [result] = await f.service.read("demo", [
@@ -60,7 +60,6 @@ test("read returns line ranges and a content hash", async () => {
     assert.equal(result?.content, "two\nthree\n");
     assert.equal(result?.startLine, 2);
     assert.equal(result?.endLine, 3);
-    assert.match(result?.sha256 ?? "", /^[a-f0-9]{64}$/u);
   } finally {
     await f.dispose();
   }
@@ -86,57 +85,28 @@ test("write can overwrite an existing file without a prior read", async () => {
   }
 });
 
-test("write optionally rejects a stale expected SHA-256", async () => {
-  const f = await fixture();
-  try {
-    const [before] = await f.service.read("demo", [
-      { path: "README.md" },
-    ]);
-    assert.ok(before);
-
-    await writeFile(join(f.root, "README.md"), "# External change\n", "utf8");
-
-    await assert.rejects(
-      f.service.write("demo", [
-        {
-          path: "README.md",
-          content: "# Changed\n",
-          expectedSha256: before.sha256,
-        },
-      ]),
-      (error: unknown) =>
-        error instanceof WorkspaceFileError &&
-        error.code === "stale_file",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
 test("write validates all files before changing any of them", async () => {
   const f = await fixture();
   try {
-    const [before] = await f.service.read("demo", [
-      { path: "README.md" },
-    ]);
-    assert.ok(before);
-
     await assert.rejects(
       f.service.write("demo", [
         {
           path: "README.md",
           content: "# Must not be written\n",
-          expectedSha256: before.sha256,
         },
         {
           path: "src/a.ts",
-          content: "bad\n",
-          expectedSha256: "0".repeat(64),
+          edits: [
+            {
+              oldText: "missing text",
+              newText: "bad",
+            },
+          ],
         },
       ]),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
-        error.code === "stale_file",
+        error.code === "edit_not_found",
     );
 
     assert.equal(
@@ -207,15 +177,9 @@ test("Workspace file tools reject unregistered Workspaces", async () => {
 test("write supports exact-text edits without replacing the whole file", async () => {
   const f = await fixture();
   try {
-    const [before] = await f.service.read("demo", [
-      { path: "src/a.ts", startLine: 2, endLine: 2 },
-    ]);
-    assert.ok(before);
-
     const [written] = await f.service.write("demo", [
       {
         path: "src/a.ts",
-        expectedSha256: before.sha256,
         edits: [
           {
             oldText: "two\n",
@@ -239,16 +203,10 @@ test("write rejects ambiguous exact-text edits", async () => {
   const f = await fixture();
   try {
     await writeFile(join(f.root, "dup.txt"), "same\nsame\n", "utf8");
-    const [before] = await f.service.read("demo", [
-      { path: "dup.txt" },
-    ]);
-    assert.ok(before);
-
     await assert.rejects(
       f.service.write("demo", [
         {
           path: "dup.txt",
-          expectedSha256: before.sha256,
           edits: [
             {
               oldText: "same",
