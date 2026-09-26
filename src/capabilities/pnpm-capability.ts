@@ -11,13 +11,11 @@ import {
   extname,
   join,
 } from "node:path";
-import { MxcProcessCapability } from "./mxc-process-capability.js";
+import { ProcessCapability } from "./process-capability.js";
 
 export interface PnpmLauncher {
   readonly executable: string;
   readonly fixedArgs: readonly string[];
-  readonly readonlyPaths: readonly string[];
-  readonly environment: NodeJS.ProcessEnv;
 }
 
 const SCRIPT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/;
@@ -79,10 +77,6 @@ function javascriptLauncher(
   return {
     executable: nodeExecutable,
     fixedArgs: [entry],
-    readonlyPaths: [dirname(entry)],
-    environment: {
-      PATH: dirname(nodeExecutable),
-    },
   };
 }
 
@@ -90,10 +84,6 @@ function nativeLauncher(path: string): PnpmLauncher {
   return {
     executable: path,
     fixedArgs: [],
-    readonlyPaths: [dirname(path)],
-    environment: {
-      PATH: dirname(path),
-    },
   };
 }
 
@@ -185,28 +175,21 @@ export function resolvePnpmLauncher(
 }
 
 export function createPnpmCapability():
-  | MxcProcessCapability
+  | ProcessCapability
   | undefined {
   const launcher = resolvePnpmLauncher();
   if (!launcher) {
     return undefined;
   }
 
-  return new MxcProcessCapability({
+  return new ProcessCapability({
     key: "pnpm",
     description:
       "pnpm package-script runner. Allows --version and pnpm run <script>; install/exec/dlx/add are not exposed.",
     executable: launcher.executable,
-    // The MXC process cwd is a Junius-owned runtime root. "workspace" is a
-    // junction inside that root targeting the authorized Workspace. This
-    // keeps pnpm's canonicalization input inside the controlled namespace
-    // instead of asking it to canonicalize the host Workspace path directly.
-    fixedArgs: [...launcher.fixedArgs, "--dir", "workspace"],
-    readonlyPaths: launcher.readonlyPaths,
-    useWorkspacePortal: true,
+    fixedArgs: launcher.fixedArgs,
     argumentPolicy: isAllowedPnpmArgs,
     timeoutMs: 120_000,
     maxOutputBytes: 512 * 1024,
-    environment: launcher.environment,
   });
 }
