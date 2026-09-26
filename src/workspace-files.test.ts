@@ -57,7 +57,7 @@ test("read returns line ranges and a content hash", async () => {
       { path: "src/a.ts", startLine: 2, endLine: 3 },
     ]);
 
-    assert.equal(result?.content, "two\nthree");
+    assert.equal(result?.content, "two\nthree\n");
     assert.equal(result?.startLine, 2);
     assert.equal(result?.endLine, 3);
     assert.match(result?.sha256 ?? "", /^[a-f0-9]{64}$/u);
@@ -189,4 +189,67 @@ test("Workspace file tools reject unregistered Workspaces", async () => {
       error instanceof WorkspaceFileError &&
       error.code === "workspace_not_registered",
   );
+});
+
+
+test("write supports exact-text edits without replacing the whole file", async () => {
+  const f = await fixture();
+  try {
+    const [before] = await f.service.read("demo", [
+      { path: "src/a.ts", startLine: 2, endLine: 2 },
+    ]);
+    assert.ok(before);
+
+    const [written] = await f.service.write("demo", [
+      {
+        path: "src/a.ts",
+        expectedSha256: before.sha256,
+        edits: [
+          {
+            oldText: "two\n",
+            newText: "changed\n",
+          },
+        ],
+      },
+    ]);
+
+    assert.equal(written?.created, false);
+    assert.equal(
+      await readFile(join(f.root, "src", "a.ts"), "utf8"),
+      "one\nchanged\nthree\n",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("write rejects ambiguous exact-text edits", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(join(f.root, "dup.txt"), "same\nsame\n", "utf8");
+    const [before] = await f.service.read("demo", [
+      { path: "dup.txt" },
+    ]);
+    assert.ok(before);
+
+    await assert.rejects(
+      f.service.write("demo", [
+        {
+          path: "dup.txt",
+          expectedSha256: before.sha256,
+          edits: [
+            {
+              oldText: "same",
+              newText: "changed",
+            },
+          ],
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "edit_not_unique",
+    );
+  } finally {
+    await f.dispose();
+  }
 });
