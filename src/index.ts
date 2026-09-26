@@ -60,6 +60,7 @@ function registerCurrentTool(server: McpServer) {
       title: toolTitle(name),
       description: toolDescription(name),
       inputSchema: z.object({}),
+      securitySchemes: [{ type: "noauth" }],
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
