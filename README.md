@@ -160,3 +160,36 @@ Workspace permission changes without ChatGPT app recreation
 ```
 
 This spike intentionally uses synthetic capability adapters. It does not yet test executable spawning, argument policy, filesystem sandboxing, process-tree restrictions, or the final Dashboard persistence model.
+
+## Fixed `run_command` spike result
+
+The fixed-tool spike passed in ChatGPT.
+
+Observed in one uninterrupted ChatGPT conversation:
+
+1. `run_command(key="tool_a", args=[])` succeeded while the Workspace Profile allowed `tool_a`.
+2. `run_command(key="tool_b", args=[])` returned `capability_not_allowed: tool_b`.
+3. The local Workspace Profile was changed so only `tool_b` was allowed, without changing the MCP schema or recreating/reconnecting the ChatGPT app.
+4. `run_command(key="tool_b", args=[])` then succeeded immediately.
+5. `run_command(key="tool_a", args=[])` then returned `capability_not_allowed: tool_a`.
+
+Conclusion:
+
+```text
+fixed ChatGPT MCP tool surface
+        +
+runtime Workspace Profile authorization by key
+        =
+dynamic Workspace capability changes without rebuilding the ChatGPT app
+```
+
+This validates the core direction for Junius:
+
+- ChatGPT sees a stable `run_command` MCP tool.
+- `run_command` accepts a Junius capability `key` plus argument vector.
+- The Dashboard/Workspace Profile decides which keys are currently allowed.
+- The Machine Capability Registry decides which keys exist and what adapter each key maps to.
+- The Policy Engine remains responsible for validating the concrete invocation before execution.
+- Workspace configuration does not control executable paths and does not create arbitrary shell access.
+
+The spike used synthetic adapters only. Real executable adapters, per-key argument policy, process isolation, filesystem sandboxing, persistence, and the final Dashboard UI remain separate implementation work.
