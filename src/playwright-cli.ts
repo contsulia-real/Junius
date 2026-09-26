@@ -429,11 +429,14 @@ function commandArgs(
 
   const commandSpecific = [...args];
 
-  if (
-    command === "open" &&
-    !commandSpecific.includes("--persistent")
-  ) {
-    commandSpecific.push("--persistent");
+  if (command === "open") {
+    if (!commandSpecific.includes("--persistent")) {
+      commandSpecific.push("--persistent");
+    }
+
+    if (!commandSpecific.includes("--headed")) {
+      commandSpecific.push("--headed");
+    }
   }
 
   return [...prefix, command, ...commandSpecific];
