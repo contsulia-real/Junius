@@ -575,3 +575,26 @@ Observed with `pnpm sandbox:mxc-mutation-probe`:
 Host-side verification confirmed that the Workspace write actually landed, the pre-existing outside file remained unchanged, and neither the direct nor reparse-point outside create attempt produced a file.
 
 Together with the earlier read regressions, this validates the tested direct and junction/reparse read/write confinement cases.
+
+## SECURITY BLOCKER: hard-link alias escape
+
+The NTFS hard-link regression **failed** on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-hardlink-probe`:
+
+```json
+{
+  "conclusions": {
+    "hardlinkOutsideReadBlocked": false,
+    "hardlinkOutsideWriteBlocked": false
+  }
+}
+```
+
+A file inside the granted Workspace was created as a hard link to a file outside the Workspace before sandbox launch. Inside the sandbox, reading the Workspace path returned the outside file's contents and writing the Workspace path modified the outside file. Host-side verification observed the outside file changed from `outside-original` to `hardlink-overwritten`.
+
+Therefore the current direct-Workspace `readwritePaths: [workspaceRoot]` model is **not a complete filesystem security boundary**. Direct path traversal and junction/reparse escapes passed their regressions, but an in-tree hard-link alias can still grant access to the same underlying NTFS file object outside the intended tree.
+
+MXC contains object-identity normalization for policy paths, but that does not imply a recursive scan of every unlisted file alias inside an authorized subtree. Junius must not mark the production sandbox complete until this hard-link alias problem is addressed at the architecture level.
+
+A conservative "reject every file with multiple hard links" preflight is not assumed viable for developer workspaces because package managers and build tooling may legitimately use hard links. The production mitigation is intentionally left unfrozen pending an architecture decision.
