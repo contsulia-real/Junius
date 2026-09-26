@@ -6,10 +6,10 @@ import test from "node:test";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
-test("WorkspaceManager registers and switches independent profiles", async () => {
-  const root = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
-  const first = await realpath(root);
+test("WorkspaceManager keeps independent profiles addressable in parallel", async () => {
+  const firstRaw = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
   const secondRaw = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
+  const first = await realpath(firstRaw);
   const second = await realpath(secondRaw);
 
   try {
@@ -19,39 +19,78 @@ test("WorkspaceManager registers and switches independent profiles", async () =>
         arguments: [{ mode: "exact", args: ["run", "check"] }],
       },
     ]);
-    const manager = new WorkspaceManager(firstProfile);
 
-    assert.equal(manager.activeProfile().rootPath, first);
+    const manager = new WorkspaceManager([
+      { id: "alpha", profile: firstProfile },
+    ]);
 
-    const secondProfile = await manager.register(second);
+    const secondProfile = await manager.register("beta", second);
     secondProfile.setGrant({
       key: "pnpm",
       arguments: [{ mode: "exact", args: ["run", "build"] }],
     });
 
-    const activated = await manager.activate(second);
-    assert.ok(activated);
-    assert.equal(manager.activeProfile().rootPath, second);
     assert.equal(
-      manager.activeProfile().isInvocationAllowed(
+      manager.get("alpha")?.isInvocationAllowed(
+        "pnpm",
+        ["run", "check"],
+      ),
+      true,
+    );
+    assert.equal(
+      manager.get("alpha")?.isInvocationAllowed(
+        "pnpm",
+        ["run", "build"],
+      ),
+      false,
+    );
+    assert.equal(
+      manager.get("beta")?.isInvocationAllowed(
         "pnpm",
         ["run", "build"],
       ),
       true,
     );
     assert.equal(
-      manager.activeProfile().isInvocationAllowed(
+      manager.get("beta")?.isInvocationAllowed(
         "pnpm",
         ["run", "check"],
       ),
       false,
     );
 
-    const states = manager.list();
-    assert.equal(states.length, 2);
-    assert.equal(states.filter((state) => state.active).length, 1);
+    assert.deepEqual(
+      manager.list().map((workspace) => workspace.id),
+      ["alpha", "beta"],
+    );
   } finally {
     await rm(first, { recursive: true, force: true });
     await rm(second, { recursive: true, force: true });
+  }
+});
+
+test("WorkspaceManager rejects duplicate IDs and duplicate roots", async () => {
+  const rootRaw = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
+  const root = await realpath(rootRaw);
+
+  try {
+    const manager = new WorkspaceManager([
+      {
+        id: "alpha",
+        profile: new WorkspaceProfile(root),
+      },
+    ]);
+
+    await assert.rejects(
+      manager.register("alpha", root),
+      /workspace_id_already_registered/u,
+    );
+
+    await assert.rejects(
+      manager.register("beta", root),
+      /workspace_root_already_registered/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
