@@ -1,4 +1,6 @@
 import { realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export interface RuntimeConfig {
   readonly mcpHost: string;
@@ -7,6 +9,27 @@ export interface RuntimeConfig {
   readonly adminPort: number;
   readonly workspaceId: string;
   readonly workspaceRoot: string;
+  readonly workspaceStatePath: string;
+}
+
+function defaultWorkspaceStatePath(): string {
+  if (process.env.JUNIUS_WORKSPACE_STATE_PATH !== undefined) {
+    return process.env.JUNIUS_WORKSPACE_STATE_PATH;
+  }
+
+  if (process.platform === "win32") {
+    const localAppData =
+      process.env.LOCALAPPDATA ??
+      join(homedir(), "AppData", "Local");
+
+    return join(localAppData, "Junius", "workspace-state.json");
+  }
+
+  const stateRoot =
+    process.env.XDG_STATE_HOME ??
+    join(homedir(), ".local", "state");
+
+  return join(stateRoot, "Junius", "workspace-state.json");
 }
 
 function parsePort(value: string | undefined, fallback: number): number {
@@ -33,5 +56,6 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     adminPort: parsePort(process.env.JUNIUS_ADMIN_PORT, 8788),
     workspaceId: process.env.JUNIUS_WORKSPACE_ID ?? "default",
     workspaceRoot: await realpath(requestedWorkspaceRoot),
+    workspaceStatePath: defaultWorkspaceStatePath(),
   };
 }
