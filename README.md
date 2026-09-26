@@ -190,3 +190,50 @@ Current process execution has:
 It does not yet prove that a spawned process cannot read outside the Workspace, create unrestricted child processes, or access the network.
 
 The next security spike still needs to investigate Windows restricted tokens, Job Objects, ACL boundaries, reparse-point escape handling, and possibly AppContainer or another isolation mechanism.
+
+## Current security spike: Windows child-process isolation baseline
+
+Before implementing an OS sandbox, Junius keeps a reproducible baseline for the exact problem the sandbox must fix.
+
+Run:
+
+```powershell
+pnpm sandbox:probe
+```
+
+The probe:
+
+1. Creates a temporary Workspace.
+2. Creates one file inside that Workspace.
+3. Creates a separate secret file outside the Workspace.
+4. Creates a junction/reparse path inside the Workspace pointing at the outside directory when the OS permits it.
+5. Uses the real `ProcessCapability` implementation to launch a Node child with:
+   - fixed Workspace `cwd`
+   - explicit executable
+   - exact argument allowlist
+   - cleaned environment
+   - `shell: false`
+6. The child attempts to read:
+   - the inside file
+   - the outside file directly
+   - the outside file through the junction/reparse path
+
+The result contains:
+
+```json
+{
+  "conclusions": {
+    "workspaceReadWorks": true,
+    "directOutsideReadBlocked": false,
+    "reparseOutsideReadBlocked": false
+  }
+}
+```
+
+At the current stage, `directOutsideReadBlocked: false` is expected: fixing the process working directory and using `shell: false` do not constrain the child process's filesystem access.
+
+If junction creation is unavailable on the machine, `reparseOutsideReadBlocked` is `null` and the report includes the setup failure instead of pretending that case was tested.
+
+This probe is the persistent regression path for the Windows sandbox work. A future isolation implementation is not considered successful until the same probe still reads the Workspace file while the outside reads are blocked under the original conditions.
+
+The probe does not expose any new MCP tool and does not grant ChatGPT arbitrary Node execution.
