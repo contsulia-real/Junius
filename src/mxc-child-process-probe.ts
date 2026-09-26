@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -105,12 +105,19 @@ const outsideRoot = join(probeRoot, "outside");
 const insideFile = join(workspaceRoot, "inside.txt");
 const outsideFile = join(outsideRoot, "outside-secret.txt");
 const resultFile = join(workspaceRoot, "child-result.json");
+const nestedNode = join(workspaceRoot, "nested-node.exe");
 
 try {
   await mkdir(workspaceRoot, { recursive: true });
   await mkdir(outsideRoot, { recursive: true });
   await writeFile(insideFile, "inside-ok", "utf8");
   await writeFile(outsideFile, "outside-secret", "utf8");
+  // The first descendant probe tried to execute process.execPath directly
+  // from the host tool directory and got ENOENT inside the sandbox. To
+  // isolate descendant-token inheritance from executable-path reachability,
+  // copy the same Node executable into the already-authorized Workspace and
+  // launch the descendant from there.
+  await copyFile(process.execPath, nestedNode);
 
   const nestedSource = `import { readFile } from "node:fs/promises";
 
@@ -138,10 +145,11 @@ process.stdout.write(JSON.stringify({
   const outerSource = `import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 
-const [nestedSource, insidePath, outsidePath, resultPath] = process.argv.slice(1);
+const [nestedNode, nestedSource, insidePath, outsidePath, resultPath] =
+  process.argv.slice(1);
 
 const nested = spawnSync(
-  process.execPath,
+  nestedNode,
   ["-e", nestedSource, insidePath, outsidePath],
   {
     encoding: "utf8",
@@ -200,6 +208,7 @@ await writeFile(
     process.execPath,
     "-e",
     outerSource,
+    nestedNode,
     nestedSource,
     insideFile,
     outsideFile,
@@ -232,6 +241,7 @@ await writeFile(
           execution,
           workspaceRoot,
           outsideFile,
+          nestedNode,
           toolPolicy,
         },
         null,
@@ -257,6 +267,7 @@ await writeFile(
           requestedContainment: "process",
           workspaceRoot,
           outsideFile,
+          nestedNode,
           toolPolicy,
           executor: execution,
           result,
