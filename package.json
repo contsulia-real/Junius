@@ -1,14 +1,19 @@
 {
   "name": "Junius",
   "version": "1.0.0",
-  "description": "",
+  "description": "Junius Local Agent",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
