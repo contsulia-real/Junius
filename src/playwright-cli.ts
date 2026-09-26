@@ -5,6 +5,8 @@ import {
   readSync,
   statSync,
 } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 import {
   delimiter,
@@ -152,7 +154,7 @@ function targetFromWindowsCmdShim(
   try {
     const text = readFileSync(shimPath, "utf8");
     const match = text.match(
-      /["']?([^"'\\r\\n]*playwright-cli\\.js)["']?/iu,
+      /["']?([^"'\r\n]*playwright-cli\.js)["']?/iu,
     );
 
     if (match?.[1] === undefined) {
@@ -169,6 +171,28 @@ function targetFromWindowsCmdShim(
   } catch {
     return undefined;
   }
+}
+
+function defaultBrowserStatePath(
+  environment: NodeJS.ProcessEnv,
+): string {
+  if (environment.JUNIUS_BROWSER_STATE_PATH) {
+    return environment.JUNIUS_BROWSER_STATE_PATH;
+  }
+
+  if (process.platform === "win32") {
+    const localAppData =
+      environment.LOCALAPPDATA ??
+      join(homedir(), "AppData", "Local");
+
+    return join(localAppData, "Junius", "browser");
+  }
+
+  const stateRoot =
+    environment.XDG_STATE_HOME ??
+    join(homedir(), ".local", "state");
+
+  return join(stateRoot, "Junius", "browser");
 }
 
 function candidatePaths(
@@ -417,11 +441,15 @@ function commandArgs(
 
 export class PlaywrightCliService {
   readonly #launcher: PlaywrightCliLauncher | undefined;
+  readonly #environment: NodeJS.ProcessEnv;
+  readonly #statePath: string;
 
   constructor(
     environment: NodeJS.ProcessEnv = process.env,
     nodeExecutable = process.execPath,
   ) {
+    this.#environment = { ...environment };
+    this.#statePath = defaultBrowserStatePath(environment);
     this.#launcher = resolvePlaywrightCliLauncher(
       environment,
       nodeExecutable,
@@ -465,6 +493,8 @@ export class PlaywrightCliService {
       );
     }
 
+    await mkdir(this.#statePath, { recursive: true });
+
     const startedAt = performance.now();
 
     return new Promise<PlaywrightCliExecution>((resolvePromise, reject) => {
@@ -482,7 +512,8 @@ export class PlaywrightCliService {
           ...commandArgs(session, command, args),
         ],
         {
-          env: process.env,
+          cwd: this.#statePath,
+          env: this.#environment,
           shell: false,
           windowsHide: true,
           stdio: ["ignore", "pipe", "pipe"],
