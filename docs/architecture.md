@@ -526,6 +526,76 @@ It remains bound to the local machine and is not exposed through the Secure MCP 
 
 Dashboard v1 is implemented and locally validated.
 
+## Desktop Automation architecture
+
+Desktop automation is a first-class Local Agent capability and is independent from the local WebUI Dashboard.
+
+The chosen direction is a thin Python computer-use helper:
+
+```text
+ChatGPT
+-> desktop MCP tool
+-> Junius TypeScript adapter
+-> Python helper
+   -> pywinauto
+   -> PyAutoGUI
+-> local desktop
+```
+
+### Semantic layer
+
+`pywinauto` provides the semantic Windows automation layer.
+
+It is used when an application exposes usable Win32 or UI Automation controls, allowing the helper to inspect and interact with controls using application/window/control semantics instead of screen coordinates.
+
+### Visual/input layer
+
+`PyAutoGUI` provides the general fallback layer:
+
+```text
+screenshot
+mouse move / click / drag
+keyboard press / down / up / type
+scroll
+```
+
+This layer is required for games, custom-rendered applications, canvas-style interfaces, and other applications whose meaningful UI is not exposed through UI Automation.
+
+A visual fallback task therefore follows a computer-use loop such as:
+
+```text
+capture current window/screen
+-> model interprets image
+-> mouse/keyboard action
+-> capture again
+-> verify resulting state
+```
+
+OCR or image-template matching is not a required architectural foundation. They may be added only when a concrete task benefits from them.
+
+### Responsibility boundary
+
+Junius owns:
+
+- MCP exposure;
+- request validation;
+- permission/state policy;
+- helper lifecycle;
+- structured result/error transport.
+
+The Python helper owns:
+
+- pywinauto integration;
+- PyAutoGUI integration;
+- screenshot capture;
+- local desktop input primitives.
+
+Junius should not duplicate those mature libraries with its own Win32/UIA/input framework.
+
+The Dashboard remains a local WebUI. Desktop automation does not introduce a desktop-native Dashboard.
+
+Desktop Automation v1 is planned but not yet implemented.
+
 ## Secure MCP Tunnel
 
 ChatGPT reaches the MCP endpoint through OpenAI Secure MCP Tunnel / `tunnel-client`.
@@ -553,12 +623,9 @@ This changes the current security implementation only. It does not change Junius
 
 Machine Capability v1 is implemented and locally validated.
 
-Authorization UX v1 is implemented and awaiting local validation.
+Authorization UX v1 is implemented and locally validated.
 
-After validation, the next architecture work should focus on:
-
-1. broader Local Agent capability coverage where it provides concrete value;
-2. capability-specific adapters where generic process execution is insufficient.
+The next architecture milestone is Desktop Automation v1.
 
 OS-level sandboxing is not part of the current execution implementation.
 
