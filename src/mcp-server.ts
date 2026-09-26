@@ -236,19 +236,40 @@ export function createMcpServer(
     {
       title: "Write Workspace Files",
       description:
-        "Create or replace UTF-8 text files inside a registered Junius Workspace. Overwriting an existing file requires the sha256 returned by read, preventing stale writes. All writes are validated before any file is changed.",
+        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. Existing files require the sha256 returned by read. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
           .array(
-            z.object({
-              path: workspacePathSchema,
-              content: z.string().max(2 * 1024 * 1024),
-              expected_sha256: z
-                .string()
-                .regex(/^[a-f0-9]{64}$/u)
-                .optional(),
-            }),
+            z
+              .object({
+                path: workspacePathSchema,
+                content: z.string().max(2 * 1024 * 1024).optional(),
+                edits: z
+                  .array(
+                    z.object({
+                      old_text: z.string().min(1),
+                      new_text: z.string(),
+                      replace_all: z.boolean().default(false),
+                    }),
+                  )
+                  .min(1)
+                  .max(128)
+                  .optional(),
+                expected_sha256: z
+                  .string()
+                  .regex(/^[a-f0-9]{64}$/u)
+                  .optional(),
+              })
+              .superRefine((file, context) => {
+                if ((file.content === undefined) === (file.edits === undefined)) {
+                  context.addIssue({
+                    code: "custom",
+                    message:
+                      "Exactly one of content or edits must be supplied.",
+                  });
+                }
+              }),
           )
           .min(1)
           .max(16),
@@ -269,7 +290,18 @@ export function createMcpServer(
           workspace,
           requests.map((request) => ({
             path: request.path,
-            content: request.content,
+            ...(request.content === undefined
+              ? {}
+              : { content: request.content }),
+            ...(request.edits === undefined
+              ? {}
+              : {
+                  edits: request.edits.map((edit) => ({
+                    oldText: edit.old_text,
+                    newText: edit.new_text,
+                    replaceAll: edit.replace_all,
+                  })),
+                }),
             ...(request.expected_sha256 === undefined
               ? {}
               : { expectedSha256: request.expected_sha256 }),
