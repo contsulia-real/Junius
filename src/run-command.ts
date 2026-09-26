@@ -1,6 +1,9 @@
 import type { CapabilityExecution } from "./capabilities/types.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
-import { WorkspaceManager } from "./workspace-manager.js";
+import {
+  WorkspaceManager,
+  type WorkspaceState,
+} from "./workspace-manager.js";
 
 export type RunCommandResult =
   | {
@@ -28,6 +31,10 @@ export class RunCommandService {
     private readonly registry: CapabilityRegistry,
     private readonly workspaceManager: WorkspaceManager,
   ) {}
+
+  listWorkspaces(): readonly WorkspaceState[] {
+    return this.workspaceManager.list();
+  }
 
   async run(
     workspace: string,
