@@ -20,7 +20,8 @@
     "sandbox:mxc-env-probe": "tsx src/mxc-environment-probe.ts",
     "sandbox:mxc-mutation-probe": "tsx src/mxc-filesystem-mutation-probe.ts",
     "sandbox:mxc-hardlink-probe": "tsx src/mxc-hardlink-probe.ts",
-    "sandbox:mxc-run-command-probe": "tsx src/mxc-run-command-probe.ts"
+    "sandbox:mxc-run-command-probe": "tsx src/mxc-run-command-probe.ts",
+    "toolchain:pnpm-probe": "tsx src/pnpm-runtime-probe.ts"
   },
   "keywords": [],
   "author": "",
