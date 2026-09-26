@@ -258,9 +258,8 @@ Junius remains a general Local Agent. The current file/process tools are the fir
 
 The next work should focus on:
 
-- broader local capability coverage;
-- long-running jobs and process lifecycle;
 - browser capability;
+- broader local capability coverage;
 - Dashboard-based Workspace/capability management;
 - persistent machine capability configuration;
 - clearer authorization UX;
@@ -345,3 +344,5 @@ Captured stdout and stderr are bounded to 4 Mi characters per stream. The job it
 `cancel_job` performs best-effort termination. On Windows Junius invokes `taskkill.exe /T /F` directly with `shell: false` to terminate the target process tree. Other platforms currently terminate the direct child with SIGTERM and then SIGKILL if necessary.
 
 Job state is currently process-local. Restarting Junius clears the Job Manager registry; v1 does not attempt to reattach to processes from a previous Junius instance.
+
+Job Manager v1 is implemented and awaiting black-box MCP validation.
