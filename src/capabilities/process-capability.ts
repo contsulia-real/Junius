@@ -3,6 +3,7 @@ import type {
   Capability,
   CapabilityExecution,
   CapabilityExecutionContext,
+  type PrepareProcessResult,
 } from "./types.js";
 
 export interface ProcessCapabilityOptions {
@@ -55,10 +56,10 @@ export class ProcessCapability implements Capability {
     this.#environment = options.environment ?? {};
   }
 
-  async execute(
+  prepareProcess(
     args: readonly string[],
     context: CapabilityExecutionContext,
-  ): Promise<CapabilityExecution> {
+  ): PrepareProcessResult {
     const argumentsAllowed =
       this.#allowedArgVectors.some((allowed) =>
         matchesAllowedVector(args, allowed),
@@ -78,6 +79,31 @@ export class ProcessCapability implements Capability {
       };
     }
 
+
+    return {
+      ok: true,
+      process: {
+        executable: this.#executable,
+        args: [...this.#fixedArgs, ...args],
+        cwd: context.cwd,
+        env: {
+          ...process.env,
+          ...this.#environment,
+        },
+        windowsHide: true,
+      },
+    };
+  }
+
+  async execute(
+    args: readonly string[],
+    context: CapabilityExecutionContext,
+  ): Promise<CapabilityExecution> {
+    const prepared = this.prepareProcess(args, context);
+    if (!prepared.ok) {
+      return prepared.execution;
+    }
+
     const startedAt = performance.now();
 
     return new Promise<CapabilityExecution>((resolve) => {
@@ -89,16 +115,13 @@ export class ProcessCapability implements Capability {
       let timer: NodeJS.Timeout | undefined;
 
       const child = spawn(
-        this.#executable,
-        [...this.#fixedArgs, ...args],
+        prepared.process.executable,
+        [...prepared.process.args],
         {
-          cwd: context.cwd,
-          env: {
-            ...process.env,
-            ...this.#environment,
-          },
+          cwd: prepared.process.cwd,
+          env: prepared.process.env,
           shell: false,
-          windowsHide: true,
+          windowsHide: prepared.process.windowsHide,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );
