@@ -167,7 +167,7 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
       },
       timeoutMs: 10_000,
     },
-    "processcontainer",
+    "process",
   );
 
   const commandLine = [
@@ -229,7 +229,7 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
         {
           probeExecuted: true,
           sdk: "@microsoft/mxc-sdk@0.8.0",
-          requestedContainment: "processcontainer",
+          requestedContainment: "process",
           workspaceRoot,
           outsideFile,
           reparseSetup,
