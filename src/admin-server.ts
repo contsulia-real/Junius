@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import { sendJson } from "./http-bridge.js";
 import { WorkspaceManager } from "./workspace-manager.js";
+import { WorkspaceStateStore } from "./workspace-state-store.js";
 import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -93,6 +94,7 @@ export async function handleAdminRequest(
   res: ServerResponse,
   registry: CapabilityRegistry,
   workspaces: WorkspaceManager,
+  workspaceStateStore: WorkspaceStateStore,
   origin: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", origin);
@@ -117,6 +119,7 @@ export async function handleAdminRequest(
         registration.id,
         registration.rootPath,
       );
+      await workspaceStateStore.save(workspaces);
       sendJson(res, 201, {
         workspace: workspaces
           .list()
@@ -143,6 +146,9 @@ export async function handleAdminRequest(
   ) {
     const id = segments[1];
     const removed = workspaces.remove(id);
+    if (removed) {
+      await workspaceStateStore.save(workspaces);
+    }
     sendJson(res, removed ? 200 : 404, {
       removed,
       id,
@@ -177,6 +183,7 @@ export async function handleAdminRequest(
 
     if (req.method === "DELETE") {
       profile.revoke(key);
+      await workspaceStateStore.save(workspaces);
       sendJson(res, 200, {
         workspace: workspaceId,
         grants: profile.grants(),
@@ -200,6 +207,7 @@ export async function handleAdminRequest(
           key,
           arguments: parseArgumentGrants(body.arguments),
         });
+        await workspaceStateStore.save(workspaces);
 
         sendJson(res, 200, {
           workspace: workspaceId,
