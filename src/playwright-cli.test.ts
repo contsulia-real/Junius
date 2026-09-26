@@ -26,6 +26,7 @@ async function fixture() {
     ...process.env,
     PATH: "",
     JUNIUS_PLAYWRIGHT_CLI_PATH: launcher,
+    JUNIUS_BROWSER_STATE_PATH: root,
   });
 
   return {
