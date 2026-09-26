@@ -310,7 +310,7 @@ The MXC probe recreates the same filesystem escape regression as `sandbox:probe`
 - one secret file outside the Workspace
 - one junction inside the Workspace pointing to that outside directory
 
-It requests the Windows `processcontainer` backend with only the Workspace granted read/write. It does not grant the host TEMP directory. Tool discovery is deliberately restricted to the directory containing the exact Node executable so discovery cannot accidentally authorize a drive root and invalidate the test.
+It requests the abstract `process` containment mode; on Windows MXC resolves that to its ProcessContainer implementation. Only the Workspace is granted read/write. It does not grant the host TEMP directory. Tool discovery is deliberately restricted to the directory containing the exact Node executable so discovery cannot accidentally authorize a drive root and invalidate the test.
 
 The desired result is:
 
