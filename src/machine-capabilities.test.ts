@@ -24,6 +24,9 @@ test("MachineCapabilityManager registers available built-ins by default", async 
       "utf8",
     );
 
+    const gitExecutable = join(root, "git.exe");
+    await writeFile(gitExecutable, "fake", "utf8");
+
     const registry = new CapabilityRegistry();
     const store = new MachineCapabilityStateStore(
       join(root, "state.json"),
@@ -36,12 +39,14 @@ test("MachineCapabilityManager registers available built-ins by default", async 
         PATH: "",
         npm_execpath: undefined,
         PNPM_HOME: pnpmHome,
+        JUNIUS_GIT_PATH: gitExecutable,
       },
       process.execPath,
     );
 
     assert.equal(registry.has("node"), true);
     assert.equal(registry.has("pnpm"), true);
+    assert.equal(registry.has("git"), true);
 
     assert.deepEqual(
       manager.list().map((capability) => ({
@@ -59,6 +64,12 @@ test("MachineCapabilityManager registers available built-ins by default", async 
         },
         {
           key: "pnpm",
+          enabled: true,
+          available: true,
+          active: true,
+        },
+        {
+          key: "git",
           enabled: true,
           available: true,
           active: true,
@@ -85,6 +96,7 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
         PATH: "",
         npm_execpath: undefined,
         PNPM_HOME: undefined,
+        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );
@@ -103,6 +115,7 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
         PATH: "",
         npm_execpath: undefined,
         PNPM_HOME: undefined,
+        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );
@@ -120,7 +133,7 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
   }
 });
 
-test("MachineCapabilityManager keeps unavailable pnpm distinct from disabled", async () => {
+test("MachineCapabilityManager keeps unavailable launchers distinct from disabled", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
 
   try {
@@ -136,18 +149,24 @@ test("MachineCapabilityManager keeps unavailable pnpm distinct from disabled", a
         PATH: "",
         npm_execpath: undefined,
         PNPM_HOME: undefined,
+        JUNIUS_GIT_PATH: undefined,
+        ProgramFiles: undefined,
+        "ProgramFiles(x86)": undefined,
+        LOCALAPPDATA: undefined,
       },
       process.execPath,
     );
 
-    const pnpm = manager.list().find(
-      (capability) => capability.key === "pnpm",
-    );
+    for (const key of ["pnpm", "git"] as const) {
+      const capability = manager.list().find(
+        (item) => item.key === key,
+      );
 
-    assert.equal(pnpm?.enabled, true);
-    assert.equal(pnpm?.available, false);
-    assert.equal(pnpm?.active, false);
-    assert.equal(registry.has("pnpm"), false);
+      assert.equal(capability?.enabled, true);
+      assert.equal(capability?.available, false);
+      assert.equal(capability?.active, false);
+      assert.equal(registry.has(key), false);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -165,6 +184,7 @@ test("MachineCapabilityManager rejects unknown capability keys", async () => {
         PATH: "",
         npm_execpath: undefined,
         PNPM_HOME: undefined,
+        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );

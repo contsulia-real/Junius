@@ -9,6 +9,7 @@ import { sendJson } from "./http-bridge.js";
 import { JobManager, JobManagerError } from "./job-manager.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
+import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
 import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
@@ -134,6 +135,7 @@ export async function handleAdminRequest(
   workspaceStateStore: WorkspaceStateStore,
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
+  desktop: DesktopComputerUseService,
   origin: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", origin);
@@ -181,6 +183,7 @@ export async function handleAdminRequest(
       workspaces: workspaces.list(),
       jobs: jobs.list(),
       browser: playwrightCli.state(),
+      desktop: desktop.state(),
     });
     return;
   }

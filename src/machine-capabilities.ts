@@ -3,13 +3,17 @@ import {
   createPnpmCapability,
   resolvePnpmLauncher,
 } from "./capabilities/pnpm-capability.js";
+import {
+  createGitCapability,
+  resolveGitLauncher,
+} from "./capabilities/git-capability.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import {
   MachineCapabilityStateStore,
   type MachineCapabilityPreferences,
 } from "./machine-capability-state-store.js";
 
-const KNOWN_KEYS = ["node", "pnpm"] as const;
+const KNOWN_KEYS = ["node", "pnpm", "git"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 export interface MachineCapabilityStatus {
@@ -107,23 +111,53 @@ export class MachineCapabilityManager {
       };
     }
 
-    const launcher = resolvePnpmLauncher(
-      this.environment,
-      this.nodeExecutable,
-    );
+    if (key === "pnpm") {
+      const launcher = resolvePnpmLauncher(
+        this.environment,
+        this.nodeExecutable,
+      );
+
+      return {
+        key,
+        description:
+          "pnpm package-script runner. Allows --version and pnpm run <script>; install/exec/dlx/add are not exposed.",
+        enabled,
+        available: launcher !== undefined,
+        active: this.registry.has(key),
+        ...(launcher === undefined ? {} : { launcher }),
+        policy: [
+          "--version",
+          "run <script>",
+          "run <script> -- ...scriptArgs",
+        ],
+      };
+    }
+
+    const launcher = resolveGitLauncher(this.environment);
 
     return {
       key,
       description:
-        "pnpm package-script runner. Allows --version and pnpm run <script>; install/exec/dlx/add are not exposed.",
+        "Git repository operations for Workspace development and synchronization. Destructive clean/reset-hard style operations are not exposed.",
       enabled,
       available: launcher !== undefined,
       active: this.registry.has(key),
       ...(launcher === undefined ? {} : { launcher }),
       policy: [
         "--version",
-        "run <script>",
-        "run <script> -- ...scriptArgs",
+        "init [-b <branch>]",
+        "status",
+        "add",
+        "commit -m <message>",
+        "config --local user.name/user.email",
+        "branch",
+        "remote",
+        "fetch",
+        "push [--force|--force-with-lease] [-u|--set-upstream] <remote> <branch>",
+        "rev-parse",
+        "diff",
+        "log",
+        "ls-files",
       ],
     };
   }
@@ -159,14 +193,27 @@ export class MachineCapabilityManager {
       return;
     }
 
-    const launcher = resolvePnpmLauncher(
-      this.environment,
-      this.nodeExecutable,
-    );
+    if (key === "pnpm") {
+      const launcher = resolvePnpmLauncher(
+        this.environment,
+        this.nodeExecutable,
+      );
+      const capability =
+        launcher === undefined
+          ? undefined
+          : createPnpmCapability(launcher);
+
+      if (capability !== undefined) {
+        this.registry.register(capability);
+      }
+      return;
+    }
+
+    const launcher = resolveGitLauncher(this.environment);
     const capability =
       launcher === undefined
         ? undefined
-        : createPnpmCapability(launcher);
+        : createGitCapability(launcher);
 
     if (capability !== undefined) {
       this.registry.register(capability);

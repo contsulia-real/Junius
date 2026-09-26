@@ -13,6 +13,7 @@ import { JobManager } from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
+import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
@@ -72,11 +73,13 @@ const runCommandService = new RunCommandService(registry, workspaceManager);
 const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
 const jobManager = new JobManager(runCommandService);
 const playwrightCliService = new PlaywrightCliService();
+const desktopComputerUseService = new DesktopComputerUseService();
 const mcpRuntime = await createMcpRuntime(
   runCommandService,
   workspaceFilesService,
   jobManager,
   playwrightCliService,
+  desktopComputerUseService,
 );
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
@@ -116,6 +119,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     workspaceStateStore,
     jobManager,
     playwrightCliService,
+    desktopComputerUseService,
     adminOrigin,
   ).catch((error: unknown) => {
     console.error("[admin http]", error);

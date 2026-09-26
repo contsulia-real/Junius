@@ -22,6 +22,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <button data-view="capabilities" class="nav-item">能力</button>
         <button data-view="jobs" class="nav-item">后台任务</button>
         <button data-view="browser" class="nav-item">浏览器</button>
+        <button data-view="desktop" class="nav-item">桌面</button>
       </nav>
       <div class="local-only">仅本机 · 127.0.0.1</div>
     </aside>
@@ -127,6 +128,18 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
           <div id="browser-details" class="detail-grid"></div>
         </div>
       </section>
+
+      <section id="view-desktop" class="view">
+        <div class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>桌面</h2>
+              <p>Windows Computer Use 的 Python helper 状态。</p>
+            </div>
+          </div>
+          <div id="desktop-details" class="detail-grid"></div>
+        </div>
+      </section>
     </main>
   </div>
   <script src="/dashboard.js" defer></script>
@@ -171,7 +184,7 @@ h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spa
 .topbar p, .panel-heading p { color: var(--muted); margin-bottom: 0; }
 .view { display: none; }
 .view.active { display: block; }
-.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 18px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 14px; margin-bottom: 18px; }
 .summary-card, .panel, .item { border: 1px solid var(--border); background: var(--panel); border-radius: 13px; }
 .summary-card { padding: 18px; }
 .summary-card .value { font-size: 28px; font-weight: 700; }
@@ -252,7 +265,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     workspaces: ["工作区", "项目根目录与工作区授权"],
     capabilities: ["能力", "机器级已注册能力"],
     jobs: ["后台任务", "后台进程生命周期"],
-    browser: ["浏览器", "本地 playwright-cli 适配器"]
+    browser: ["浏览器", "本地 playwright-cli 适配器"],
+    desktop: ["桌面", "Windows Computer Use"]
   };
 
   var statusLabels = {
@@ -321,7 +335,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       [data.workspaces.length, "工作区"],
       [data.machineCapabilities.filter(function (capability) { return capability.active; }).length, "已激活机器能力"],
       [running, "运行中任务"],
-      [data.browser.available ? "就绪" : "缺失", "浏览器"]
+      [data.browser.available ? "就绪" : "缺失", "浏览器"],
+      [data.desktop.available ? "就绪" : "缺失", "桌面"]
     ];
     document.getElementById("summary").innerHTML = cards.map(function (card) {
       return '<div class="summary-card"><div class="value">' + esc(card[0]) +
@@ -335,6 +350,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       badge(data.browser.available ? "available" : "unavailable") + '</div></div>' +
       '<div class="detail"><div class="key">浏览器状态目录</div><div class="value">' +
       esc(data.browser.statePath) + '</div></div>' +
+      '<div class="detail"><div class="key">桌面 Computer Use</div><div class="value">' +
+      badge(data.desktop.available ? "available" : "unavailable") + '</div></div>' +
       '<div class="detail"><div class="key">MCP 暴露范围</div><div class="value">管理 WebUI 仅限本机访问</div></div>';
   }
 
@@ -554,12 +571,24 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       '<div class="detail"><div class="key">默认 Profile 模式</div><div class="value">持久化（persistent）</div></div>';
   }
 
+  function renderDesktop() {
+    document.getElementById("desktop-details").innerHTML =
+      '<div class="detail"><div class="key">Computer Use</div><div class="value">' +
+      badge(data.desktop.available ? "available" : "unavailable") + '</div></div>' +
+      '<div class="detail"><div class="key">Python</div><div class="value">' +
+      esc(data.desktop.pythonExecutable || "未解析") + '</div></div>' +
+      '<div class="detail"><div class="key">Helper</div><div class="value">' +
+      esc(data.desktop.helperPath) + '</div></div>' +
+      '<div class="detail"><div class="key">自动化路径</div><div class="value">UI Automation + Screenshot / Mouse / Keyboard</div></div>';
+  }
+
   function render() {
     renderSummary();
     renderWorkspaces();
     renderCapabilities();
     renderJobs();
     renderBrowser();
+    renderDesktop();
   }
 
   async function refresh() {

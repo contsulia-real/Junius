@@ -14,6 +14,11 @@ import {
   PlaywrightCliError,
   PlaywrightCliService,
 } from "./playwright-cli.js";
+import {
+  DESKTOP_COMMANDS,
+  DesktopComputerUseError,
+  DesktopComputerUseService,
+} from "./desktop-computer-use.js";
 
 const stableIdSchema = z
   .string()
@@ -74,6 +79,26 @@ export function formatRunCommandResult(
       durationMs: result.execution.durationMs,
     },
   });
+}
+
+function desktopToolError(error: unknown) {
+  if (error instanceof DesktopComputerUseError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            ok: false,
+            code: error.code,
+            message: error.message,
+          }),
+        },
+      ],
+    };
+  }
+
+  throw error;
 }
 
 function playwrightCliToolError(error: unknown) {
@@ -141,11 +166,12 @@ export function createMcpServer(
   files: WorkspaceFilesService,
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
+  desktop: DesktopComputerUseService,
 ): McpServer {
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Agent",
-    version: "0.8.0",
+    version: "0.9.0",
   });
 
   server.registerTool(
@@ -488,6 +514,114 @@ export function createMcpServer(
         };
       } catch (error) {
         return playwrightCliToolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "desktop",
+    {
+      title: "Use Local Desktop",
+      description:
+        "Drive the local Windows desktop through Junius computer use. Use windows to discover top-level windows. Use inspect on a window to get semantic UI Automation element refs such as d3, then use invoke, set_value, or focus with those refs. For applications without usable UI Automation, including many games and custom-rendered interfaces, use screenshot and coordinate-based mouse/keyboard commands. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise. Element refs are scoped to the named desktop session and are refreshed by inspect.",
+      inputSchema: z.object({
+        session: stableIdSchema
+          .default("junius")
+          .describe(
+            "Named Junius desktop session. UI Automation element refs are scoped to this session.",
+          ),
+        command: z.enum(DESKTOP_COMMANDS),
+        handle: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            "Top-level native window handle. For screenshot and mouse commands, coordinates become relative to this window when supplied.",
+          ),
+        ref: z
+          .string()
+          .regex(/^d\d+$/u)
+          .optional()
+          .describe(
+            "Desktop element ref returned by inspect, such as d7.",
+          ),
+        depth: z.number().int().min(0).max(8).optional(),
+        x: z.number().int().optional(),
+        y: z.number().int().optional(),
+        button: z.enum(["left", "right", "middle"]).optional(),
+        clicks: z.number().int().min(1).max(4).optional(),
+        amount: z.number().int().optional(),
+        key: z.string().min(1).max(64).optional(),
+        text: z.string().max(65_536).optional(),
+      }),
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({
+      session,
+      command,
+      handle,
+      ref,
+      depth,
+      x,
+      y,
+      button,
+      clicks,
+      amount,
+      key,
+      text,
+    }) => {
+      try {
+        const execution = await desktop.run({
+          session,
+          command,
+          ...(handle === undefined ? {} : { handle }),
+          ...(ref === undefined ? {} : { ref }),
+          ...(depth === undefined ? {} : { depth }),
+          ...(x === undefined ? {} : { x }),
+          ...(y === undefined ? {} : { y }),
+          ...(button === undefined ? {} : { button }),
+          ...(clicks === undefined ? {} : { clicks }),
+          ...(amount === undefined ? {} : { amount }),
+          ...(key === undefined ? {} : { key }),
+          ...(text === undefined ? {} : { text }),
+        });
+
+        const content: Array<
+          | { type: "text"; text: string }
+          | { type: "image"; data: string; mimeType: string }
+        > = [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              session: execution.session,
+              command: execution.command,
+              result: execution.result,
+              durationMs: execution.durationMs,
+            }),
+          },
+        ];
+
+        if (execution.image !== undefined) {
+          content.push({
+            type: "image",
+            data: execution.image.data,
+            mimeType: execution.image.mimeType,
+          });
+        }
+
+        return { content };
+      } catch (error) {
+        return desktopToolError(error);
       }
     },
   );

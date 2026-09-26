@@ -41,6 +41,7 @@ Optional environment variables:
 - `JUNIUS_MACHINE_CAPABILITY_STATE_PATH`
 - `JUNIUS_PLAYWRIGHT_CLI_PATH`
 - `JUNIUS_BROWSER_STATE_PATH`
+- `JUNIUS_GIT_PATH`
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
@@ -130,6 +131,46 @@ Machine-level pnpm policy permits:
 It does not expose `install`, `add`, `exec`, or `dlx`.
 
 pnpm runs directly in the selected Workspace. Junius does not add `--dir` indirection or a sandbox portal.
+
+### git
+
+Junius registers a `git` machine capability when it can resolve a usable Git executable. Git is exposed through the existing `run_command(workspace, key, args)` path, not through a separate MCP tool.
+
+The machine policy covers normal repository-development and synchronization operations:
+
+```text
+--version
+init [-b <branch>]
+status
+add
+commit -m <message>
+config --get user.name/user.email
+config --local user.name/user.email <value>
+branch
+remote
+fetch
+push [--force|--force-with-lease] [-u|--set-upstream] <remote> <branch>
+rev-parse
+diff
+log
+ls-files
+```
+
+The policy intentionally does not expose destructive forms such as `git clean`, `git reset --hard`, arbitrary Git aliases, mirror pushes, or remote branch deletion.
+
+A Workspace must still explicitly grant the Git argument ranges it needs. Machine capability policy and Workspace grants remain an intersection.
+
+For an explicit local-source-of-truth synchronization, Junius can authorize a flow such as:
+
+```text
+git init -b main
+git add -A
+git commit -m "..."
+git remote add origin <url>
+git push --force --set-upstream origin main
+```
+
+`JUNIUS_GIT_PATH` can override Git executable discovery when needed.
 
 ## Workspace discovery
 
@@ -398,229 +439,3 @@ The current allowlist covers ordinary browser navigation and interaction:
 ```text
 open
 goto
-snapshot
-find
-click
-dblclick
-fill
-type
-press
-keydown
-keyup
-hover
-select
-check
-uncheck
-drag
-dialog-accept
-dialog-dismiss
-resize
-go-back
-go-forward
-reload
-mousemove
-mousedown
-mouseup
-mousewheel
-tab-list
-tab-new
-tab-close
-tab-select
-close
-```
-
-Arbitrary JavaScript/code execution, storage mutation, CDP attachment, request interception, and arbitrary CLI commands are not exposed in this first version.
-
-Browser sessions are independent of Workspaces. The default session is `junius`; callers may use other valid named sessions when concurrent browser state is needed.
-
-`open` defaults to playwright-cli persistent and headed modes so the CLI-managed profile can keep its browser state across browser restarts while the local browser window remains visible. This profile is separate from ordinary Chrome/Edge user profiles.
-
-The normal browser-task lifecycle is `open -> interact -> close`. ChatGPT should close the same named session before returning its final answer unless the user explicitly asks to leave the browser open. Closing the browser session does not discard the persistent profile or its login state.
-
-`snapshot` is invoked through playwright-cli's raw-output mode so the snapshot YAML and element refs are returned directly through MCP rather than requiring Junius to read a generated snapshot file.
-
-Junius runs playwright-cli with a dedicated local state working directory:
-
-```text
-%LOCALAPPDATA%\Junius\browser
-```
-
-On non-Windows systems it uses the equivalent XDG/local state directory. Override it with `JUNIUS_BROWSER_STATE_PATH`.
-
-This keeps playwright-cli runtime artifacts such as generated snapshots outside registered project Workspaces.
-
-Launcher discovery supports a native executable, the JavaScript entry point, and Windows npm-style `.cmd` shims that resolve to the real `playwright-cli.js` entry. `JUNIUS_PLAYWRIGHT_CLI_PATH` can explicitly provide the launcher/entry when automatic discovery is insufficient.
-
-Browser capability v1 is implemented and black-box verified through ChatGPT.
-
-
-## Verified Browser capability
-
-Browser capability v1 has passed real black-box ChatGPT validation against the user's local `playwright-cli` installation.
-
-Verified behavior:
-
-- Junius resolved and used the local `playwright-cli` adapter through MCP.
-- Browser activity opened in a visible headed local window.
-- The browser used a named persistent CLI session/profile.
-- ChatGPT could drive the browser through the allowed playwright-cli workflow.
-- The browser session was closed when the requested browser task completed.
-- Closing the session did not redefine the persistent profile as disposable state.
-
-This validates the intended thin-adapter Local Agent model: Junius delegates browser automation to the mature local playwright-cli tool instead of reimplementing a second browser framework.
-
-
-## Local WebUI Dashboard
-
-Junius serves a local WebUI directly from the existing admin server:
-
-```text
-http://127.0.0.1:8788/
-```
-
-It requires no separate frontend build step and adds no frontend framework/runtime dependency.
-
-Dashboard v1 contains:
-
-- Overview: Workspace, process-capability, running-job, and browser status summaries.
-- Workspaces: register/remove Workspace roots and manage each Workspace's own capability authorization in its settings.
-- Capabilities: inspect known machine-level capabilities, launcher/policy metadata, Workspace usage, and persistently enable or disable built-in capabilities.
-- Jobs: inspect runtime jobs, read captured stdout/stderr, and cancel running jobs.
-- Browser: inspect local playwright-cli availability and its Junius state directory.
-
-The WebUI uses the same Workspace manager, grant persistence, Job Manager, and PlaywrightCliService state as MCP/runtime code. It is not a parallel configuration system.
-
-Existing admin routes remain compatible. `/api/state` is also available as an alias of `/state` for WebUI-style API access.
-
-Dashboard v1 is implemented and locally validated.
-
-
-## Workspace authorization UX
-
-Capability authorization is configured inside each Workspace's settings in the WebUI. There is no separate Permissions page.
-
-The underlying authorization model is unchanged:
-
-```text
-exact
-= the complete argument vector must match
-
-prefix
-= the configured argument prefix must match and trailing arguments are allowed
-```
-
-The WebUI presents those rules in user-facing language instead:
-
-```text
-exact  -> 仅允许这组参数
-prefix -> 允许此前缀参数
-```
-
-For readability, a rule is displayed in command-like form, for example:
-
-```text
-仅允许这组参数
-pnpm run check
-
-允许此前缀参数
-pnpm run …
-```
-
-This display does not change execution semantics. Junius still stores and evaluates an argument vector rather than a raw shell command.
-
-Each Workspace settings panel shows:
-
-- its current capability grants;
-- every exact/prefix argument rule;
-- whether the corresponding machine capability is currently executable, disabled, unavailable, or unknown;
-- controls to add a rule, remove one rule, or revoke the whole capability grant.
-
-Only currently active machine capabilities can be selected for a new grant. Existing grants remain visible if their machine capability later becomes disabled or unavailable.
-
-Authorization UX v1 is implemented and awaiting local WebUI validation.
-
-## Machine Capability state
-
-Machine Capability v1 moves built-in process-capability enablement out of hard-coded startup registration and into persistent Junius state.
-
-Current managed capabilities:
-
-```text
-node
-pnpm
-```
-
-The WebUI Capabilities page shows, for each known capability:
-
-- enabled/disabled preference;
-- whether the adapter is currently available on the machine;
-- whether it is currently active in the Capability Registry;
-- resolved launcher executable/fixed arguments when available;
-- the fixed Junius machine policy;
-- Workspaces that currently retain grants for that capability.
-
-The WebUI can persistently enable or disable a known built-in capability. It does not accept arbitrary executable paths, arbitrary machine policies, or raw shell commands.
-
-Disabling a machine capability removes it from the live Capability Registry immediately, so new `run_command` and `start_job` invocations cannot use it. Existing Workspace grants are preserved and become effective again if the capability is later re-enabled. Already-running jobs are not terminated by disabling their capability.
-
-Default state path on Windows:
-
-```text
-%LOCALAPPDATA%\Junius\machine-capability-state.json
-```
-
-Override it with:
-
-```text
-JUNIUS_MACHINE_CAPABILITY_STATE_PATH
-```
-
-A missing state file initializes known built-in capabilities as enabled. Availability remains separate: for example, pnpm can be enabled in preferences while unavailable because no usable launcher was found.
-
-Machine Capability v1 is implemented and locally validated through the WebUI/runtime path.
-
-
-## Verified Machine Capability v1
-
-Machine Capability v1 has passed local WebUI/runtime validation.
-
-Verified behavior:
-
-- known built-in capabilities can be enabled and disabled from the local WebUI;
-- disabling a capability removes it from the live Capability Registry;
-- existing Workspace grants for the disabled capability are preserved;
-- re-enabling the capability restores those existing grants to effect;
-- the enabled/disabled preference survives a Junius restart;
-- availability remains distinct from enablement, so a capability can remain enabled while its launcher is unavailable.
-
-This validates the intended separation between machine-level capability state and per-Workspace grants.
-
-
-## Desktop Automation direction
-
-Desktop Automation is a separate Local Agent capability from the WebUI Dashboard.
-
-Junius will use a thin Python helper rather than implementing a desktop-automation framework itself:
-
-```text
-ChatGPT
--> desktop MCP tool
--> Junius TypeScript adapter
--> Python computer-use helper
-   -> pywinauto for Win32/UIA semantic automation
-   -> PyAutoGUI for screenshots, mouse, keyboard, and coordinate-based interaction
--> local desktop application
-```
-
-The two layers are complementary:
-
-- `pywinauto` is preferred when an application exposes usable Win32/UI Automation controls.
-- `PyAutoGUI` provides the visual/input fallback for custom-drawn interfaces, games, and other applications where semantic accessibility trees are incomplete or absent.
-
-This means applications such as Minecraft are not excluded simply because they do not expose useful UI Automation elements. The fallback path is screenshot -> model vision -> mouse/keyboard interaction -> screenshot verification.
-
-Junius remains the orchestration, permission, validation, and MCP layer. It should not reimplement pywinauto, UI Automation, screenshot capture, or low-level mouse/keyboard input when the Python helper already provides those primitives.
-
-The Dashboard remains a local WebUI. This desktop-automation architecture does not imply a desktop-native Dashboard.
-
-Desktop Automation v1 is planned but not yet implemented.

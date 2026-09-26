@@ -8,6 +8,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { handleAdminRequest } from "./admin-server.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
+import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { JobManager } from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
@@ -47,6 +48,11 @@ async function fixture() {
     PLAYWRIGHT_CLI_HOME: undefined,
     JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
   });
+  const desktop = new DesktopComputerUseService({
+    helperPath: join(root, "missing-desktop-helper.py"),
+    pythonExecutable: join(root, "missing-python.exe"),
+    platform: "win32",
+  });
 
   let origin = "";
   const server = createServer((req, res) => {
@@ -59,6 +65,7 @@ async function fixture() {
       store,
       jobs,
       browser,
+      desktop,
       origin,
     );
   });
@@ -106,6 +113,11 @@ test("admin server serves the local WebUI and runtime state", async () => {
       workspaces: unknown[];
       jobs: unknown[];
       browser: { available: boolean; statePath: string };
+      desktop: {
+        available: boolean;
+        helperPath: string;
+        pythonExecutable?: string;
+      };
     };
 
     assert.deepEqual(
@@ -132,12 +144,29 @@ test("admin server serves the local WebUI and runtime state", async () => {
           available: false,
           active: false,
         },
+        {
+          key: "git",
+          enabled: true,
+          available: false,
+          active: false,
+        },
       ],
     );
     assert.deepEqual(body.workspaces, []);
     assert.deepEqual(body.jobs, []);
     assert.equal(body.browser.available, false);
     assert.equal(body.browser.statePath, join(f.root, "browser"));
+    assert.equal(body.desktop.available, false);
+    assert.match(
+      body.desktop.helperPath,
+      /missing-desktop-helper\.py$/u,
+    );
+    assert.equal(body.desktop.pythonExecutable, undefined);
+    assert.equal(body.desktop.available, false);
+    assert.equal(
+      body.desktop.helperPath,
+      join(f.root, "missing-desktop-helper.py"),
+    );
   } finally {
     await f.dispose();
   }
@@ -210,6 +239,7 @@ test("admin WebUI backend can persistently disable a machine capability", async 
       [
         { key: "node", enabled: false, active: false },
         { key: "pnpm", enabled: true, active: false },
+        { key: "git", enabled: true, active: false },
       ],
     );
   } finally {
