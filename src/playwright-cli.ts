@@ -7,7 +7,6 @@ import {
 } from "node:fs";
 import { spawn } from "node:child_process";
 import {
-  basename,
   delimiter,
   dirname,
   extname,
@@ -340,8 +339,14 @@ function validateArgs(
       return args.length === 1 && isRef(args[0]!);
 
     case "select":
-    case "drag":
       return args.length === 2 && isRef(args[0]!);
+
+    case "drag":
+      return (
+        args.length === 2 &&
+        isRef(args[0]!) &&
+        isRef(args[1]!)
+      );
 
     case "dialog-accept":
       return args.length <= 1;
