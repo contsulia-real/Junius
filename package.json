@@ -10,7 +10,8 @@
     "test": "tsx --test \"src/**/*.test.ts\"",
     "check": "pnpm typecheck && pnpm test",
     "sandbox:probe": "tsx src/sandbox-probe.ts",
-    "sandbox:api-probe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/probe-windows-sandbox-api.ps1"
+    "sandbox:api-probe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/probe-windows-sandbox-api.ps1",
+    "sandbox:mxc-probe": "tsx src/mxc-sandbox-probe.ts"
   },
   "keywords": [],
   "author": "",
@@ -29,7 +30,8 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/server": "^2.1.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@microsoft/mxc-sdk": "0.8.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
