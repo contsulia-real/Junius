@@ -1,5 +1,15 @@
-import { existsSync } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import {
+  existsSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
+import {
+  basename,
+  delimiter,
+  dirname,
+  extname,
+  join,
+} from "node:path";
 import { MxcProcessCapability } from "./mxc-process-capability.js";
 
 export interface PnpmLauncher {
@@ -36,56 +46,133 @@ export function isAllowedPnpmArgs(args: readonly string[]): boolean {
   return false;
 }
 
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isPortableExecutable(path: string): boolean {
+  try {
+    const header = readFileSync(path, { encoding: null }).subarray(0, 2);
+    return header.length === 2 && header[0] === 0x4d && header[1] === 0x5a;
+  } catch {
+    return false;
+  }
+}
+
+function javascriptLauncher(
+  entry: string,
+  nodeExecutable: string,
+): PnpmLauncher {
+  return {
+    executable: nodeExecutable,
+    fixedArgs: [entry],
+    readonlyPaths: [dirname(entry)],
+    environment: {
+      PATH: dirname(nodeExecutable),
+    },
+  };
+}
+
+function nativeLauncher(path: string): PnpmLauncher {
+  return {
+    executable: path,
+    fixedArgs: [],
+    readonlyPaths: [dirname(path)],
+    environment: {
+      PATH: dirname(path),
+    },
+  };
+}
+
+function launcherFromCandidate(
+  candidate: string,
+  nodeExecutable: string,
+): PnpmLauncher | undefined {
+  if (!isFile(candidate)) {
+    return undefined;
+  }
+
+  const extension = extname(candidate).toLowerCase();
+
+  if (extension === ".exe" || isPortableExecutable(candidate)) {
+    return nativeLauncher(candidate);
+  }
+
+  if ([".js", ".cjs", ".mjs"].includes(extension)) {
+    return javascriptLauncher(candidate, nodeExecutable);
+  }
+
+  return undefined;
+}
+
+function candidatePaths(
+  environment: NodeJS.ProcessEnv,
+): readonly string[] {
+  const candidates: string[] = [];
+
+  const direct = environment.npm_execpath;
+  if (direct && /pnpm/iu.test(basename(direct))) {
+    candidates.push(direct);
+  }
+
+  const pnpmHome = environment.PNPM_HOME;
+  if (pnpmHome) {
+    candidates.push(
+      join(pnpmHome, "pnpm.exe"),
+      join(pnpmHome, "pnpm"),
+      join(pnpmHome, "pnpm.cjs"),
+      join(pnpmHome, "pnpm.js"),
+      join(pnpmHome, "pnpm.mjs"),
+      join(pnpmHome, "bin", "pnpm.exe"),
+      join(pnpmHome, "bin", "pnpm"),
+    );
+  }
+
+  for (const rawEntry of (environment.PATH ?? "").split(delimiter)) {
+    const entry = rawEntry.trim();
+    if (!entry) {
+      continue;
+    }
+
+    candidates.push(
+      join(entry, "pnpm.exe"),
+      join(entry, "pnpm"),
+      join(entry, "pnpm.cjs"),
+      join(entry, "pnpm.js"),
+      join(entry, "pnpm.mjs"),
+
+      // npm global installation layouts
+      join(entry, "node_modules", "pnpm", "pnpm.exe"),
+      join(entry, "node_modules", "pnpm", "pnpm"),
+      join(entry, "node_modules", "pnpm", "bin", "pnpm.cjs"),
+      join(entry, "node_modules", "pnpm", "bin", "pnpm.js"),
+      join(entry, "node_modules", "pnpm", "bin", "pnpm.mjs"),
+
+      // Corepack installation layout
+      join(entry, "node_modules", "corepack", "dist", "pnpm.js"),
+      join(entry, "node_modules", "corepack", "dist", "pnpm.cjs"),
+    );
+  }
+
+  return [...new Set(candidates)];
+}
+
 export function resolvePnpmLauncher(
   environment: NodeJS.ProcessEnv = process.env,
   nodeExecutable = process.execPath,
 ): PnpmLauncher | undefined {
-  const pnpmHome = environment.PNPM_HOME;
-
-  if (pnpmHome) {
-    const standalone = join(pnpmHome, "pnpm.exe");
-
-    if (existsSync(standalone)) {
-      return {
-        executable: standalone,
-        fixedArgs: [],
-        readonlyPaths: [pnpmHome],
-        environment: {
-          PATH: pnpmHome,
-        },
-      };
+  for (const candidate of candidatePaths(environment)) {
+    const launcher = launcherFromCandidate(candidate, nodeExecutable);
+    if (launcher) {
+      return launcher;
     }
   }
 
-  const npmExecPath = environment.npm_execpath;
-  if (!npmExecPath || !/pnpm/iu.test(basename(npmExecPath))) {
-    return undefined;
-  }
-
-  const extension = extname(npmExecPath).toLowerCase();
-  if (![".js", ".cjs", ".mjs"].includes(extension)) {
-    return undefined;
-  }
-
-  const nodeExecPath =
-    environment.npm_node_execpath && existsSync(environment.npm_node_execpath)
-      ? environment.npm_node_execpath
-      : nodeExecutable;
-
-  const cliDirectory = dirname(npmExecPath);
-  const cliRoot =
-    basename(cliDirectory).toLowerCase() === "bin"
-      ? dirname(cliDirectory)
-      : cliDirectory;
-
-  return {
-    executable: nodeExecPath,
-    fixedArgs: [npmExecPath],
-    readonlyPaths: [cliRoot],
-    environment: {
-      PATH: dirname(nodeExecPath),
-    },
-  };
+  return undefined;
 }
 
 export function createPnpmCapability():
