@@ -7,6 +7,7 @@ import {
 } from "./admin-webui.js";
 import { sendJson } from "./http-bridge.js";
 import { JobManager, JobManagerError } from "./job-manager.js";
+import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
@@ -128,6 +129,7 @@ export async function handleAdminRequest(
   req: IncomingMessage,
   res: ServerResponse,
   registry: CapabilityRegistry,
+  machineCapabilities: MachineCapabilityManager,
   workspaces: WorkspaceManager,
   workspaceStateStore: WorkspaceStateStore,
   jobs: JobManager,
@@ -175,6 +177,7 @@ export async function handleAdminRequest(
         key: capability.key,
         description: capability.description,
       })),
+      machineCapabilities: machineCapabilities.list(),
       workspaces: workspaces.list(),
       jobs: jobs.list(),
       browser: playwrightCli.state(),
@@ -191,6 +194,44 @@ export async function handleAdminRequest(
     rawSegments[0] === "api"
       ? rawSegments.slice(1)
       : rawSegments;
+
+  if (
+    req.method === "POST" &&
+    segments.length === 2 &&
+    segments[0] === "capabilities"
+  ) {
+    try {
+      const body = await readJsonBody(req);
+
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        !("enabled" in body) ||
+        typeof body.enabled !== "boolean"
+      ) {
+        throw new Error("enabled_boolean_required");
+      }
+
+      const capability = await machineCapabilities.setEnabled(
+        segments[1],
+        body.enabled,
+      );
+
+      sendJson(res, 200, { capability });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "invalid_request_body";
+
+      sendJson(
+        res,
+        message.startsWith("machine_capability_not_known:")
+          ? 404
+          : 400,
+        { error: message },
+      );
+    }
+    return;
+  }
 
   if (
     req.method === "POST" &&
