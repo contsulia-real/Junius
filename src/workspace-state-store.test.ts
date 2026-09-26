@@ -102,3 +102,49 @@ test("WorkspaceStateStore reports a missing state file as uninitialized", async 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test("WorkspaceStateStore serializes overlapping saves", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "junius-state-"));
+  const filePath = join(directory, "workspace-state.json");
+
+  try {
+    const profile = new WorkspaceProfile("C:\\repo\\Junius", [
+      {
+        key: "pnpm",
+        arguments: [{ mode: "exact", args: ["run", "check"] }],
+      },
+    ]);
+    const manager = new WorkspaceManager([
+      { id: "junius", profile },
+    ]);
+    const store = new WorkspaceStateStore(filePath);
+
+    const firstSave = store.save(manager);
+
+    profile.setGrant({
+      key: "pnpm",
+      arguments: [{ mode: "exact", args: ["run", "test"] }],
+    });
+    const secondSave = store.save(manager);
+
+    await Promise.all([firstSave, secondSave]);
+
+    assert.deepEqual(await store.load(), [
+      {
+        id: "junius",
+        rootPath: "C:\\repo\\Junius",
+        grants: [
+          {
+            key: "pnpm",
+            arguments: [
+              { mode: "exact", args: ["run", "test"] },
+            ],
+          },
+        ],
+      },
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
