@@ -7,7 +7,19 @@ if (process.platform !== "win32") {
 }
 
 const registry = createDefaultCapabilityRegistry();
-const profile = new WorkspaceProfile(process.cwd(), ["node"]);
+const profile = new WorkspaceProfile(process.cwd(), [
+  {
+    key: "node",
+    arguments: [
+      { mode: "exact", args: ["--version"] },
+      { mode: "exact", args: ["-p", "process.platform"] },
+      {
+        mode: "exact",
+        args: ["-e", "console.log('should not run')"],
+      },
+    ],
+  },
+]);
 const service = new RunCommandService(registry, profile);
 
 const version = await service.run("node", ["--version"]);
