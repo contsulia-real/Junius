@@ -1,11 +1,31 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CapabilityRegistry } from "./capabilities/registry.js";
+import {
+  ADMIN_DASHBOARD_CSS,
+  ADMIN_DASHBOARD_HTML,
+  ADMIN_DASHBOARD_JS,
+} from "./admin-webui.js";
 import { sendJson } from "./http-bridge.js";
+import { JobManager, JobManagerError } from "./job-manager.js";
+import { PlaywrightCliService } from "./playwright-cli.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
 import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
+
+function sendText(
+  res: ServerResponse,
+  status: number,
+  contentType: string,
+  body: string,
+): void {
+  res.statusCode = status;
+  res.setHeader("content-type", contentType);
+  res.setHeader("content-length", Buffer.byteLength(body));
+  res.setHeader("cache-control", "no-store");
+  res.end(body);
+}
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -89,28 +109,94 @@ function parseWorkspaceRegistration(
   };
 }
 
+function sendJobError(
+  res: ServerResponse,
+  error: unknown,
+): void {
+  if (error instanceof JobManagerError) {
+    sendJson(res, error.code === "job_not_found" ? 404 : 400, {
+      error: error.code,
+      message: error.message,
+    });
+    return;
+  }
+
+  throw error;
+}
+
 export async function handleAdminRequest(
   req: IncomingMessage,
   res: ServerResponse,
   registry: CapabilityRegistry,
   workspaces: WorkspaceManager,
   workspaceStateStore: WorkspaceStateStore,
+  jobs: JobManager,
+  playwrightCli: PlaywrightCliService,
   origin: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", origin);
 
-  if (req.method === "GET" && url.pathname === "/state") {
+  if (req.method === "GET" && url.pathname === "/") {
+    sendText(
+      res,
+      200,
+      "text/html; charset=utf-8",
+      ADMIN_DASHBOARD_HTML,
+    );
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/dashboard.css") {
+    sendText(
+      res,
+      200,
+      "text/css; charset=utf-8",
+      ADMIN_DASHBOARD_CSS,
+    );
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/dashboard.js") {
+    sendText(
+      res,
+      200,
+      "text/javascript; charset=utf-8",
+      ADMIN_DASHBOARD_JS,
+    );
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/state" || url.pathname === "/api/state")
+  ) {
     sendJson(res, 200, {
       registeredCapabilities: registry.list().map((capability) => ({
         key: capability.key,
         description: capability.description,
       })),
       workspaces: workspaces.list(),
+      jobs: jobs.list(),
+      browser: playwrightCli.state(),
     });
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/workspaces") {
+  const rawSegments = url.pathname
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map(decodeURIComponent);
+
+  const segments =
+    rawSegments[0] === "api"
+      ? rawSegments.slice(1)
+      : rawSegments;
+
+  if (
+    req.method === "POST" &&
+    segments.length === 1 &&
+    segments[0] === "workspaces"
+  ) {
     try {
       const registration = parseWorkspaceRegistration(
         await readJsonBody(req),
@@ -133,11 +219,6 @@ export async function handleAdminRequest(
     }
     return;
   }
-
-  const segments = url.pathname
-    .split("/")
-    .filter((segment) => segment.length > 0)
-    .map(decodeURIComponent);
 
   if (
     segments.length === 2 &&
@@ -222,6 +303,48 @@ export async function handleAdminRequest(
 
       return;
     }
+  }
+
+  if (
+    segments.length === 3 &&
+    segments[0] === "jobs" &&
+    segments[2] === "output" &&
+    req.method === "GET"
+  ) {
+    try {
+      const stream =
+        url.searchParams.get("stream") === "stderr"
+          ? "stderr"
+          : "stdout";
+
+      sendJson(res, 200, {
+        output: jobs.readOutput(
+          segments[1],
+          stream,
+          0,
+          256 * 1024,
+        ),
+      });
+    } catch (error) {
+      sendJobError(res, error);
+    }
+    return;
+  }
+
+  if (
+    segments.length === 3 &&
+    segments[0] === "jobs" &&
+    segments[2] === "cancel" &&
+    req.method === "POST"
+  ) {
+    try {
+      sendJson(res, 200, {
+        job: await jobs.cancel(segments[1]),
+      });
+    } catch (error) {
+      sendJobError(res, error);
+    }
+    return;
   }
 
   sendJson(res, 404, { error: "not_found" });
