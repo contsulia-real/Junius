@@ -10,6 +10,7 @@ import {
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
 import { JobManager } from "./job-manager.js";
+import { PlaywrightCliService } from "./playwright-cli.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
@@ -61,10 +62,12 @@ if (persistedWorkspaces === undefined) {
 const runCommandService = new RunCommandService(registry, workspaceManager);
 const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
 const jobManager = new JobManager(runCommandService);
+const playwrightCliService = new PlaywrightCliService();
 const mcpRuntime = await createMcpRuntime(
   runCommandService,
   workspaceFilesService,
   jobManager,
+  playwrightCliService,
 );
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
