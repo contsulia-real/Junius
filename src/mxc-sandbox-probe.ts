@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import {
   createConfigFromPolicy,
@@ -160,10 +160,19 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
 
   const config = createConfigFromPolicy(
     {
-      version: "0.8.0-alpha",
+      version: "0.9.0-alpha",
       filesystem: {
         readwritePaths: [workspaceRoot],
         readonlyPaths: toolPolicy.readonlyPaths,
+      },
+      // Node resolves its main script through ancestor path metadata before
+      // executing it. Grant enumeration/query access to the Workspace drive,
+      // but not file-content read access. MXC 0.9 maps this to BaseContainer
+      // PSEC fs_enumerate and refuses to silently fall back when unavailable.
+      processContainer: {
+        filesystem: {
+          enumeratePaths: [parse(workspaceRoot).root],
+        },
       },
       // The first successful BaseContainer launch reached the child process
       // but Node exited during DLL initialization with STATUS_DLL_INIT_FAILED
@@ -221,7 +230,7 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
       JSON.stringify(
         {
           probeExecuted: false,
-          sdk: "@microsoft/mxc-sdk@0.8.0",
+          sdk: "@microsoft/mxc-sdk@0.9.0",
           execution,
           workspaceRoot,
           outsideFile,
@@ -242,7 +251,7 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
       JSON.stringify(
         {
           probeExecuted: true,
-          sdk: "@microsoft/mxc-sdk@0.8.0",
+          sdk: "@microsoft/mxc-sdk@0.9.0",
           requestedContainment: "process",
           workspaceRoot,
           outsideFile,
