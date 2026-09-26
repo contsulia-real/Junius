@@ -166,7 +166,7 @@ Lists a Workspace directory. It can recurse to a bounded depth and returns Works
 
 ### read
 
-Reads one or more UTF-8 text files with optional line ranges. Each result includes the SHA-256 of the complete file so a later write can detect stale content.
+Reads one or more UTF-8 text files with optional line ranges. Each result also includes the SHA-256 of the complete file as optional metadata.
 
 Binary files are rejected by the current text-file API.
 
@@ -174,11 +174,13 @@ Binary files are rejected by the current text-file API.
 
 Creates, replaces, or exact-text edits one or more UTF-8 text files.
 
-Before any file is changed, Junius validates every requested write. Existing files require the SHA-256 returned by `read`; if the file changed in the meantime, the write is rejected as stale.
+Before any file is changed, Junius validates every requested write. Existing files can be replaced or edited directly without a prior `read`.
+
+`expected_sha256` is optional. When supplied, Junius compares it with the current file before writing and rejects the request as stale if they differ. This is an opt-in concurrency guard, not a prerequisite for local editing.
 
 For partial edits, `write` matches an exact `old_text` string and replaces it with `new_text`. A non-`replace_all` edit must match exactly once, which prevents an ambiguous edit from silently changing the wrong location.
 
-New files may be created under the Workspace with full `content` and without an existing hash.
+New files may be created under the Workspace with full `content`.
 
 ### rg
 
