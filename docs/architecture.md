@@ -50,6 +50,12 @@ ls(workspace, ...)
 read(workspace, ...)
 write(workspace, ...)
 rg(workspace, ...)
+playwright_cli(session, command, args)
+start_job(workspace, key, args)
+get_job(job)
+wait_job(job, timeout_ms)
+read_job_output(job, stream, offset, limit)
+cancel_job(job)
 run_command(workspace, key, args)
 ```
 
@@ -227,9 +233,9 @@ The current ProcessCapability provides:
 - maximum output size;
 - timeout handling.
 
-Current timeout termination targets the directly spawned process. Junius does not currently guarantee descendant process-tree termination.
+Current synchronous ProcessCapability timeout termination targets the directly spawned process. Junius does not claim general descendant process-tree containment for synchronous commands.
 
-Long-running job management remains future work.
+Long-running processes use the implemented Job Manager described below.
 
 ## Browser capability
 
@@ -417,18 +423,30 @@ Workspace registration/removal and grant changes are persisted immediately. Writ
 
 Junius uses a local WebUI as its user-facing management interface. A desktop-native Dashboard is out of scope. Desktop automation is a separate Local Agent capability question and is not decided by the Dashboard implementation.
 
-The existing local admin HTTP surface is the backend foundation for that WebUI.
+Dashboard v1 is served directly by the existing local admin HTTP server at:
 
-The WebUI/admin surface is responsible for:
+```text
+http://127.0.0.1:8788/
+```
 
-- listing current Junius state;
-- registering/removing Workspaces;
-- setting/revoking Workspace capability grants;
-- viewing machine capability availability;
-- viewing and cancelling jobs;
-- viewing browser capability/runtime state.
+It has no separate frontend build/runtime dependency.
+
+The WebUI/admin surface currently provides:
+
+- Overview runtime summary;
+- Workspace registration/removal;
+- Workspace capability grant rule editing/revocation;
+- machine process-capability inspection;
+- Job Manager listing, stdout/stderr inspection, and cancellation;
+- browser adapter availability/state inspection.
+
+`GET /state` remains the compatibility state endpoint. `GET /api/state` aliases it for the WebUI.
+
+The WebUI uses the same in-memory managers and persistent Workspace state as the MCP/runtime path. It is not a second configuration store.
 
 It remains bound to the local machine and is not exposed through the Secure MCP Tunnel.
+
+Dashboard v1 is implemented and awaiting local UI validation.
 
 ## Secure MCP Tunnel
 
@@ -457,7 +475,7 @@ This changes the current security implementation only. It does not change Junius
 
 The next architecture work should focus on:
 
-1. local WebUI for Workspace, permission, capability, job, and browser-state management;
+1. local validation and refinement of WebUI Dashboard v1;
 2. persistent machine-level capability configuration;
 3. clearer authorization UX and review flows;
 4. broader Local Agent capability coverage where it provides concrete value;
