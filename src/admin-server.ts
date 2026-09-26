@@ -1,10 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import { sendJson } from "./http-bridge.js";
-import {
-  WorkspaceProfile,
-  type WorkspaceArgumentGrant,
-} from "./workspace-profile.js";
+import { WorkspaceManager } from "./workspace-manager.js";
+import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -70,30 +68,104 @@ function parseArgumentGrants(value: unknown): WorkspaceArgumentGrant[] {
   });
 }
 
+function parseWorkspaceRegistration(
+  value: unknown,
+): { id: string; rootPath: string } {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("id" in value) ||
+    !("rootPath" in value) ||
+    typeof value.id !== "string" ||
+    typeof value.rootPath !== "string"
+  ) {
+    throw new Error("workspace_id_and_root_required");
+  }
+
+  return {
+    id: value.id,
+    rootPath: value.rootPath,
+  };
+}
+
 export async function handleAdminRequest(
   req: IncomingMessage,
   res: ServerResponse,
   registry: CapabilityRegistry,
-  profile: WorkspaceProfile,
+  workspaces: WorkspaceManager,
   origin: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", origin);
 
   if (req.method === "GET" && url.pathname === "/state") {
     sendJson(res, 200, {
-      workspaceRoot: profile.rootPath,
       registeredCapabilities: registry.list().map((capability) => ({
         key: capability.key,
         description: capability.description,
       })),
-      workspaceGrants: profile.grants(),
+      workspaces: workspaces.list(),
     });
     return;
   }
 
-  const prefix = "/workspace/grant/";
-  if (url.pathname.startsWith(prefix)) {
-    const key = decodeURIComponent(url.pathname.slice(prefix.length));
+  if (req.method === "POST" && url.pathname === "/workspaces") {
+    try {
+      const registration = parseWorkspaceRegistration(
+        await readJsonBody(req),
+      );
+      await workspaces.register(
+        registration.id,
+        registration.rootPath,
+      );
+      sendJson(res, 201, {
+        workspace: workspaces
+          .list()
+          .find((workspace) => workspace.id === registration.id),
+      });
+    } catch (error) {
+      sendJson(res, 400, {
+        error:
+          error instanceof Error ? error.message : "invalid_request_body",
+      });
+    }
+    return;
+  }
+
+  const segments = url.pathname
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map(decodeURIComponent);
+
+  if (
+    segments.length === 2 &&
+    segments[0] === "workspaces" &&
+    req.method === "DELETE"
+  ) {
+    const id = segments[1];
+    const removed = workspaces.remove(id);
+    sendJson(res, removed ? 200 : 404, {
+      removed,
+      id,
+    });
+    return;
+  }
+
+  if (
+    segments.length === 4 &&
+    segments[0] === "workspaces" &&
+    segments[2] === "grants"
+  ) {
+    const workspaceId = segments[1];
+    const key = segments[3];
+    const profile = workspaces.get(workspaceId);
+
+    if (profile === undefined) {
+      sendJson(res, 404, {
+        error: "workspace_not_registered",
+        workspace: workspaceId,
+      });
+      return;
+    }
 
     if (!registry.has(key)) {
       sendJson(res, 400, {
@@ -105,7 +177,10 @@ export async function handleAdminRequest(
 
     if (req.method === "DELETE") {
       profile.revoke(key);
-      sendJson(res, 200, { workspaceGrants: profile.grants() });
+      sendJson(res, 200, {
+        workspace: workspaceId,
+        grants: profile.grants(),
+      });
       return;
     }
 
@@ -126,7 +201,10 @@ export async function handleAdminRequest(
           arguments: parseArgumentGrants(body.arguments),
         });
 
-        sendJson(res, 200, { workspaceGrants: profile.grants() });
+        sendJson(res, 200, {
+          workspace: workspaceId,
+          grants: profile.grants(),
+        });
       } catch (error) {
         sendJson(res, 400, {
           error:
