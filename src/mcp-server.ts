@@ -174,7 +174,7 @@ export function createMcpServer(
     {
       title: "Read Workspace Files",
       description:
-        "Read one or more UTF-8 text files from a registered Junius Workspace. Returns content hashes for safe follow-up writes.",
+        "Read one or more UTF-8 text files from a registered Junius Workspace. Returns the complete-file SHA-256 as optional metadata for callers that want guarded writes.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
@@ -236,7 +236,7 @@ export function createMcpServer(
     {
       title: "Write Workspace Files",
       description:
-        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. Existing files require the sha256 returned by read. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
+        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. A prior read is not required. expected_sha256 is optional and only enables stale-write protection when supplied. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
