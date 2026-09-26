@@ -292,3 +292,11 @@ Startup behavior:
 
 For one-time migration from a pre-persistence Junius process, the loader also accepts the existing local admin `/state` response shape and ignores its machine-capability metadata.
 
+## pnpm Workspace portal
+
+Native pnpm canonicalizes its effective `--dir` before running package scripts. Under the Windows MXC policy, directly canonicalizing a host Workspace path can require traversal through host ancestor directories that Junius intentionally does not grant.
+
+Junius does not broaden those ancestor grants. The pnpm capability instead creates a per-execution Junius-owned runtime directory with a `workspace` junction that targets the authorized Workspace. MXC continues to grant the real Workspace read/write access, while the temporary runtime directory is read-only inside the sandbox. pnpm runs with `--dir .` and its sandbox cwd set to that portal.
+
+The portal is created before the sandbox starts and removed after the MXC executor exits. This is runtime namespace indirection, not a copy or staging of the Workspace.
+
