@@ -287,6 +287,8 @@ On non-Windows platforms, the current implementation sends SIGTERM to the direct
 
 Graceful Junius shutdown asks the Job Manager to cancel jobs that are still running.
 
+Job Manager v1 is implemented and awaiting black-box MCP validation.
+
 ## Workspace persistence
 
 Workspace registration and grants are persisted outside the repository.
@@ -353,14 +355,13 @@ This changes the current security implementation only. It does not change Junius
 
 The next architecture work should focus on:
 
-1. broader Local Agent capability coverage;
-2. long-running job/process lifecycle management;
-3. browser capability;
-4. Dashboard-based Workspace and capability management;
-5. persistent machine-level capability configuration;
-6. clearer authorization UX and review flows;
-7. later desktop/UI capabilities where appropriate;
-8. capability-specific adapters where generic process execution is insufficient.
+1. browser capability;
+2. broader Local Agent capability coverage;
+3. Dashboard-based Workspace and capability management;
+4. persistent machine-level capability configuration;
+5. clearer authorization UX and review flows;
+6. later desktop/UI capabilities where appropriate;
+7. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current execution implementation.
 
