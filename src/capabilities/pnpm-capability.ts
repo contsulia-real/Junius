@@ -197,11 +197,11 @@ export function createPnpmCapability():
     description:
       "pnpm package-script runner. Allows --version and pnpm run <script>; install/exec/dlx/add are not exposed.",
     executable: launcher.executable,
-    // Keep pnpm anchored to the MXC working directory without letting its
-    // local-prefix discovery rewrite "." to an absolute host path. Native
-    // pnpm canonicalizes that absolute --dir and otherwise needs traversal
-    // access to Workspace ancestors that Junius deliberately does not grant.
-    fixedArgs: [...launcher.fixedArgs, "--dir", "."],
+    // The MXC process cwd is a Junius-owned runtime root. "workspace" is a
+    // junction inside that root targeting the authorized Workspace. This
+    // keeps pnpm's canonicalization input inside the controlled namespace
+    // instead of asking it to canonicalize the host Workspace path directly.
+    fixedArgs: [...launcher.fixedArgs, "--dir", "workspace"],
     readonlyPaths: launcher.readonlyPaths,
     useWorkspacePortal: true,
     argumentPolicy: isAllowedPnpmArgs,
