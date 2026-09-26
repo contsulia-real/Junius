@@ -8,8 +8,9 @@ import { join } from "node:path";
 import test from "node:test";
 import { handleAdminRequest } from "./admin-server.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
-import { ProcessCapability } from "./capabilities/process-capability.js";
 import { JobManager } from "./job-manager.js";
+import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
+import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceManager } from "./workspace-manager.js";
@@ -20,13 +21,19 @@ async function fixture() {
   const statePath = join(root, "workspace-state.json");
   const registry = new CapabilityRegistry();
 
-  registry.register(
-    new ProcessCapability({
-      key: "node",
-      description: "test node capability",
-      executable: process.execPath,
-      allowedArgVectors: [["--version"]],
-    }),
+  const machineStore = new MachineCapabilityStateStore(
+    join(root, "machine-capability-state.json"),
+  );
+  const machineCapabilities = await MachineCapabilityManager.create(
+    registry,
+    machineStore,
+    {
+      ...process.env,
+      PATH: "",
+      npm_execpath: undefined,
+      PNPM_HOME: undefined,
+    },
+    process.execPath,
   );
 
   const workspaces = new WorkspaceManager();
@@ -47,6 +54,7 @@ async function fixture() {
       req,
       res,
       registry,
+      machineCapabilities,
       workspaces,
       store,
       jobs,
@@ -89,6 +97,12 @@ test("admin server serves the local WebUI and runtime state", async () => {
 
     const body = await state.json() as {
       registeredCapabilities: { key: string }[];
+      machineCapabilities: {
+        key: string;
+        enabled: boolean;
+        available: boolean;
+        active: boolean;
+      }[];
       workspaces: unknown[];
       jobs: unknown[];
       browser: { available: boolean; statePath: string };
@@ -97,6 +111,28 @@ test("admin server serves the local WebUI and runtime state", async () => {
     assert.deepEqual(
       body.registeredCapabilities.map((capability) => capability.key),
       ["node"],
+    );
+    assert.deepEqual(
+      body.machineCapabilities.map((capability) => ({
+        key: capability.key,
+        enabled: capability.enabled,
+        available: capability.available,
+        active: capability.active,
+      })),
+      [
+        {
+          key: "node",
+          enabled: true,
+          available: true,
+          active: true,
+        },
+        {
+          key: "pnpm",
+          enabled: true,
+          available: false,
+          active: false,
+        },
+      ],
     );
     assert.deepEqual(body.workspaces, []);
     assert.deepEqual(body.jobs, []);
@@ -135,6 +171,47 @@ test("admin WebUI backend keeps Workspace mutation API working", async () => {
 
     assert.equal(body.workspaces.length, 1);
     assert.equal(body.workspaces[0]?.id, "demo");
+  } finally {
+    await f.dispose();
+  }
+});
+
+
+test("admin WebUI backend can persistently disable a machine capability", async () => {
+  const f = await fixture();
+  try {
+    const disabled = await fetch(f.origin + "/capabilities/node", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ enabled: false }),
+    });
+
+    assert.equal(disabled.status, 200);
+
+    const state = await fetch(f.origin + "/state");
+    const body = await state.json() as {
+      registeredCapabilities: { key: string }[];
+      machineCapabilities: {
+        key: string;
+        enabled: boolean;
+        active: boolean;
+      }[];
+    };
+
+    assert.deepEqual(body.registeredCapabilities, []);
+    assert.deepEqual(
+      body.machineCapabilities.map((capability) => ({
+        key: capability.key,
+        enabled: capability.enabled,
+        active: capability.active,
+      })),
+      [
+        { key: "node", enabled: false, active: false },
+        { key: "pnpm", enabled: true, active: false },
+      ],
+    );
   } finally {
     await f.dispose();
   }
