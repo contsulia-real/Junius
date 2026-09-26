@@ -106,3 +106,23 @@ The spike tools explicitly advertise `securitySchemes: [{ type: "noauth" }]`. OA
 The goal is specifically to test ChatGPT host behavior. A successful protocol-level notification by itself does not prove that ChatGPT refreshes the model-visible tools.
 
 This server is a spike, not the final Junius security configuration. The final authentication and authorization design is intentionally not frozen by this test.
+
+## Dynamic tools spike result
+
+The spike is complete for the current ChatGPT personal MCP app surface.
+
+Observed behavior:
+
+1. The app was created while Junius exposed only `tool_a`.
+2. In the same ChatGPT conversation, Junius switched to `tool_b`; ChatGPT still had only the old callable binding and failed to invoke `tool_b`.
+3. In a brand-new ChatGPT conversation, the app still exposed only `tool_a`.
+4. Disconnecting and reconnecting the app did not refresh the tool catalog.
+5. The current ChatGPT UI for this personal MCP app did not expose a Refresh action.
+6. Only deleting the MCP app and recreating it caused ChatGPT to scan the server again and expose `tool_b`.
+
+Conclusion:
+
+For the current ChatGPT personal MCP app flow, the model-visible MCP tool catalog behaves as an app-creation snapshot. MCP tool-list change notifications are not sufficient to update the callable tool surface, and reconnecting the existing app is not sufficient either.
+
+Therefore Junius must not use runtime mutation of the real MCP tool list as the normal Workspace capability-switching mechanism. The fallback decision must be made at the Junius architecture level rather than assuming a session reconnect can refresh tools.
+
