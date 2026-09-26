@@ -316,7 +316,7 @@ Junius first uses `JUNIUS_PLAYWRIGHT_CLI_PATH` when provided, then searches norm
 
 It can launch native executables or JavaScript CLI entries through the current Node executable. On Windows it also resolves npm-style `playwright-cli.cmd` shims to their underlying `playwright-cli.js` entry so execution remains `shell: false`.
 
-Browser capability v1 is implemented and awaiting black-box MCP validation.
+Browser capability v1 is implemented and black-box verified through ChatGPT.
 
 ## Job Manager
 
@@ -540,3 +540,23 @@ user asks for Junius full check as a background task
 The verified execution returned exit code `0` and ran the real Junius full-check path (`pnpm typecheck && pnpm test`). The observed suite completed with 32 passing tests and no failures, cancellations, or skips.
 
 This confirms that the background process path, job identity, status transitions, captured output, wait semantics, and existing Workspace/capability authorization work together through the real MCP surface.
+
+
+## Verified Browser capability status
+
+Browser capability v1 has passed real black-box validation through ChatGPT using the local `playwright-cli` installation.
+
+The observed lifecycle confirmed:
+
+```text
+natural-language browser task
+-> playwright_cli
+-> visible headed browser
+-> CLI-managed named/persistent session
+-> browser interaction
+-> requested result obtained
+-> close session
+-> final response
+```
+
+This verifies the core browser adapter path and the intended task lifecycle. The browser remains a first-class Local Agent capability independent of Workspace command execution, while playwright-cli continues to own browser/session mechanics.
