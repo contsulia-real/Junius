@@ -4,17 +4,22 @@
 
 Junius is a **Local Agent** that lets ChatGPT use capabilities of the user's local computer through MCP under explicit user-controlled authorization.
 
-Local files and processes are the first implemented capabilities. Browser and later desktop/UI capabilities belong to the same architecture. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
+Local files, processes, jobs, and browser automation are Local Agent capabilities. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
+
+Junius does not plan to provide desktop-UI automation. Its user-facing management surface is a local WebUI.
 
 ```text
 Junius
 = Local Agent
 
 current capabilities
-= files + processes
+= files + processes + jobs + browser
 
-planned capability families
-= browser + other local-computer capabilities
+user-facing management
+= local WebUI
+
+desktop/UI automation
+= out of scope
 
 Workspace / Capability Registry / grants
 = authorization and routing mechanisms
@@ -408,17 +413,22 @@ Current persisted data contains:
 
 Workspace registration/removal and grant changes are persisted immediately. Writes are serialized.
 
-## Local admin surface
+## Local WebUI and admin surface
 
-The local admin HTTP surface is a temporary Dashboard stand-in.
+Junius uses a local WebUI as its user-facing management interface. Desktop-native UI and desktop-UI automation are out of scope.
 
-It is responsible for:
+The existing local admin HTTP surface is the backend foundation for that WebUI.
 
-- listing current state;
+The WebUI/admin surface is responsible for:
+
+- listing current Junius state;
 - registering/removing Workspaces;
-- setting/revoking Workspace capability grants.
+- setting/revoking Workspace capability grants;
+- viewing machine capability availability;
+- viewing and cancelling jobs;
+- viewing browser capability/runtime state.
 
-It remains local and is not exposed through the Secure MCP Tunnel.
+It remains bound to the local machine and is not exposed through the Secure MCP Tunnel.
 
 ## Secure MCP Tunnel
 
@@ -447,13 +457,11 @@ This changes the current security implementation only. It does not change Junius
 
 The next architecture work should focus on:
 
-1. black-box validation of the browser capability;
-2. broader Local Agent capability coverage;
-3. Dashboard-based Workspace and capability management;
-4. persistent machine-level capability configuration;
-5. clearer authorization UX and review flows;
-6. later desktop/UI capabilities where appropriate;
-7. capability-specific adapters where generic process execution is insufficient.
+1. local WebUI for Workspace, permission, capability, job, and browser-state management;
+2. persistent machine-level capability configuration;
+3. clearer authorization UX and review flows;
+4. broader non-desktop Local Agent capability coverage where it provides concrete value;
+5. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current execution implementation.
 
