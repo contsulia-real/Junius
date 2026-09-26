@@ -11,24 +11,51 @@ import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
+import { WorkspaceStateStore } from "./workspace-state-store.js";
 
 const config = await loadRuntimeConfig();
 const registry = createDefaultCapabilityRegistry();
-const initialWorkspaceProfile = new WorkspaceProfile(config.workspaceRoot, [
-  {
-    key: "node",
-    arguments: [
-      { mode: "exact", args: ["--version"] },
-      { mode: "exact", args: ["-p", "process.platform"] },
+const workspaceStateStore = new WorkspaceStateStore(
+  config.workspaceStatePath,
+);
+const persistedWorkspaces = await workspaceStateStore.load();
+
+let workspaceManager: WorkspaceManager;
+
+if (persistedWorkspaces === undefined) {
+  const initialWorkspaceProfile = new WorkspaceProfile(
+    config.workspaceRoot,
+    [
+      {
+        key: "node",
+        arguments: [
+          { mode: "exact", args: ["--version"] },
+          { mode: "exact", args: ["-p", "process.platform"] },
+        ],
+      },
     ],
-  },
-]);
-const workspaceManager = new WorkspaceManager([
-  {
-    id: config.workspaceId,
-    profile: initialWorkspaceProfile,
-  },
-]);
+  );
+
+  workspaceManager = new WorkspaceManager([
+    {
+      id: config.workspaceId,
+      profile: initialWorkspaceProfile,
+    },
+  ]);
+
+  await workspaceStateStore.save(workspaceManager);
+} else {
+  workspaceManager = new WorkspaceManager(
+    persistedWorkspaces.map((workspace) => ({
+      id: workspace.id,
+      profile: new WorkspaceProfile(
+        workspace.rootPath,
+        workspace.grants,
+      ),
+    })),
+  );
+}
+
 const runCommandService = new RunCommandService(registry, workspaceManager);
 const mcpRuntime = await createMcpRuntime(runCommandService);
 
@@ -65,6 +92,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     res,
     registry,
     workspaceManager,
+    workspaceStateStore,
     adminOrigin,
   ).catch((error: unknown) => {
     console.error("[admin http]", error);
@@ -85,7 +113,10 @@ mcpHttpServer.listen(config.mcpPort, config.mcpHost, () => {
 adminHttpServer.listen(config.adminPort, config.adminHost, () => {
   console.error(`Junius local admin: ${adminOrigin}/state`);
   console.error(
-    `Junius initial workspace: ${config.workspaceId} -> ${config.workspaceRoot}`,
+    `Junius Workspace state: ${config.workspaceStatePath}`,
+  );
+  console.error(
+    `Junius Workspaces loaded: ${workspaceManager.list().length}`,
   );
 });
 
