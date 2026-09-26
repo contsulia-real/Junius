@@ -30,6 +30,7 @@ async function fixture() {
   });
 
   return {
+    root,
     service,
     async dispose() {
       await rm(root, { recursive: true, force: true });
@@ -126,6 +127,18 @@ test("playwright-cli adapter rejects invalid session names", async () => {
         error instanceof PlaywrightCliError &&
         error.code === "invalid_session",
     );
+  } finally {
+    await f.dispose();
+  }
+});
+
+
+test("playwright-cli exposes local WebUI status", async () => {
+  const f = await fixture();
+  try {
+    const state = f.service.state();
+    assert.equal(state.available, true);
+    assert.equal(state.statePath, f.root);
   } finally {
     await f.dispose();
   }
