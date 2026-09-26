@@ -463,6 +463,16 @@ export class PlaywrightCliService {
     return this.#launcher !== undefined;
   }
 
+  state(): {
+    readonly available: boolean;
+    readonly statePath: string;
+  } {
+    return {
+      available: this.available,
+      statePath: this.#statePath,
+    };
+  }
+
   async run(
     session: string,
     command: PlaywrightCliCommand,
