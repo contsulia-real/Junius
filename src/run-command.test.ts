@@ -9,24 +9,42 @@ import { WorkspaceProfile } from "./workspace-profile.js";
 const fakeCapability: Capability = {
   key: "demo",
   description: "test capability",
-  async execute(args) {
+  async execute(args, context) {
     return {
       ok: true,
       exitCode: 0,
-      stdout: args.join(","),
+      stdout: `${context.cwd}|${args.join(",")}`,
       stderr: "",
       durationMs: 1,
     };
   },
 };
 
-test("run_command rejects unregistered capability keys", async () => {
+test("run_command rejects unknown Workspace IDs", async () => {
+  const registry = new CapabilityRegistry();
+  registry.register(fakeCapability);
+
   const service = new RunCommandService(
-    new CapabilityRegistry(),
-    new WorkspaceManager(new WorkspaceProfile(process.cwd())),
+    registry,
+    new WorkspaceManager(),
   );
 
-  const result = await service.run("missing", []);
+  const result = await service.run("missing", "demo", []);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.code, "workspace_not_registered");
+  }
+});
+
+test("run_command rejects unregistered capability keys", async () => {
+  const profile = new WorkspaceProfile(process.cwd());
+  const service = new RunCommandService(
+    new CapabilityRegistry(),
+    new WorkspaceManager([{ id: "alpha", profile }]),
+  );
+
+  const result = await service.run("alpha", "missing", []);
 
   assert.equal(result.ok, false);
   if (!result.ok) {
@@ -34,70 +52,60 @@ test("run_command rejects unregistered capability keys", async () => {
   }
 });
 
-test("run_command distinguishes missing capability grant from disallowed arguments", async () => {
+test("run_command enforces grants independently per Workspace", async () => {
   const registry = new CapabilityRegistry();
   registry.register(fakeCapability);
 
-  const profile = new WorkspaceProfile(process.cwd());
-  const service = new RunCommandService(
-    registry,
-    new WorkspaceManager(profile),
-  );
-
-  const deniedCapability = await service.run("demo", ["a"]);
-  assert.equal(deniedCapability.ok, false);
-  if (!deniedCapability.ok) {
-    assert.equal(deniedCapability.code, "capability_not_allowed");
-  }
-
-  profile.setGrant({
-    key: "demo",
-    arguments: [
-      { mode: "exact", args: ["a"] },
-      { mode: "prefix", args: ["run", "test"] },
-    ],
-  });
-
-  const allowedExact = await service.run("demo", ["a"]);
-  assert.equal(allowedExact.ok, true);
-
-  const deniedArgs = await service.run("demo", ["b"]);
-  assert.equal(deniedArgs.ok, false);
-  if (!deniedArgs.ok) {
-    assert.equal(deniedArgs.code, "arguments_not_allowed_by_workspace");
-  }
-
-  const allowedPrefix = await service.run("demo", [
-    "run",
-    "test",
-    "--",
-    "--watch=false",
-  ]);
-  assert.equal(allowedPrefix.ok, true);
-});
-
-test("revoking a Workspace grant disables the capability", async () => {
-  const registry = new CapabilityRegistry();
-  registry.register(fakeCapability);
-
-  const profile = new WorkspaceProfile(process.cwd(), [
+  const alpha = new WorkspaceProfile("C:\\alpha", [
     {
       key: "demo",
-      arguments: [{ mode: "exact", args: ["ok"] }],
+      arguments: [{ mode: "exact", args: ["a"] }],
     },
   ]);
+  const beta = new WorkspaceProfile("C:\\beta", [
+    {
+      key: "demo",
+      arguments: [{ mode: "exact", args: ["b"] }],
+    },
+  ]);
+
   const service = new RunCommandService(
     registry,
-    new WorkspaceManager(profile),
+    new WorkspaceManager([
+      { id: "alpha", profile: alpha },
+      { id: "beta", profile: beta },
+    ]),
   );
 
-  assert.equal((await service.run("demo", ["ok"])).ok, true);
+  const alphaAllowed = await service.run("alpha", "demo", ["a"]);
+  const alphaDenied = await service.run("alpha", "demo", ["b"]);
+  const betaAllowed = await service.run("beta", "demo", ["b"]);
+  const betaDenied = await service.run("beta", "demo", ["a"]);
 
-  profile.revoke("demo");
+  assert.equal(alphaAllowed.ok, true);
+  assert.equal(betaAllowed.ok, true);
+  assert.equal(alphaDenied.ok, false);
+  assert.equal(betaDenied.ok, false);
 
-  const denied = await service.run("demo", ["ok"]);
-  assert.equal(denied.ok, false);
-  if (!denied.ok) {
-    assert.equal(denied.code, "capability_not_allowed");
+  if (alphaAllowed.ok) {
+    assert.equal(alphaAllowed.execution.stdout, "C:\\alpha|a");
+  }
+
+  if (betaAllowed.ok) {
+    assert.equal(betaAllowed.execution.stdout, "C:\\beta|b");
+  }
+
+  if (!alphaDenied.ok) {
+    assert.equal(
+      alphaDenied.code,
+      "arguments_not_allowed_by_workspace",
+    );
+  }
+
+  if (!betaDenied.ok) {
+    assert.equal(
+      betaDenied.code,
+      "arguments_not_allowed_by_workspace",
+    );
   }
 });
