@@ -66,28 +66,13 @@ test("read returns line ranges and a content hash", async () => {
   }
 });
 
-test("write requires the read hash before overwriting an existing file", async () => {
+test("write can overwrite an existing file without a prior read", async () => {
   const f = await fixture();
   try {
-    await assert.rejects(
-      f.service.write("demo", [
-        { path: "README.md", content: "# Changed\n" },
-      ]),
-      (error: unknown) =>
-        error instanceof WorkspaceFileError &&
-        error.code === "expected_sha256_required",
-    );
-
-    const [before] = await f.service.read("demo", [
-      { path: "README.md" },
-    ]);
-    assert.ok(before);
-
     const [written] = await f.service.write("demo", [
       {
         path: "README.md",
         content: "# Changed\n",
-        expectedSha256: before.sha256,
       },
     ]);
 
@@ -95,6 +80,33 @@ test("write requires the read hash before overwriting an existing file", async (
     assert.equal(
       await readFile(join(f.root, "README.md"), "utf8"),
       "# Changed\n",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("write optionally rejects a stale expected SHA-256", async () => {
+  const f = await fixture();
+  try {
+    const [before] = await f.service.read("demo", [
+      { path: "README.md" },
+    ]);
+    assert.ok(before);
+
+    await writeFile(join(f.root, "README.md"), "# External change\n", "utf8");
+
+    await assert.rejects(
+      f.service.write("demo", [
+        {
+          path: "README.md",
+          content: "# Changed\n",
+          expectedSha256: before.sha256,
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "stale_file",
     );
   } finally {
     await f.dispose();
