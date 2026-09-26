@@ -263,9 +263,9 @@ Startup behavior:
 
 Junius remains a general Local Agent. The current file/process tools are the first local capabilities, not the boundary of the product.
 
-The local WebUI Dashboard v1 is implemented and awaiting local UI validation.
+The local WebUI Dashboard v1 is implemented and locally validated.
 
-After WebUI validation, the next work should focus on:
+The next work should focus on:
 
 - persistent machine capability configuration;
 - clearer authorization UX;
@@ -492,4 +492,4 @@ The WebUI uses the same Workspace manager, grant persistence, Job Manager, and P
 
 Existing admin routes remain compatible. `/api/state` is also available as an alias of `/state` for WebUI-style API access.
 
-Dashboard v1 is implemented and awaiting local browser validation.
+Dashboard v1 is implemented and locally validated.
