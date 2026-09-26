@@ -38,6 +38,16 @@ The initial Workspace ID defaults to `default`. If `JUNIUS_WORKSPACE_ROOT` is no
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
+## MCP schema migration
+
+`run_command` now requires an explicit `workspace` ID:
+
+```text
+run_command(workspace, key, args)
+```
+
+This is a deliberate schema change required for parallel multi-Workspace routing. Because the current ChatGPT personal-app flow snapshots the MCP tool schema, recreate the Junius App once after pulling this change. Future Workspace registration and permission changes remain runtime data and do not require another App recreation.
+
 ## Fixed MCP command model
 
 The current ChatGPT personal-app flow snapshots the MCP tool catalog when the app is created. Runtime `tools/list_changed` and reconnecting did not make tool-list mutations visible reliably, so Junius uses one stable MCP tool:
