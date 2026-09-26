@@ -475,11 +475,10 @@ This changes the current security implementation only. It does not change Junius
 
 The next architecture work should focus on:
 
-1. local validation and refinement of WebUI Dashboard v1;
-2. persistent machine-level capability configuration;
-3. clearer authorization UX and review flows;
-4. broader Local Agent capability coverage where it provides concrete value;
-5. capability-specific adapters where generic process execution is insufficient.
+1. persistent machine-level capability configuration;
+2. clearer authorization UX and review flows;
+3. broader Local Agent capability coverage where it provides concrete value;
+4. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current execution implementation.
 
