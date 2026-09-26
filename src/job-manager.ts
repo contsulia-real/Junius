@@ -390,6 +390,14 @@ export class JobManager {
     return snapshot(record);
   }
 
+  list(): readonly JobSnapshot[] {
+    return [...this.#jobs.values()]
+      .map(snapshot)
+      .sort((left, right) =>
+        right.startedAt.localeCompare(left.startedAt),
+      );
+  }
+
   get(id: string): JobSnapshot {
     return snapshot(this.#require(id));
   }
