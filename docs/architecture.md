@@ -2,11 +2,28 @@
 
 ## Positioning
 
-Junius is a Local Agent that lets ChatGPT invoke explicitly authorized capabilities on the user's computer through MCP.
+Junius is a **Local Agent** that lets ChatGPT use capabilities of the user's local computer through MCP under explicit user-controlled authorization.
 
-Junius is an **authorization-controlled local executor**. It is not an operating-system sandbox.
+Local files and processes are the first implemented capabilities. Browser and later desktop/UI capabilities belong to the same architecture. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
 
-The security boundary is therefore:
+```text
+Junius
+= Local Agent
+
+current capabilities
+= files + processes
+
+planned capability families
+= browser + other local-computer capabilities
+
+Workspace / Capability Registry / grants
+= authorization and routing mechanisms
+
+OS sandbox
+= separate implementation choice, currently not provided
+```
+
+For command execution, the effective authorization is:
 
 ```text
 Machine capability policy
@@ -16,7 +33,7 @@ Workspace capability/argument grants
 What ChatGPT may ask Junius to execute
 ```
 
-This boundary controls which registered executable may run, which argument shapes are permitted, and which Workspace is used as the working directory. It does not isolate the resulting process from the rest of the operating system.
+That policy controls which registered executable may run, which argument shapes are permitted, and which Workspace is used as the working directory. It does not redefine Junius as a command runner and does not isolate the resulting process from the rest of the operating system.
 
 ## Fixed MCP surface
 
@@ -267,22 +284,24 @@ Removed from the production direction:
 - sandbox regression probes;
 - MXC hard-link residual-risk handling.
 
-Reason: the sandbox path introduced substantial compatibility and operational complexity for normal development tools, including pnpm path canonicalization failures. Junius now prioritizes explicit authorization and reliable local execution instead of claiming OS-level containment.
+Reason: the sandbox path introduced substantial compatibility and operational complexity for normal local-agent workloads, including pnpm path canonicalization failures. Junius therefore does not currently use MXC as its process-isolation layer.
 
-This is an intentional architecture decision, not a temporary implementation shortcut.
+This changes the current security implementation only. It does not change Junius's product positioning as a Local Agent.
 
 ## Current priorities
 
 The next architecture work should focus on:
 
-1. broader real capability coverage;
+1. broader Local Agent capability coverage;
 2. long-running job/process lifecycle management;
-3. Dashboard-based Workspace and capability management;
-4. persistent machine-level capability configuration;
-5. clearer authorization UX and review flows;
-6. capability-specific adapters where generic process execution is insufficient.
+3. browser capability;
+4. Dashboard-based Workspace and capability management;
+5. persistent machine-level capability configuration;
+6. clearer authorization UX and review flows;
+7. later desktop/UI capabilities where appropriate;
+8. capability-specific adapters where generic process execution is insufficient.
 
-OS-level sandboxing is not part of the current Junius execution model.
+OS-level sandboxing is not part of the current execution implementation.
 
 ## Verified execution status
 
