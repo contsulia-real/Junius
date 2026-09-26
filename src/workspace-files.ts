@@ -38,7 +38,6 @@ export type WorkspaceFileErrorCode =
   | "not_a_file"
   | "binary_file"
   | "stale_file"
-  | "expected_sha256_required"
   | "invalid_write"
   | "edit_not_found"
   | "edit_not_unique"
@@ -444,23 +443,19 @@ async function validateWrite(
     throw new WorkspaceFileError("not_a_file", request.path);
   }
 
-  if (request.expectedSha256 === undefined) {
-    throw new WorkspaceFileError(
-      "expected_sha256_required",
-      `Overwriting an existing file requires expected_sha256: ${request.path}`,
-    );
-  }
-
   const previous = await readFile(target.path);
   if (isProbablyBinary(previous)) {
     throw new WorkspaceFileError("binary_file", request.path);
   }
 
   const previousSha256 = sha256(previous);
-  if (previousSha256 !== request.expectedSha256) {
+  if (
+    request.expectedSha256 !== undefined &&
+    previousSha256 !== request.expectedSha256
+  ) {
     throw new WorkspaceFileError(
       "stale_file",
-      `File changed since it was read: ${request.path}`,
+      `File changed since the expected SHA-256 was captured: ${request.path}`,
     );
   }
 
