@@ -237,3 +237,41 @@ If junction creation is unavailable on the machine, `reparseOutsideReadBlocked` 
 This probe is the persistent regression path for the Windows sandbox work. A future isolation implementation is not considered successful until the same probe still reads the Workspace file while the outside reads are blocked under the original conditions.
 
 The probe does not expose any new MCP tool and does not grant ChatGPT arbitrary Node execution.
+
+## Windows sandbox baseline result
+
+The current child-process boundary is confirmed unsafe for filesystem isolation.
+
+Observed with `pnpm sandbox:probe` on Windows:
+
+```json
+{
+  "conclusions": {
+    "workspaceReadWorks": true,
+    "directOutsideReadBlocked": false,
+    "reparseOutsideReadBlocked": false
+  }
+}
+```
+
+The Node child successfully read the outside secret both by direct path and through a junction inside the Workspace. This exact probe remains the regression path for the sandbox work.
+
+## Windows sandbox API availability probe
+
+Current Microsoft documentation exposes an experimental Windows 11 process-sandbox API from `processmodel.dll`. It can combine AppContainer isolation with explicit filesystem grants and network policy, but it is experimental and cannot be assumed to exist on every supported machine.
+
+Before selecting that architecture, run:
+
+```powershell
+pnpm sandbox:api-probe
+```
+
+The probe does not create a sandbox or modify system state. It only:
+
+- reads the real Windows build through `RtlGetVersion`
+- attempts to load `processmodel.dll` from System32
+- checks for `Experimental_CreateProcessInSandbox`
+- checks for `Experimental_CreateProcessAsUserInSandbox`
+
+If `candidateUsable` is false, Junius must not depend on the experimental API on that machine. The stable manual AppContainer / access-control / Job Object route remains a separate candidate.
+
