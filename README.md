@@ -217,7 +217,7 @@ Invoke-RestMethod -Method Delete `
   http://127.0.0.1:8788/workspaces/weave
 ```
 
-The local admin API is the backend for the planned Junius WebUI. The WebUI will remain local-only and will not be exposed through the Secure MCP Tunnel.
+The local admin API is the backend for the Junius WebUI. The WebUI remains local-only and is not exposed through the Secure MCP Tunnel.
 
 ## Workspace state persistence
 
@@ -268,9 +268,10 @@ The local WebUI Dashboard v1 is implemented and locally validated.
 
 Machine Capability v1 is implemented and locally validated.
 
+Authorization UX v1 is implemented and awaiting local validation.
+
 After validation, the next work should focus on:
 
-- clearer authorization UX;
 - broader Local Agent capability coverage where it provides concrete value.
 
 OS-level sandboxing is not part of the current execution implementation.
@@ -484,8 +485,7 @@ It requires no separate frontend build step and adds no frontend framework/runti
 Dashboard v1 contains:
 
 - Overview: Workspace, process-capability, running-job, and browser status summaries.
-- Workspaces: register and remove Workspace roots.
-- Permissions: add/remove argument-scoped capability grant rules and revoke a Workspace capability grant.
+- Workspaces: register/remove Workspace roots and manage each Workspace's own capability authorization in its settings.
 - Capabilities: inspect known machine-level capabilities, launcher/policy metadata, Workspace usage, and persistently enable or disable built-in capabilities.
 - Jobs: inspect runtime jobs, read captured stdout/stderr, and cancel running jobs.
 - Browser: inspect local playwright-cli availability and its Junius state directory.
@@ -496,6 +496,50 @@ Existing admin routes remain compatible. `/api/state` is also available as an al
 
 Dashboard v1 is implemented and locally validated.
 
+
+## Workspace authorization UX
+
+Capability authorization is configured inside each Workspace's settings in the WebUI. There is no separate Permissions page.
+
+The underlying authorization model is unchanged:
+
+```text
+exact
+= the complete argument vector must match
+
+prefix
+= the configured argument prefix must match and trailing arguments are allowed
+```
+
+The WebUI presents those rules in user-facing language instead:
+
+```text
+exact  -> 仅允许这组参数
+prefix -> 允许此前缀参数
+```
+
+For readability, a rule is displayed in command-like form, for example:
+
+```text
+仅允许这组参数
+pnpm run check
+
+允许此前缀参数
+pnpm run …
+```
+
+This display does not change execution semantics. Junius still stores and evaluates an argument vector rather than a raw shell command.
+
+Each Workspace settings panel shows:
+
+- its current capability grants;
+- every exact/prefix argument rule;
+- whether the corresponding machine capability is currently executable, disabled, unavailable, or unknown;
+- controls to add a rule, remove one rule, or revoke the whole capability grant.
+
+Only currently active machine capabilities can be selected for a new grant. Existing grants remain visible if their machine capability later becomes disabled or unavailable.
+
+Authorization UX v1 is implemented and awaiting local WebUI validation.
 
 ## Machine Capability state
 
