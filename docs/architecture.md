@@ -232,3 +232,34 @@ The next architecture work should focus on:
 6. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current Junius execution model.
+
+## Verified execution status
+
+The current non-sandbox execution architecture has passed a real black-box MCP test with two Workspaces.
+
+The same ChatGPT request caused Junius to route:
+
+```text
+Junius -> pnpm run check
+Weave   -> pnpm run typecheck
+```
+
+The Junius command completed successfully. The Weave command reached TypeScript and returned a project compilation diagnostic with a nonzero exit code.
+
+Therefore the following current architecture path is verified in real use:
+
+```text
+project-name resolution
+-> list_workspaces
+-> explicit Workspace routing
+-> Workspace argument grant
+-> machine capability policy
+-> direct ProcessCapability
+-> Workspace cwd
+-> pnpm
+-> project tool
+-> stdout/stderr/exit-code propagation
+```
+
+A project command returning a nonzero exit code is treated as workload output, not evidence of a Junius routing/execution failure when the underlying tool actually ran and its diagnostics were returned.
+
