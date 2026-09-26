@@ -6,7 +6,7 @@ Junius is a Local Agent that lets ChatGPT use local-computer capabilities throug
 
 Its scope is broader than command execution: local files, processes, jobs, and browser automation are Local Agent capabilities. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
 
-Junius does not plan to provide desktop-UI automation. Its user-facing management interface is a local WebUI.
+Junius's user-facing management interface is a local WebUI rather than a desktop Dashboard. This Dashboard choice is separate from any future decision about desktop-automation capabilities.
 
 The current implementation does not provide an OS security sandbox.
 
@@ -267,7 +267,7 @@ The next work should focus on:
 - local WebUI for Workspace, permission, capability, job, and browser-state management;
 - persistent machine capability configuration;
 - clearer authorization UX;
-- broader non-desktop Local Agent capability coverage where it provides concrete value.
+- broader Local Agent capability coverage where it provides concrete value.
 
 OS-level sandboxing is not part of the current execution implementation.
 
