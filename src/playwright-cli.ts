@@ -493,6 +493,8 @@ export class PlaywrightCliService {
       );
     }
 
+    const launcher = this.#launcher;
+
     await mkdir(this.#statePath, { recursive: true });
 
     const startedAt = performance.now();
@@ -506,9 +508,9 @@ export class PlaywrightCliService {
       let outputLimit = false;
 
       const child = spawn(
-        this.#launcher.executable,
+        launcher.executable,
         [
-          ...this.#launcher.fixedArgs,
+          ...launcher.fixedArgs,
           ...commandArgs(session, command, args),
         ],
         {
