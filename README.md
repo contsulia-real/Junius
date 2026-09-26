@@ -47,6 +47,11 @@ ls
 read
 write
 rg
+start_job
+get_job
+wait_job
+read_job_output
+cancel_job
 run_command(workspace, key, args)
 ```
 
@@ -315,3 +320,28 @@ Verified behavior:
 
 This validates the intended Local Agent interaction model for the first file/process capability set.
 
+
+
+## Job Manager
+
+Long-running local processes use the Job Manager instead of blocking `run_command`.
+
+Stable MCP tools:
+
+```text
+start_job
+get_job
+wait_job
+read_job_output
+cancel_job
+```
+
+`start_job` uses the same Workspace capability and argument authorization as `run_command`. Only process-backed capabilities can be started as jobs.
+
+A job keeps running in the Junius process until it exits or is cancelled. `get_job` returns current status, PID, exit information, and captured-output sizes. `wait_job` waits for up to 60 seconds per call. `read_job_output` reads stdout or stderr with an offset cursor.
+
+Captured stdout and stderr are bounded to 4 Mi characters per stream. The job itself continues running if capture is truncated.
+
+`cancel_job` performs best-effort termination. On Windows Junius invokes `taskkill.exe /T /F` directly with `shell: false` to terminate the target process tree. Other platforms currently terminate the direct child with SIGTERM and then SIGKILL if necessary.
+
+Job state is currently process-local. Restarting Junius clears the Job Manager registry; v1 does not attempt to reattach to processes from a previous Junius instance.
