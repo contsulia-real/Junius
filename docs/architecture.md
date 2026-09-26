@@ -103,6 +103,39 @@ type WorkspaceArgumentGrant =
 
 Workspace grants only narrow the machine capability. They can never expand the machine-level policy.
 
+## Workspace authorization UX
+
+Authorization belongs to the Workspace that owns the grant. The WebUI therefore does not expose a separate Permissions section.
+
+The user-facing structure is:
+
+```text
+Workspace
+-> settings
+-> capability grants
+-> argument rules
+```
+
+The persistent/runtime model remains `WorkspaceCapabilityGrant` with `exact` and `prefix` argument rules. The WebUI is only a presentation and editing layer over that existing model.
+
+User-facing labels map as follows:
+
+```text
+exact
+-> 仅允许这组参数
+
+prefix
+-> 允许此前缀参数
+```
+
+Rules may be displayed in command-like form for readability, but this does not create a shell-command permission model. The stored and evaluated value remains an argument vector.
+
+The Workspace settings panel also surfaces the corresponding machine-capability state. A persisted Workspace grant remains visible when the machine capability is disabled or unavailable, even though that grant cannot currently authorize execution.
+
+New grants can only target capabilities that are active in the live Capability Registry. Removing one rule preserves the remaining rules for that capability; removing the final rule revokes the capability grant.
+
+Authorization UX v1 is implemented and awaiting local WebUI validation.
+
 ## Capability Registry
 
 The Capability Registry is machine-level.
@@ -480,8 +513,7 @@ It has no separate frontend build/runtime dependency.
 The WebUI/admin surface currently provides:
 
 - Overview runtime summary;
-- Workspace registration/removal;
-- Workspace capability grant rule editing/revocation;
+- Workspace registration/removal and per-Workspace capability authorization settings;
 - machine capability status, launcher/policy inspection, Workspace usage, and persistent enable/disable controls;
 - Job Manager listing, stdout/stderr inspection, and cancellation;
 - browser adapter availability/state inspection.
@@ -492,7 +524,7 @@ The WebUI uses the same in-memory managers and persistent Workspace state as the
 
 It remains bound to the local machine and is not exposed through the Secure MCP Tunnel.
 
-Dashboard v1 is implemented and awaiting local UI validation.
+Dashboard v1 is implemented and locally validated.
 
 ## Secure MCP Tunnel
 
@@ -521,11 +553,12 @@ This changes the current security implementation only. It does not change Junius
 
 Machine Capability v1 is implemented and locally validated.
 
+Authorization UX v1 is implemented and awaiting local validation.
+
 After validation, the next architecture work should focus on:
 
-1. clearer authorization UX and review flows;
-2. broader Local Agent capability coverage where it provides concrete value;
-3. capability-specific adapters where generic process execution is insufficient.
+1. broader Local Agent capability coverage where it provides concrete value;
+2. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current execution implementation.
 
