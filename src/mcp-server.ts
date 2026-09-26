@@ -174,7 +174,7 @@ export function createMcpServer(
     {
       title: "Read Workspace Files",
       description:
-        "Read one or more UTF-8 text files from a registered Junius Workspace. Returns the complete-file SHA-256 as optional metadata for callers that want guarded writes.",
+        "Read one or more UTF-8 text files from a registered Junius Workspace.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
@@ -236,7 +236,7 @@ export function createMcpServer(
     {
       title: "Write Workspace Files",
       description:
-        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. A prior read is not required. expected_sha256 is optional and only enables stale-write protection when supplied. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
+        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. A prior read is not required. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
@@ -255,10 +255,6 @@ export function createMcpServer(
                   )
                   .min(1)
                   .max(128)
-                  .optional(),
-                expected_sha256: z
-                  .string()
-                  .regex(/^[a-f0-9]{64}$/u)
                   .optional(),
               })
               .superRefine((file, context) => {
@@ -302,9 +298,6 @@ export function createMcpServer(
                     replaceAll: edit.replace_all,
                   })),
                 }),
-            ...(request.expected_sha256 === undefined
-              ? {}
-              : { expectedSha256: request.expected_sha256 }),
           })),
         );
 
