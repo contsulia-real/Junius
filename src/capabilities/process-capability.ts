@@ -9,7 +9,9 @@ export interface ProcessCapabilityOptions {
   readonly key: string;
   readonly description: string;
   readonly executable: string;
-  readonly allowedArgVectors: readonly (readonly string[])[];
+  readonly allowedArgVectors?: readonly (readonly string[])[];
+  readonly argumentPolicy?: (args: readonly string[]) => boolean;
+  readonly fixedArgs?: readonly string[];
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
   readonly environment?: NodeJS.ProcessEnv;
@@ -34,6 +36,8 @@ export class ProcessCapability implements Capability {
 
   readonly #executable: string;
   readonly #allowedArgVectors: readonly (readonly string[])[];
+  readonly #argumentPolicy?: (args: readonly string[]) => boolean;
+  readonly #fixedArgs: readonly string[];
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
   readonly #environment: NodeJS.ProcessEnv;
@@ -42,7 +46,9 @@ export class ProcessCapability implements Capability {
     this.key = options.key;
     this.description = options.description;
     this.#executable = options.executable;
-    this.#allowedArgVectors = options.allowedArgVectors;
+    this.#allowedArgVectors = options.allowedArgVectors ?? [];
+    this.#argumentPolicy = options.argumentPolicy;
+    this.#fixedArgs = options.fixedArgs ?? [];
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#maxOutputBytes =
       options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
@@ -53,11 +59,13 @@ export class ProcessCapability implements Capability {
     args: readonly string[],
     context: CapabilityExecutionContext,
   ): Promise<CapabilityExecution> {
-    if (
-      !this.#allowedArgVectors.some((allowed) =>
+    const argumentsAllowed =
+      this.#allowedArgVectors.some((allowed) =>
         matchesAllowedVector(args, allowed),
-      )
-    ) {
+      ) ||
+      this.#argumentPolicy?.(args) === true;
+
+    if (!argumentsAllowed) {
       return {
         ok: false,
         code: "arguments_not_allowed",
@@ -77,15 +85,23 @@ export class ProcessCapability implements Capability {
       const stderrChunks: Buffer[] = [];
       let capturedBytes = 0;
       let settled = false;
+      let timedOut = false;
       let timer: NodeJS.Timeout | undefined;
 
-      const child = spawn(this.#executable, [...args], {
-        cwd: context.cwd,
-        env: this.#environment,
-        shell: false,
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const child = spawn(
+        this.#executable,
+        [...this.#fixedArgs, ...args],
+        {
+          cwd: context.cwd,
+          env: {
+            ...process.env,
+            ...this.#environment,
+          },
+          shell: false,
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
 
       const durationMs = () => Math.round(performance.now() - startedAt);
 
@@ -157,7 +173,24 @@ export class ProcessCapability implements Capability {
       });
 
       child.once("close", (exitCode, signal) => {
+        if (settled) {
+          return;
+        }
+
         const captured = capturedText();
+
+        if (timedOut) {
+          finish({
+            ok: false,
+            code: "process_timeout",
+            message: `Process exceeded timeout of ${this.#timeoutMs} ms.`,
+            exitCode,
+            signal,
+            ...captured,
+            durationMs: durationMs(),
+          });
+          return;
+        }
 
         if (exitCode === 0) {
           finish({
@@ -181,19 +214,8 @@ export class ProcessCapability implements Capability {
       });
 
       timer = setTimeout(() => {
-        // This terminates only the directly spawned process. It is not a
-        // process-tree sandbox; Windows Job Object isolation is a later spike.
+        timedOut = true;
         child.kill();
-        const captured = capturedText();
-        finish({
-          ok: false,
-          code: "process_timeout",
-          message: `Process exceeded timeout of ${this.#timeoutMs} ms.`,
-          exitCode: null,
-          signal: null,
-          ...captured,
-          durationMs: durationMs(),
-        });
       }, this.#timeoutMs);
     });
   }
