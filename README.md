@@ -38,6 +38,7 @@ Optional environment variables:
 - `JUNIUS_WORKSPACE_ID`
 - `JUNIUS_WORKSPACE_ROOT`
 - `JUNIUS_WORKSPACE_STATE_PATH`
+- `JUNIUS_MACHINE_CAPABILITY_STATE_PATH`
 - `JUNIUS_PLAYWRIGHT_CLI_PATH`
 - `JUNIUS_BROWSER_STATE_PATH`
 
@@ -265,9 +266,10 @@ Junius remains a general Local Agent. The current file/process tools are the fir
 
 The local WebUI Dashboard v1 is implemented and locally validated.
 
-The next work should focus on:
+Machine Capability v1 is implemented and awaiting local validation.
 
-- persistent machine capability configuration;
+After validation, the next work should focus on:
+
 - clearer authorization UX;
 - broader Local Agent capability coverage where it provides concrete value.
 
@@ -484,7 +486,7 @@ Dashboard v1 contains:
 - Overview: Workspace, process-capability, running-job, and browser status summaries.
 - Workspaces: register and remove Workspace roots.
 - Permissions: add/remove argument-scoped capability grant rules and revoke a Workspace capability grant.
-- Capabilities: inspect currently registered machine-level process capabilities.
+- Capabilities: inspect known machine-level capabilities, launcher/policy metadata, Workspace usage, and persistently enable or disable built-in capabilities.
 - Jobs: inspect runtime jobs, read captured stdout/stderr, and cancel running jobs.
 - Browser: inspect local playwright-cli availability and its Junius state directory.
 
@@ -493,3 +495,44 @@ The WebUI uses the same Workspace manager, grant persistence, Job Manager, and P
 Existing admin routes remain compatible. `/api/state` is also available as an alias of `/state` for WebUI-style API access.
 
 Dashboard v1 is implemented and locally validated.
+
+
+## Machine Capability state
+
+Machine Capability v1 moves built-in process-capability enablement out of hard-coded startup registration and into persistent Junius state.
+
+Current managed capabilities:
+
+```text
+node
+pnpm
+```
+
+The WebUI Capabilities page shows, for each known capability:
+
+- enabled/disabled preference;
+- whether the adapter is currently available on the machine;
+- whether it is currently active in the Capability Registry;
+- resolved launcher executable/fixed arguments when available;
+- the fixed Junius machine policy;
+- Workspaces that currently retain grants for that capability.
+
+The WebUI can persistently enable or disable a known built-in capability. It does not accept arbitrary executable paths, arbitrary machine policies, or raw shell commands.
+
+Disabling a machine capability removes it from the live Capability Registry immediately, so new `run_command` and `start_job` invocations cannot use it. Existing Workspace grants are preserved and become effective again if the capability is later re-enabled. Already-running jobs are not terminated by disabling their capability.
+
+Default state path on Windows:
+
+```text
+%LOCALAPPDATA%\Junius\machine-capability-state.json
+```
+
+Override it with:
+
+```text
+JUNIUS_MACHINE_CAPABILITY_STATE_PATH
+```
+
+A missing state file initializes known built-in capabilities as enabled. Availability remains separate: for example, pnpm can be enabled in preferences while unavailable because no usable launcher was found.
+
+Machine Capability v1 is implemented and awaiting local WebUI/runtime validation.
