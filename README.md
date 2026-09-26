@@ -297,3 +297,21 @@ rg
 The built-in file tools reject absolute paths, `..` traversal, and existing paths that canonicalize outside the registered Workspace. This is a boundary implemented by the file tools themselves; it does not turn `run_command` into a sandbox.
 
 The `rg` tool requires a usable `rg` executable on the Junius process PATH.
+
+## Verified Workspace file tools
+
+The built-in Workspace file tools have passed real black-box ChatGPT validation.
+
+Verified behavior:
+
+- `ls` resolved the Junius project by name and listed its directory structure.
+- `read` read `package.json` and returned the project's scripts.
+- `rg` located all references to `WorkspaceFilesService` with file/position information.
+- `write` created a new root-level text file without requiring a prior read, SHA, revision, or version token.
+- `write` then performed an exact-text edit that changed only the requested line.
+- The same natural-language workflow did not require the user to provide a Workspace ID, capability key, raw tool call, or filesystem path outside the project context.
+- A request to read the parent directory of the registered Workspace was rejected by the built-in file-tool path boundary.
+- Multi-Workspace command routing continued to work for Junius and Weave.
+
+This validates the intended Local Agent interaction model for the first file/process capability set.
+
