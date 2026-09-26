@@ -1,6 +1,6 @@
 import { createServer as createHttpServer } from "node:http";
 import { handleAdminRequest } from "./admin-server.js";
-import { createDefaultCapabilityRegistry } from "./capabilities/default-registry.js";
+import { CapabilityRegistry } from "./capabilities/registry.js";
 import { loadRuntimeConfig } from "./config.js";
 import {
   sendJson,
@@ -10,6 +10,8 @@ import {
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
 import { JobManager } from "./job-manager.js";
+import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
+import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
@@ -17,7 +19,14 @@ import { WorkspaceProfile } from "./workspace-profile.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
 
 const config = await loadRuntimeConfig();
-const registry = createDefaultCapabilityRegistry();
+const registry = new CapabilityRegistry();
+const machineCapabilityStateStore = new MachineCapabilityStateStore(
+  config.machineCapabilityStatePath,
+);
+const machineCapabilityManager = await MachineCapabilityManager.create(
+  registry,
+  machineCapabilityStateStore,
+);
 const workspaceStateStore = new WorkspaceStateStore(
   config.workspaceStatePath,
 );
@@ -102,6 +111,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     req,
     res,
     registry,
+    machineCapabilityManager,
     workspaceManager,
     workspaceStateStore,
     jobManager,
@@ -127,6 +137,9 @@ adminHttpServer.listen(config.adminPort, config.adminHost, () => {
   console.error(`Junius WebUI: ${adminOrigin}/`);
   console.error(
     `Junius Workspace state: ${config.workspaceStatePath}`,
+  );
+  console.error(
+    `Junius machine capability state: ${config.machineCapabilityStatePath}`,
   );
   console.error(
     `Junius Workspaces loaded: ${workspaceManager.list().length}`,
