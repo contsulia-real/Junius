@@ -345,4 +345,30 @@ Captured stdout and stderr are bounded to 4 Mi characters per stream. The job it
 
 Job state is currently process-local. Restarting Junius clears the Job Manager registry; v1 does not attempt to reattach to processes from a previous Junius instance.
 
-Job Manager v1 is implemented and awaiting black-box MCP validation.
+Job Manager v1 is implemented and black-box verified through ChatGPT.
+
+
+## Verified Job Manager
+
+Job Manager v1 has passed real black-box ChatGPT validation.
+
+Observed workflow:
+
+```text
+natural-language request
+-> start background Junius project check
+-> inspect job status
+-> read captured output
+-> wait for completion
+-> report final result
+```
+
+The verified job completed with status `succeeded` and exit code `0`. The background command executed the Junius full check:
+
+```text
+pnpm typecheck && pnpm test
+```
+
+The observed test run completed with 32 tests passed, 0 failed, 0 cancelled, and 0 skipped.
+
+The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
