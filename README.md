@@ -2,8 +2,6 @@
 
 Junius is a local agent exposed to ChatGPT through MCP.
 
-The project is currently validating the fixed MCP tool-surface design that follows from the completed dynamic-tool spike.
-
 ## Requirements
 
 - Node.js 20+
@@ -13,183 +11,182 @@ The project is currently validating the fixed MCP tool-surface design that follo
 ## Run
 
 ```powershell
-pnpm typecheck
+pnpm check
 pnpm dev
 ```
 
 Default local endpoints:
 
 - MCP: `http://127.0.0.1:8787/mcp`
-- Local-only admin/spike control: `http://127.0.0.1:8788`
+- Local-only admin surface: `http://127.0.0.1:8788`
 
-The Secure MCP Tunnel must route only the MCP endpoint on port `8787`. The admin surface on `8788` remains local.
-
-Ports can be overridden with:
+Optional environment variables:
 
 - `JUNIUS_MCP_PORT`
 - `JUNIUS_ADMIN_PORT`
+- `JUNIUS_WORKSPACE_ROOT`
 
-## Secure MCP Tunnel
+If `JUNIUS_WORKSPACE_ROOT` is not set, the current process working directory is used as the spike Workspace root.
 
-The expected path is:
+The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
+
+## Frozen result: ChatGPT tool catalog
+
+The dynamic-MCP-tools spike failed for the current personal MCP app flow.
+
+Observed behavior:
+
+1. The app was created while Junius exposed one tool.
+2. Changing the real MCP tool list did not update the same ChatGPT conversation.
+3. A new conversation still used the old tool snapshot.
+4. Disconnecting and reconnecting the app still used the old snapshot.
+5. The current personal MCP app UI exposed no Refresh action.
+6. Only deleting and recreating the MCP app caused ChatGPT to scan the changed tool catalog.
+
+Therefore Junius does not use runtime MCP tool-list mutation for Workspace capability switching.
+
+## Frozen result: fixed `run_command`
+
+The second spike passed.
+
+ChatGPT sees one stable MCP tool:
+
+```text
+run_command(key, args)
+```
+
+Workspace authorization changes behind that fixed schema took effect immediately in the same ChatGPT conversation.
+
+The architecture baseline is:
 
 ```text
 ChatGPT
-  -> OpenAI Secure MCP Tunnel
-  -> tunnel-client
-  -> http://127.0.0.1:8787/mcp
+  -> fixed run_command(key, args)
+  -> Machine Capability Registry
+  -> Workspace Profile authorization
+  -> per-capability policy
+  -> execution adapter
 ```
 
-Junius does not use Harpoon in these spikes. Runtime Junius MCP traffic belongs on the `main` channel.
+A Workspace can be authorized to use registered capability keys, but it cannot provide an executable path or create arbitrary shell access.
 
-For these architecture spikes, the MCP tools use no authentication. Final authentication is not frozen yet.
+## Current implementation stage
 
-## Completed spike: dynamic MCP tools
+The previous synthetic `tool_a/tool_b` adapters have been removed from the runtime.
 
-The first spike tested whether Junius could change its real MCP tool list at runtime and have ChatGPT update automatically.
+The code is now split into:
 
-Observed behavior in the current personal MCP app flow:
+- `CapabilityRegistry`: machine-level registered capabilities.
+- `WorkspaceProfile`: the active Workspace root and allowed capability keys.
+- `RunCommandService`: resolves a key, enforces Workspace authorization, then invokes the adapter.
+- `ProcessCapability`: controlled child-process adapter using `spawn(executable, args, { shell: false })`.
+- MCP server: exposes the fixed `run_command` tool.
+- Local admin server: temporarily stands in for the future Dashboard.
 
-1. The app was created while Junius exposed only `tool_a`.
-2. Junius switched its real MCP tool list to `tool_b`; the same ChatGPT conversation did not acquire `tool_b`.
-3. A new ChatGPT conversation still used the old `tool_a` snapshot.
-4. Disconnecting and reconnecting the existing app did not refresh the catalog.
-5. The current personal MCP app UI exposed no Refresh action.
-6. Only deleting the MCP app and recreating it caused ChatGPT to scan the server again and expose `tool_b`.
-
-Conclusion:
+For the first real process probe, the registry contains one built-in capability:
 
 ```text
-runtime MCP tools/list mutation
-!=
-runtime ChatGPT callable-tool mutation
+key: node
+executable: the Node.js executable running Junius
 ```
 
-Junius therefore does not use dynamic real MCP tools as the normal Workspace capability-switching mechanism.
-
-## Current spike: fixed `run_command`
-
-The MCP tool catalog is now fixed. ChatGPT sees one stable tool:
+Its current spike policy permits only these argument vectors:
 
 ```text
-run_command
+["--version"]
+["-p", "process.platform"]
 ```
 
-Its input is:
+This is intentionally narrow. It proves real process execution and per-key argument policy without turning Node into an arbitrary script runner.
 
-```json
-{
-  "key": "tool_a",
-  "args": []
-}
-```
+The process adapter also has a timeout and an output-size limit. It does **not** provide OS-level sandboxing or process-tree containment yet.
 
-The `key` is a Junius capability key. It is not an executable path and it is not a shell command string.
+## Local admin test
 
-The fixed MCP schema deliberately uses `key: string` rather than an enum. Capability keys and Workspace authorization are runtime Junius state; changing them must not require changing the MCP schema or recreating the ChatGPT app.
-
-For this spike, the machine Capability Registry contains two synthetic adapters:
-
-```text
-tool_a
-tool_b
-```
-
-The in-memory Workspace Profile initially allows only:
-
-```text
-tool_a
-```
-
-The local admin API on port `8788` stands in for the future Junius Dashboard. It changes the Workspace Profile without changing the MCP tool catalog.
-
-### Local state
-
-Check the current registry and Workspace Profile:
+Inspect the current state:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8788/state
 ```
 
-Expected initial state after starting Junius:
+The initial Workspace Profile allows `node`.
 
-```json
-{
-  "registeredKeys": ["tool_a", "tool_b"],
-  "allowedKeys": ["tool_a"]
-}
-```
-
-Make `tool_b` the only allowed capability:
+Deny it:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/only/tool_b
+Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/deny/node
 ```
 
-Switch back:
+Allow it again:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/only/tool_a
+Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/allow/node
 ```
 
-### ChatGPT test
+The admin API remains a temporary Dashboard stand-in; the final Dashboard persistence format is not frozen.
 
-The MCP tool surface has changed since the previous spike, so delete the old Junius MCP app and recreate it once. The recreated app should discover only the fixed `run_command` tool.
+## ChatGPT test for the real adapter
 
-Then, in one ChatGPT conversation:
+The MCP schema is still the same fixed `run_command`, so the existing Junius MCP app should not need to be deleted or recreated.
 
-1. Ask Junius to call `run_command` with `key = "tool_a"` and `args = []`. It should succeed.
-2. Ask Junius to call `run_command` with `key = "tool_b"` and `args = []`. It should return `capability_not_allowed: tool_b`.
-3. Without deleting, recreating, reconnecting, refreshing, or starting a new chat, run locally:
+In the same ChatGPT conversation:
 
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/only/tool_b
-```
-
-4. In the same ChatGPT conversation, call `run_command` with `key = "tool_b"`. It should now succeed.
-5. In the same conversation, call `run_command` with `key = "tool_a"`. It should now return `capability_not_allowed: tool_a`.
-
-A successful result proves this property:
+1. Execute:
 
 ```text
-fixed ChatGPT MCP tool catalog
-        +
-runtime Workspace Profile authorization by capability key
-        =
-Workspace permission changes without ChatGPT app recreation
+run_command
+key = node
+args = ["--version"]
 ```
 
-This spike intentionally uses synthetic capability adapters. It does not yet test executable spawning, argument policy, filesystem sandboxing, process-tree restrictions, or the final Dashboard persistence model.
+It should return the real Node.js version from a spawned process.
 
-## Fixed `run_command` spike result
-
-The fixed-tool spike passed in ChatGPT.
-
-Observed in one uninterrupted ChatGPT conversation:
-
-1. `run_command(key="tool_a", args=[])` succeeded while the Workspace Profile allowed `tool_a`.
-2. `run_command(key="tool_b", args=[])` returned `capability_not_allowed: tool_b`.
-3. The local Workspace Profile was changed so only `tool_b` was allowed, without changing the MCP schema or recreating/reconnecting the ChatGPT app.
-4. `run_command(key="tool_b", args=[])` then succeeded immediately.
-5. `run_command(key="tool_a", args=[])` then returned `capability_not_allowed: tool_a`.
-
-Conclusion:
+2. Try:
 
 ```text
-fixed ChatGPT MCP tool surface
-        +
-runtime Workspace Profile authorization by key
-        =
-dynamic Workspace capability changes without rebuilding the ChatGPT app
+run_command
+key = node
+args = ["-e", "console.log('not allowed')"]
 ```
 
-This validates the core direction for Junius:
+It should return:
 
-- ChatGPT sees a stable `run_command` MCP tool.
-- `run_command` accepts a Junius capability `key` plus argument vector.
-- The Dashboard/Workspace Profile decides which keys are currently allowed.
-- The Machine Capability Registry decides which keys exist and what adapter each key maps to.
-- The Policy Engine remains responsible for validating the concrete invocation before execution.
-- Workspace configuration does not control executable paths and does not create arbitrary shell access.
+```text
+arguments_not_allowed: node
+```
 
-The spike used synthetic adapters only. Real executable adapters, per-key argument policy, process isolation, filesystem sandboxing, persistence, and the final Dashboard UI remain separate implementation work.
+3. Deny `node` through the local admin endpoint, then invoke the allowed `--version` vector again. It should return:
+
+```text
+capability_not_allowed: node
+```
+
+4. Allow `node` again and invoke:
+
+```text
+run_command
+key = node
+args = ["-p", "process.platform"]
+```
+
+It should execute successfully.
+
+A successful result proves that a fixed ChatGPT MCP tool can use a newly changed runtime capability registry/profile without changing the MCP schema.
+
+## Security boundary still unverified
+
+This stage is **not** the Windows Sandbox spike.
+
+Current process execution has:
+
+- explicit executable chosen by the machine registry
+- argument policy
+- fixed Workspace cwd
+- cleaned environment
+- `shell: false`
+- timeout
+- output-size limit
+
+It does not yet prove that a spawned process cannot read outside the Workspace, create unrestricted child processes, or access the network.
+
+The next security spike still needs to investigate Windows restricted tokens, Job Objects, ACL boundaries, reparse-point escape handling, and possibly AppContainer or another isolation mechanism.
