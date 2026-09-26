@@ -2,14 +2,17 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { RunCommandService, type RunCommandResult } from "./run-command.js";
 
-const capabilityKeySchema = z
+const stableIdSchema = z
   .string()
   .min(1)
   .max(64)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 
 const runCommandInputSchema = z.object({
-  key: capabilityKeySchema.describe("Registered Junius capability key."),
+  workspace: stableIdSchema.describe(
+    "Registered Junius Workspace ID. This is an ID managed by Junius, not a filesystem path.",
+  ),
+  key: stableIdSchema.describe("Registered Junius capability key."),
   args: z
     .array(z.string().max(4_096))
     .max(128)
@@ -19,10 +22,11 @@ const runCommandInputSchema = z.object({
 
 function resultText(result: RunCommandResult): string {
   if (!result.ok) {
-    return `${result.code}: ${result.key}`;
+    return `${result.code}: ${result.workspace}:${result.key}`;
   }
 
   return JSON.stringify({
+    workspace: result.workspace,
     key: result.key,
     exitCode: result.execution.exitCode,
     stdout: result.execution.stdout,
@@ -35,7 +39,7 @@ export function createMcpServer(service: RunCommandService): McpServer {
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Agent",
-    version: "0.3.0",
+    version: "0.4.0",
   });
 
   server.registerTool(
@@ -43,7 +47,7 @@ export function createMcpServer(service: RunCommandService): McpServer {
     {
       title: "Run Junius Capability",
       description:
-        "Run one Junius capability by key. The key must be registered on this machine and allowed by the current Workspace Profile. Executable paths and shell command strings are not accepted.",
+        "Run one registered Junius capability in one explicitly selected Junius Workspace. The Workspace ID and capability key must already be registered and authorized. Filesystem paths and shell command strings are not accepted as capability selectors.",
       inputSchema: runCommandInputSchema,
       _meta: {
         securitySchemes: [{ type: "noauth" }],
@@ -55,8 +59,8 @@ export function createMcpServer(service: RunCommandService): McpServer {
         openWorldHint: false,
       },
     },
-    async ({ key, args }) => {
-      const result = await service.run(key, args);
+    async ({ workspace, key, args }) => {
+      const result = await service.run(workspace, key, args);
 
       return {
         isError: !result.ok,
