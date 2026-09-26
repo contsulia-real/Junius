@@ -31,9 +31,10 @@ Optional environment variables:
 
 - `JUNIUS_MCP_PORT`
 - `JUNIUS_ADMIN_PORT`
+- `JUNIUS_WORKSPACE_ID`
 - `JUNIUS_WORKSPACE_ROOT`
 
-If `JUNIUS_WORKSPACE_ROOT` is not set, the current process working directory is used as the Workspace root.
+The initial Workspace ID defaults to `default`. If `JUNIUS_WORKSPACE_ROOT` is not set, the current process working directory is used as that initial Workspace root. Additional Workspaces can be registered through the local admin surface without replacing or activating a global Workspace.
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
@@ -42,31 +43,33 @@ The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains lo
 The current ChatGPT personal-app flow snapshots the MCP tool catalog when the app is created. Runtime `tools/list_changed` and reconnecting did not make tool-list mutations visible reliably, so Junius uses one stable MCP tool:
 
 ```text
-run_command(key, args)
+run_command(workspace, key, args)
 ```
 
 The execution path is:
 
 ```text
 ChatGPT
-  -> run_command(key, args)
+  -> run_command(workspace, key, args)
+  -> WorkspaceManager lookup by stable Workspace ID
+  -> that Workspace's argument grant
   -> Machine Capability Registry
-  -> Workspace Profile argument grant
   -> machine capability argument policy
-  -> MxcProcessCapability
+  -> MxcProcessCapability(cwd = Workspace root)
   -> MXC ProcessContainer
   -> registered executable
 ```
 
-A Workspace authorizes both a registered capability key and the argument shapes it may use. The machine capability remains the upper bound, so an invocation must pass both the Workspace grant and the capability's own policy. A Workspace cannot provide arbitrary executable paths or raw shell command lines.
+Each invocation names a registered Workspace ID explicitly. Junius has no global "active Workspace", so multiple Workspaces can execute concurrently without changing shared routing state. Each Workspace authorizes both a capability key and the argument shapes it may use. The machine capability remains the upper bound, so an invocation must pass both the Workspace grant and the capability's own policy. A Workspace ID is not a filesystem path, and a Workspace cannot provide arbitrary executable paths or raw shell command lines.
 
 ## Current implementation
 
 The runtime contains:
 
 - `CapabilityRegistry`: machine-level registered capabilities.
-- `WorkspaceProfile`: active Workspace root plus per-capability argument grants.
-- `RunCommandService`: capability resolution plus Workspace argument authorization before capability execution.
+- `WorkspaceProfile`: one Workspace root plus that Workspace's per-capability argument grants.
+- `WorkspaceManager`: maps stable Workspace IDs to independent profiles; there is no global active Workspace.
+- `RunCommandService`: resolves the Workspace ID on every invocation, then performs Workspace argument authorization and capability execution.
 - `MxcProcessCapability`: MXC-backed process execution.
 - `ProcessCapability`: plain-process baseline used only by unit-level code/tests.
 - MCP server exposing the fixed `run_command` tool.
@@ -93,17 +96,30 @@ The model supplies only `key + args`. Junius owns the executable path and constr
 
 ## Local admin
 
-Inspect the current state:
+Inspect all registered Workspaces and machine capabilities:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8788/state
 ```
 
-The response contains `workspaceGrants`, not a flat list of allowed keys.
+The response contains a `workspaces` array. Every entry has its own stable `id`, canonical `rootPath`, and independent capability grants.
 
-A grant has explicit argument rules. `exact` matches one complete argument vector; `prefix` allows additional trailing arguments, but the machine capability policy must still accept the final invocation.
+Register another Workspace without changing any other Workspace:
 
-For example, authorize only `pnpm --version`, `pnpm run check`, and arguments passed through to that script:
+```powershell
+$body = @{
+  id = "weave"
+  rootPath = "C:\\Users\\Why23\\RustroverProjects\\Weave"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body `
+  http://127.0.0.1:8788/workspaces
+```
+
+Grant only selected pnpm argument shapes to that Workspace:
 
 ```powershell
 $body = @{
@@ -117,31 +133,32 @@ Invoke-RestMethod `
   -Method Post `
   -ContentType "application/json" `
   -Body $body `
-  http://127.0.0.1:8788/workspace/grant/pnpm
+  http://127.0.0.1:8788/workspaces/weave/grants/pnpm
 ```
 
-That Workspace may then call:
+The fixed MCP tool then addresses that Workspace explicitly:
 
 ```text
 run_command
+workspace = weave
 key = pnpm
 args = ["run", "check"]
 ```
 
-or:
+Another Workspace can use the same `pnpm` capability concurrently with a different grant set and a different MXC working directory.
 
-```text
-run_command
-key = pnpm
-args = ["run", "check", "--", "--fix"]
-```
-
-but `["run", "build"]` is rejected by the Workspace Profile even though the machine-level pnpm capability knows how to run package scripts.
-
-Revoke the entire pnpm grant with:
+Revoke one capability grant:
 
 ```powershell
-Invoke-RestMethod -Method Delete http://127.0.0.1:8788/workspace/grant/pnpm
+Invoke-RestMethod -Method Delete `
+  http://127.0.0.1:8788/workspaces/weave/grants/pnpm
+```
+
+Remove a registered Workspace:
+
+```powershell
+Invoke-RestMethod -Method Delete `
+  http://127.0.0.1:8788/workspaces/weave
 ```
 
 The admin API is temporary; the final Dashboard persistence format is not frozen.
@@ -207,4 +224,4 @@ The real fixed `run_command` path has passed through MXC on Windows:
 }
 ```
 
-The first real development-tool capability, `pnpm`, is implemented on top of this execution path. Workspace authorization is argument-scoped rather than a per-key boolean, so different Workspaces can expose different subsets of the same machine capability. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
+The first real development-tool capability, `pnpm`, is implemented on top of this execution path. Workspace authorization is argument-scoped rather than a per-key boolean, and Workspace selection is explicit per invocation, so multiple Workspaces can run concurrently with different subsets of the same machine capability. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
