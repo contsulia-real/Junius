@@ -468,3 +468,22 @@ outside data -> no grant
 A staged Node executable launched successfully, could read the real Workspace through the portal, and remained unable to read the outside secret.
 
 This validates a feasible separation between the user's project tree and the sandbox's tool/runtime tree. It does not freeze the production staging strategy: caching, multi-file tool installations, DLL/runtime dependencies, version invalidation, storage cost, and update behavior still require design and testing.
+
+## MXC detached-descendant lifecycle result
+
+The detached-descendant lifecycle regression passed on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-lifecycle-probe`:
+
+```json
+{
+  "conclusions": {
+    "detachedDescendantSpawnWorks": true,
+    "detachedDescendantKilledOnSandboxExit": true
+  }
+}
+```
+
+The sandboxed parent successfully spawned a descendant using `detached: true` and `unref()`. The descendant wrote its startup marker before the parent exited, proving it really started. After the MXC sandbox owner completed, the descendant never reached its delayed survival marker.
+
+Together with the descendant filesystem probe, this demonstrates for the tested BaseContainer path that descendants can run, remain inside the filesystem boundary, and are terminated with the sandbox lifecycle rather than escaping through Node's detached-process mode.
