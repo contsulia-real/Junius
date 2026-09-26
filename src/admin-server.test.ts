@@ -90,7 +90,7 @@ test("admin server serves the local WebUI and runtime state", async () => {
       page.headers.get("content-type") ?? "",
       /^text\/html/u,
     );
-    assert.match(await page.text(), /Junius Dashboard/u);
+    assert.match(await page.text(), /Junius 控制台/u);
 
     const state = await fetch(f.origin + "/state");
     assert.equal(state.status, 200);
@@ -212,6 +212,79 @@ test("admin WebUI backend can persistently disable a machine capability", async 
         { key: "pnpm", enabled: true, active: false },
       ],
     );
+  } finally {
+    await f.dispose();
+  }
+});
+
+
+test("disabling a machine capability preserves Workspace grants", async () => {
+  const f = await fixture();
+  try {
+    const workspaceRoot = join(f.root, "workspace-grant");
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(workspaceRoot, { recursive: true }),
+    );
+
+    assert.equal(
+      (
+        await fetch(f.origin + "/workspaces", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: "demo",
+            rootPath: workspaceRoot,
+          }),
+        })
+      ).status,
+      201,
+    );
+
+    assert.equal(
+      (
+        await fetch(f.origin + "/workspaces/demo/grants/node", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            arguments: [
+              { mode: "exact", args: ["--version"] },
+            ],
+          }),
+        })
+      ).status,
+      200,
+    );
+
+    assert.equal(
+      (
+        await fetch(f.origin + "/capabilities/node", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled: false }),
+        })
+      ).status,
+      200,
+    );
+
+    const state = await fetch(f.origin + "/state");
+    const body = await state.json() as {
+      workspaces: {
+        id: string;
+        grants: {
+          key: string;
+          arguments: { mode: string; args: string[] }[];
+        }[];
+      }[];
+    };
+
+    assert.deepEqual(body.workspaces[0]?.grants, [
+      {
+        key: "node",
+        arguments: [
+          { mode: "exact", args: ["--version"] },
+        ],
+      },
+    ]);
   } finally {
     await f.dispose();
   }
