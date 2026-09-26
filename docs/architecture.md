@@ -140,6 +140,52 @@ Machine policy:
 
 The pnpm capability does not expose `install`, `add`, `exec`, or `dlx`.
 
+## Machine Capability state
+
+Built-in process capabilities have persistent machine-level enablement state.
+
+Current managed keys:
+
+```text
+node
+pnpm
+```
+
+For each known key, Junius distinguishes:
+
+```text
+enabled
+= persisted user preference
+
+available
+= adapter/launcher can currently be resolved
+
+active
+= capability is currently present in the live Capability Registry
+```
+
+This distinction allows a capability such as pnpm to remain enabled in configuration even when its launcher is temporarily unavailable.
+
+The persisted machine state is stored separately from Workspace grants.
+
+Windows default:
+
+```text
+%LOCALAPPDATA%\Junius\machine-capability-state.json
+```
+
+Override:
+
+```text
+JUNIUS_MACHINE_CAPABILITY_STATE_PATH
+```
+
+Machine Capability v1 only controls known built-in adapters. It does not allow the WebUI to register arbitrary executable paths, arbitrary argument policies, or raw shell commands.
+
+Disabling an active capability unregisters it immediately. Workspace grants referencing that key are intentionally preserved rather than rewritten. Therefore the effective authorization becomes unavailable while disabled and returns if the capability is re-enabled.
+
+Disabling a capability prevents new synchronous commands and jobs from starting through that capability. It does not terminate jobs that were already started.
+
 ## Execution path
 
 ```text
@@ -436,7 +482,7 @@ The WebUI/admin surface currently provides:
 - Overview runtime summary;
 - Workspace registration/removal;
 - Workspace capability grant rule editing/revocation;
-- machine process-capability inspection;
+- machine capability status, launcher/policy inspection, Workspace usage, and persistent enable/disable controls;
 - Job Manager listing, stdout/stderr inspection, and cancellation;
 - browser adapter availability/state inspection.
 
@@ -473,12 +519,13 @@ This changes the current security implementation only. It does not change Junius
 
 ## Current priorities
 
-The next architecture work should focus on:
+Machine Capability v1 is implemented and awaiting local validation.
 
-1. persistent machine-level capability configuration;
-2. clearer authorization UX and review flows;
-3. broader Local Agent capability coverage where it provides concrete value;
-4. capability-specific adapters where generic process execution is insufficient.
+After validation, the next architecture work should focus on:
+
+1. clearer authorization UX and review flows;
+2. broader Local Agent capability coverage where it provides concrete value;
+3. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current execution implementation.
 
