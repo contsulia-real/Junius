@@ -20,18 +20,40 @@ const runCommandInputSchema = z.object({
     .describe("Argument vector passed to the registered capability adapter."),
 });
 
-function resultText(result: RunCommandResult): string {
+export function formatRunCommandResult(
+  result: RunCommandResult,
+): string {
   if (!result.ok) {
-    return `${result.code}: ${result.workspace}:${result.key}`;
+    return JSON.stringify({
+      ok: false,
+      workspace: result.workspace,
+      key: result.key,
+      code: result.code,
+      message: result.message,
+      ...(result.execution === undefined
+        ? {}
+        : {
+            execution: {
+              exitCode: result.execution.exitCode,
+              signal: result.execution.signal,
+              stdout: result.execution.stdout,
+              stderr: result.execution.stderr,
+              durationMs: result.execution.durationMs,
+            },
+          }),
+    });
   }
 
   return JSON.stringify({
+    ok: true,
     workspace: result.workspace,
     key: result.key,
-    exitCode: result.execution.exitCode,
-    stdout: result.execution.stdout,
-    stderr: result.execution.stderr,
-    durationMs: result.execution.durationMs,
+    execution: {
+      exitCode: result.execution.exitCode,
+      stdout: result.execution.stdout,
+      stderr: result.execution.stderr,
+      durationMs: result.execution.durationMs,
+    },
   });
 }
 
@@ -96,7 +118,7 @@ export function createMcpServer(service: RunCommandService): McpServer {
         content: [
           {
             type: "text" as const,
-            text: resultText(result),
+            text: formatRunCommandResult(result),
           },
         ],
       };
