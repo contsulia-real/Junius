@@ -1,5 +1,7 @@
 # Junius
 
+Architecture: [docs/architecture.md](docs/architecture.md)
+
 Junius is a Local Agent that lets ChatGPT call explicitly authorized local-computer capabilities through MCP.
 
 Junius is an **authorization-controlled local executor**, not an OS security sandbox.
