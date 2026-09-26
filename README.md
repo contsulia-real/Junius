@@ -4,7 +4,9 @@ Architecture: [docs/architecture.md](docs/architecture.md)
 
 Junius is a Local Agent that lets ChatGPT use local-computer capabilities through MCP under user-controlled authorization.
 
-Its scope is broader than command execution: local files and processes are implemented first, with browser and other local-computer capabilities fitting the same Local Agent architecture. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
+Its scope is broader than command execution: local files, processes, jobs, and browser automation are Local Agent capabilities. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
+
+Junius does not plan to provide desktop-UI automation. Its user-facing management interface is a local WebUI.
 
 The current implementation does not provide an OS security sandbox.
 
@@ -213,7 +215,7 @@ Invoke-RestMethod -Method Delete `
   http://127.0.0.1:8788/workspaces/weave
 ```
 
-The admin API is temporary; the final Dashboard persistence format is not frozen.
+The local admin API is the backend for the planned Junius WebUI. The WebUI will remain local-only and will not be exposed through the Secure MCP Tunnel.
 
 ## Workspace state persistence
 
@@ -262,12 +264,10 @@ Junius remains a general Local Agent. The current file/process tools are the fir
 
 The next work should focus on:
 
-- black-box validation of the browser capability;
-- broader local capability coverage;
-- Dashboard-based Workspace/capability management;
+- local WebUI for Workspace, permission, capability, job, and browser-state management;
 - persistent machine capability configuration;
 - clearer authorization UX;
-- later desktop/UI capabilities where appropriate.
+- broader non-desktop Local Agent capability coverage where it provides concrete value.
 
 OS-level sandboxing is not part of the current execution implementation.
 
