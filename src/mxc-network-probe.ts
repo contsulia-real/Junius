@@ -208,8 +208,13 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
         readonlyPaths: [],
       },
       network: {
-        defaultPolicy: "block",
-        allowLocalNetwork: false,
+        egress: {
+          default: "deny",
+        },
+        ingress: {
+          default: "deny",
+          hostLoopback: "deny",
+        },
       },
       ui: {
         allowWindows: true,
