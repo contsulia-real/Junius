@@ -501,3 +501,35 @@ network.ingress.hostLoopback = "deny"
 ```
 
 Do not mix these schema-0.8 directional fields with legacy fields such as `allowOutbound` or `allowLocalNetwork`.
+
+## MXC loopback network-isolation result
+
+The loopback network-isolation regression passed on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-network-probe`:
+
+```json
+{
+  "conclusions": {
+    "hostLoopbackReachable": true,
+    "sandboxLoopbackBlocked": true
+  }
+}
+```
+
+The host control connected successfully to the same live `127.0.0.1` listener and received `host-ok`. The sandboxed process then attempted the identical endpoint under schema-0.8 directional default-deny policy and failed with `ETIMEDOUT`.
+
+This proves the tested host-loopback path is blocked by the sandbox policy rather than by an unavailable listener.
+
+### MXC 0.8 explicit environment semantics
+
+On the Windows ProcessContainer path, an explicitly supplied `process.env` replaces the child environment wholesale rather than merging with the host environment.
+
+MXC's Windows launch diagnostics require at least:
+
+```text
+SYSTEMROOT
+LOCALAPPDATA
+```
+
+for a caller-supplied environment block. Junius should therefore build an explicit allowlisted environment for sandboxed commands instead of inheriting the host's complete environment, which may contain credentials, tokens, proxy settings, or unrelated developer-machine state.
