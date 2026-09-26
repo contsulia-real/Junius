@@ -1,6 +1,6 @@
 import type { CapabilityExecution } from "./capabilities/types.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
-import { WorkspaceProfile } from "./workspace-profile.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 export type RunCommandResult =
   | {
@@ -23,7 +23,7 @@ export type RunCommandResult =
 export class RunCommandService {
   constructor(
     private readonly registry: CapabilityRegistry,
-    private readonly workspaceProfile: WorkspaceProfile,
+    private readonly workspaceManager: WorkspaceManager,
   ) {}
 
   async run(
@@ -41,7 +41,7 @@ export class RunCommandService {
       };
     }
 
-    if (!this.workspaceProfile.hasCapabilityGrant(key)) {
+    if (!this.workspaceManager.activeProfile().hasCapabilityGrant(key)) {
       return {
         ok: false,
         key,
@@ -50,7 +50,7 @@ export class RunCommandService {
       };
     }
 
-    if (!this.workspaceProfile.isInvocationAllowed(key, args)) {
+    if (!this.workspaceManager.activeProfile().isInvocationAllowed(key, args)) {
       return {
         ok: false,
         key,
@@ -60,7 +60,7 @@ export class RunCommandService {
     }
 
     const execution = await capability.execute(args, {
-      cwd: this.workspaceProfile.rootPath,
+      cwd: this.workspaceManager.activeProfile().rootPath,
     });
 
     if (!execution.ok) {
