@@ -79,7 +79,8 @@ The code is now split into:
 - `CapabilityRegistry`: machine-level registered capabilities.
 - `WorkspaceProfile`: the active Workspace root and allowed capability keys.
 - `RunCommandService`: resolves a key, enforces Workspace authorization, then invokes the adapter.
-- `ProcessCapability`: controlled child-process adapter using `spawn(executable, args, { shell: false })`.
+- `MxcProcessCapability`: production-direction process adapter that routes registered commands through MXC ProcessContainer with explicit filesystem, network, environment, timeout, and UI policy.
+- `ProcessCapability`: retained only as the unsandboxed baseline/regression adapter used by `sandbox:probe`.
 - MCP server: exposes the fixed `run_command` tool.
 - Local admin server: temporarily stands in for the future Dashboard.
 
@@ -99,7 +100,7 @@ Its current spike policy permits only these argument vectors:
 
 This is intentionally narrow. It proves real process execution and per-key argument policy without turning Node into an arbitrary script runner.
 
-The process adapter also has a timeout and an output-size limit. It does **not** provide OS-level sandboxing or process-tree containment yet.
+The default `node` capability is now wired through `MxcProcessCapability`. It keeps the exact argument allowlist, timeout, and output-size limit while executing through MXC ProcessContainer. This runtime integration still requires local verification with `sandbox:mxc-run-command-probe` before it is treated as a passed implementation result.
 
 ## Local admin test
 
@@ -173,23 +174,13 @@ It should execute successfully.
 
 A successful result proves that a fixed ChatGPT MCP tool can use a newly changed runtime capability registry/profile without changing the MCP schema.
 
-## Security boundary still unverified
+## Runtime sandbox integration status
 
-This stage is **not** the Windows Sandbox spike.
+The standalone MXC regressions have now verified, on the tested Windows BaseContainer host, direct filesystem confinement, junction/reparse confinement, descendant inheritance, detached-descendant cleanup, host-loopback blocking, explicit environment isolation, and Workspace write confinement.
 
-Current process execution has:
+The default `node` capability has now been switched from the plain baseline adapter to `MxcProcessCapability`. The remaining immediate task is to verify that the real fixed `run_command` path preserves the existing capability/profile behavior while actually executing through MXC.
 
-- explicit executable chosen by the machine registry
-- argument policy
-- fixed Workspace cwd
-- cleaned environment
-- `shell: false`
-- timeout
-- output-size limit
-
-It does not yet prove that a spawned process cannot read outside the Workspace, create unrestricted child processes, or access the network.
-
-The next security spike still needs to investigate Windows restricted tokens, Job Objects, ACL boundaries, reparse-point escape handling, and possibly AppContainer or another isolation mechanism.
+The accepted NTFS hard-link limitation documented below remains a residual risk and is not treated as a release blocker.
 
 ## Current security spike: Windows child-process isolation baseline
 
@@ -576,7 +567,7 @@ Host-side verification confirmed that the Workspace write actually landed, the p
 
 Together with the earlier read regressions, this validates the tested direct and junction/reparse read/write confinement cases.
 
-## SECURITY BLOCKER: hard-link alias escape
+## Known MXC limitation: NTFS hard-link alias escape
 
 The NTFS hard-link regression **failed** on Windows BaseContainer.
 
@@ -593,8 +584,49 @@ Observed with `pnpm sandbox:mxc-hardlink-probe`:
 
 A file inside the granted Workspace was created as a hard link to a file outside the Workspace before sandbox launch. Inside the sandbox, reading the Workspace path returned the outside file's contents and writing the Workspace path modified the outside file. Host-side verification observed the outside file changed from `outside-original` to `hardlink-overwritten`.
 
-Therefore the current direct-Workspace `readwritePaths: [workspaceRoot]` model is **not a complete filesystem security boundary**. Direct path traversal and junction/reparse escapes passed their regressions, but an in-tree hard-link alias can still grant access to the same underlying NTFS file object outside the intended tree.
+Therefore the direct-Workspace `readwritePaths: [workspaceRoot]` model is **not an absolute object-level filesystem boundary**. Direct path traversal and junction/reparse escapes passed their regressions, but an in-tree hard-link alias can still grant access to the same underlying NTFS file object outside the intended tree.
 
-MXC contains object-identity normalization for policy paths, but that does not imply a recursive scan of every unlisted file alias inside an authorized subtree. Junius must not mark the production sandbox complete until this hard-link alias problem is addressed at the architecture level.
+This is an **accepted residual risk** for Junius rather than a blocker. Junius does not recursively scan or reject Workspace hard links and does not introduce Workspace staging solely to compensate for this MXC limitation. The limitation must remain visible in security documentation and user-facing authorization guidance.
 
-A conservative "reject every file with multiple hard links" preflight is not assumed viable for developer workspaces because package managers and build tooling may legitimately use hard links. The production mitigation is intentionally left unfrozen pending an architecture decision.
+MXC contains object-identity normalization for policy paths, but that does not imply a recursive scan of every unlisted file alias inside an authorized subtree. The `sandbox:mxc-hardlink-probe` remains as a regression test so a future MXC release that closes the behavior can be detected.
+
+
+## MXC run_command integration
+
+The default machine registry now constructs the built-in `node` capability with `MxcProcessCapability` rather than the plain `ProcessCapability`.
+
+The runtime path is:
+
+```text
+ChatGPT
+  -> run_command(key, args)
+  -> Machine Capability Registry
+  -> Workspace Profile authorization
+  -> exact argument-vector policy
+  -> MxcProcessCapability
+  -> MXC ProcessContainer
+  -> registered executable
+```
+
+The adapter constructs the Windows command line itself from the registry-owned executable and already-validated argument vector; the model does not provide a raw command line. It supplies a minimal explicit environment, grants the Workspace read/write, grants the registered executable directory read/execute, denies network by default, disables clipboard/input injection, and enables the Win32 UI subsystem required by the tested Node runtime.
+
+Run:
+
+```powershell
+pnpm check
+pnpm sandbox:mxc-run-command-probe
+```
+
+The desired result is:
+
+```json
+{
+  "conclusions": {
+    "runCommandVersionWorks": true,
+    "runCommandPlatformWorks": true,
+    "argumentPolicyStillEnforced": true
+  }
+}
+```
+
+This integration is not recorded as passed until that probe succeeds on the target Windows host.
