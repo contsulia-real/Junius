@@ -152,8 +152,7 @@ function targetFromWindowsCmdShim(
   try {
     const text = readFileSync(shimPath, "utf8");
     const match = text.match(
-      /["']?([^"'
-]*playwright-cli\.js)["']?/iu,
+      /["']?([^"'\\r\\n]*playwright-cli\\.js)["']?/iu,
     );
 
     if (match?.[1] === undefined) {
@@ -261,6 +260,7 @@ function isOpenOption(value: string): boolean {
   return (
     value === "--headed" ||
     value === "--mobile" ||
+    value === "--persistent" ||
     /^--browser=(chromium|chrome|msedge|firefox|webkit)$/u.test(value) ||
     /^--device=.{1,128}$/u.test(value) ||
     /^--idle-timeout=\d+$/u.test(value)
@@ -290,7 +290,7 @@ function validateArgs(
 
     case "snapshot":
       return (
-        args.length <= 2 &&
+        args.length <= 3 &&
         args.every(
           (arg) =>
             isRef(arg) ||
