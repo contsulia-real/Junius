@@ -12,7 +12,8 @@
     "sandbox:probe": "tsx src/sandbox-probe.ts",
     "sandbox:api-probe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/probe-windows-sandbox-api.ps1",
     "sandbox:mxc-probe": "tsx src/mxc-sandbox-probe.ts",
-    "sandbox:mxc-child-probe": "tsx src/mxc-child-process-probe.ts"
+    "sandbox:mxc-child-probe": "tsx src/mxc-child-process-probe.ts",
+    "sandbox:mxc-tool-probe": "tsx src/mxc-tool-portal-probe.ts"
   },
   "keywords": [],
   "author": "",
