@@ -327,3 +327,15 @@ The desired result is:
 The command also preserves the MXC executor's debug stderr. That output is part of the spike evidence because it shows which isolation tier the host actually selected.
 
 Passing this probe demonstrates filesystem confinement for this regression case. It does not by itself finish Junius sandbox validation; child-process containment, network posture, additional path namespace attacks, hard links, device paths, and other Windows escape cases still require separate adversarial tests.
+
+### MXC 0.8 environment note
+
+The first MXC probe attempt supplied a sparse child environment containing `SystemRoot`, `WINDIR`, `TEMP`, and `TMP`. On Windows ProcessContainer, that failed before the workload started:
+
+```text
+CreateProcessInSandbox failed with Win32 error 203
+```
+
+Microsoft's current MXC source identifies error 203 here as `ERROR_ENVVAR_NOT_FOUND`. A caller-supplied ProcessContainer environment must include both `SYSTEMROOT` and `LOCALAPPDATA`; MXC 0.8 treats an explicit environment as a complete replacement.
+
+The filesystem probe now omits `process.env` entirely so MXC supplies its backend-default user environment. This keeps the filesystem-confinement test focused. Environment minimization remains a separate security test.
