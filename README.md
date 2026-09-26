@@ -487,3 +487,17 @@ Observed with `pnpm sandbox:mxc-lifecycle-probe`:
 The sandboxed parent successfully spawned a descendant using `detached: true` and `unref()`. The descendant wrote its startup marker before the parent exited, proving it really started. After the MXC sandbox owner completed, the descendant never reached its delayed survival marker.
 
 Together with the descendant filesystem probe, this demonstrates for the tested BaseContainer path that descendants can run, remain inside the filesystem boundary, and are terminated with the sandbox lifecycle rather than escaping through Node's detached-process mode.
+
+### MXC 0.8 network policy note
+
+The Node SDK's `SandboxPolicy` for schema `0.8.0-alpha` uses directional networking fields rather than the older `defaultPolicy` authoring shape.
+
+For explicit default-deny network tests, Junius uses:
+
+```text
+network.egress.default = "deny"
+network.ingress.default = "deny"
+network.ingress.hostLoopback = "deny"
+```
+
+Do not mix these schema-0.8 directional fields with legacy fields such as `allowOutbound` or `allowLocalNetwork`.
