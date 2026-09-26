@@ -1,4 +1,4 @@
-import { MxcProcessCapability } from "./mxc-process-capability.js";
+import { ProcessCapability } from "./process-capability.js";
 import { createPnpmCapability } from "./pnpm-capability.js";
 import { CapabilityRegistry } from "./registry.js";
 
@@ -6,7 +6,7 @@ export function createDefaultCapabilityRegistry(): CapabilityRegistry {
   const registry = new CapabilityRegistry();
 
   registry.register(
-    new MxcProcessCapability({
+    new ProcessCapability({
       key: "node",
       description:
         "Node.js executable. Only --version and -p process.platform are permitted.",
