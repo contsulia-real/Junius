@@ -533,3 +533,23 @@ LOCALAPPDATA
 ```
 
 for a caller-supplied environment block. Junius should therefore build an explicit allowlisted environment for sandboxed commands instead of inheriting the host's complete environment, which may contain credentials, tokens, proxy settings, or unrelated developer-machine state.
+
+## MXC explicit-environment isolation result
+
+The explicit-environment regression passed on Windows BaseContainer.
+
+Observed with `pnpm sandbox:mxc-env-probe`:
+
+```json
+{
+  "conclusions": {
+    "explicitEnvironmentLaunchWorks": true,
+    "explicitMarkerPresent": true,
+    "hostSentinelAbsent": true
+  }
+}
+```
+
+The sandbox received only the explicitly supplied allowlisted environment variables. A host-only sentinel variable was present in the Junius host process before launch but was absent from the sandbox environment.
+
+This validates the production direction of constructing a minimal per-capability environment instead of inheriting the host's complete environment block.
