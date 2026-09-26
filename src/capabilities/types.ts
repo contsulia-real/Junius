@@ -28,6 +28,24 @@ export type CapabilityExecution =
       readonly durationMs: number;
     };
 
+export interface PreparedProcess {
+  readonly executable: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly windowsHide: boolean;
+}
+
+export type PrepareProcessResult =
+  | {
+      readonly ok: true;
+      readonly process: PreparedProcess;
+    }
+  | {
+      readonly ok: false;
+      readonly execution: Extract<CapabilityExecution, { ok: false }>;
+    };
+
 export interface Capability {
   readonly key: string;
   readonly description: string;
@@ -36,4 +54,20 @@ export interface Capability {
     args: readonly string[],
     context: CapabilityExecutionContext,
   ): Promise<CapabilityExecution>;
+}
+
+export interface ProcessPreparableCapability extends Capability {
+  prepareProcess(
+    args: readonly string[],
+    context: CapabilityExecutionContext,
+  ): PrepareProcessResult;
+}
+
+export function isProcessPreparableCapability(
+  capability: Capability,
+): capability is ProcessPreparableCapability {
+  return (
+    "prepareProcess" in capability &&
+    typeof capability.prepareProcess === "function"
+  );
 }
