@@ -10,6 +10,7 @@ import {
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceManager } from "./workspace-manager.js";
+import { WorkspaceFilesService } from "./workspace-files.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
 
@@ -57,7 +58,11 @@ if (persistedWorkspaces === undefined) {
 }
 
 const runCommandService = new RunCommandService(registry, workspaceManager);
-const mcpRuntime = await createMcpRuntime(runCommandService);
+const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
+const mcpRuntime = await createMcpRuntime(
+  runCommandService,
+  workspaceFilesService,
+);
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
 const adminOrigin = `http://${config.adminHost}:${config.adminPort}`;
