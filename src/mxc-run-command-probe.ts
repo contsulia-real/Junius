@@ -1,5 +1,6 @@
 import { createDefaultCapabilityRegistry } from "./capabilities/default-registry.js";
 import { RunCommandService } from "./run-command.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
 if (process.platform !== "win32") {
@@ -20,11 +21,18 @@ const profile = new WorkspaceProfile(process.cwd(), [
     ],
   },
 ]);
-const service = new RunCommandService(registry, profile);
+const manager = new WorkspaceManager([
+  { id: "probe", profile },
+]);
+const service = new RunCommandService(registry, manager);
 
-const version = await service.run("node", ["--version"]);
-const platform = await service.run("node", ["-p", "process.platform"]);
-const deniedArgs = await service.run("node", [
+const version = await service.run("probe", "node", ["--version"]);
+const platform = await service.run(
+  "probe",
+  "node",
+  ["-p", "process.platform"],
+);
+const deniedArgs = await service.run("probe", "node", [
   "-e",
   "console.log('should not run')",
 ]);
