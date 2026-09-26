@@ -14,6 +14,7 @@ export type RunCommandResult =
       readonly code:
         | "capability_not_registered"
         | "capability_not_allowed"
+        | "arguments_not_allowed_by_workspace"
         | Extract<CapabilityExecution, { ok: false }>["code"];
       readonly message: string;
       readonly execution?: Extract<CapabilityExecution, { ok: false }>;
@@ -40,12 +41,21 @@ export class RunCommandService {
       };
     }
 
-    if (!this.workspaceProfile.isAllowed(key)) {
+    if (!this.workspaceProfile.hasCapabilityGrant(key)) {
       return {
         ok: false,
         key,
         code: "capability_not_allowed",
         message: `Capability is not allowed by the current Workspace Profile: ${key}`,
+      };
+    }
+
+    if (!this.workspaceProfile.isInvocationAllowed(key, args)) {
+      return {
+        ok: false,
+        key,
+        code: "arguments_not_allowed_by_workspace",
+        message: `Arguments are not allowed for capability ${key} by the current Workspace Profile.`,
       };
     }
 
