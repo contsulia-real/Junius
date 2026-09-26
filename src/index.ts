@@ -104,6 +104,8 @@ const adminHttpServer = createHttpServer((req, res) => {
     registry,
     workspaceManager,
     workspaceStateStore,
+    jobManager,
+    playwrightCliService,
     adminOrigin,
   ).catch((error: unknown) => {
     console.error("[admin http]", error);
@@ -122,7 +124,7 @@ mcpHttpServer.listen(config.mcpPort, config.mcpHost, () => {
 });
 
 adminHttpServer.listen(config.adminPort, config.adminHost, () => {
-  console.error(`Junius local admin: ${adminOrigin}/state`);
+  console.error(`Junius WebUI: ${adminOrigin}/`);
   console.error(
     `Junius Workspace state: ${config.workspaceStatePath}`,
   );
