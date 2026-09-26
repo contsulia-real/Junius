@@ -40,6 +40,8 @@ const persistedStateSchema = z
   .passthrough();
 
 export class WorkspaceStateStore {
+  #saveQueue: Promise<void> = Promise.resolve();
+
   constructor(readonly filePath: string) {}
 
   async load(): Promise<readonly WorkspaceState[] | undefined> {
@@ -76,21 +78,24 @@ export class WorkspaceStateStore {
     }));
   }
 
-  async save(workspaces: WorkspaceManager): Promise<void> {
-    const directory = dirname(this.filePath);
-    await mkdir(directory, { recursive: true });
+  save(workspaces: WorkspaceManager): Promise<void> {
+    const snapshot = {
+      version: 1 as const,
+      workspaces: workspaces.list(),
+    };
 
-    const tempPath = `${this.filePath}.${process.pid}.tmp`;
-    const payload = JSON.stringify(
-      {
-        version: 1,
-        workspaces: workspaces.list(),
-      },
-      null,
-      2,
-    );
+    const operation = this.#saveQueue.then(async () => {
+      const directory = dirname(this.filePath);
+      await mkdir(directory, { recursive: true });
 
-    await writeFile(tempPath, `${payload}\n`, "utf8");
-    await rename(tempPath, this.filePath);
+      const tempPath = `${this.filePath}.${process.pid}.tmp`;
+      const payload = JSON.stringify(snapshot, null, 2);
+
+      await writeFile(tempPath, `${payload}\n`, "utf8");
+      await rename(tempPath, this.filePath);
+    });
+
+    this.#saveQueue = operation.catch(() => undefined);
+    return operation;
   }
 }
