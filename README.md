@@ -448,4 +448,20 @@ This keeps playwright-cli runtime artifacts such as generated snapshots outside 
 
 Launcher discovery supports a native executable, the JavaScript entry point, and Windows npm-style `.cmd` shims that resolve to the real `playwright-cli.js` entry. `JUNIUS_PLAYWRIGHT_CLI_PATH` can explicitly provide the launcher/entry when automatic discovery is insufficient.
 
-Browser capability v1 is implemented and awaiting black-box MCP validation.
+Browser capability v1 is implemented and black-box verified through ChatGPT.
+
+
+## Verified Browser capability
+
+Browser capability v1 has passed real black-box ChatGPT validation against the user's local `playwright-cli` installation.
+
+Verified behavior:
+
+- Junius resolved and used the local `playwright-cli` adapter through MCP.
+- Browser activity opened in a visible headed local window.
+- The browser used a named persistent CLI session/profile.
+- ChatGPT could drive the browser through the allowed playwright-cli workflow.
+- The browser session was closed when the requested browser task completed.
+- Closing the session did not redefine the persistent profile as disposable state.
+
+This validates the intended thin-adapter Local Agent model: Junius delegates browser automation to the mature local playwright-cli tool instead of reimplementing a second browser framework.
