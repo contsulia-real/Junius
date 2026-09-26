@@ -197,7 +197,11 @@ export function createPnpmCapability():
     description:
       "pnpm package-script runner. Allows --version and pnpm run <script>; install/exec/dlx/add are not exposed.",
     executable: launcher.executable,
-    fixedArgs: launcher.fixedArgs,
+    // Keep pnpm anchored to the MXC working directory without letting its
+    // local-prefix discovery rewrite "." to an absolute host path. Native
+    // pnpm canonicalizes that absolute --dir and otherwise needs traversal
+    // access to Workspace ancestors that Junius deliberately does not grant.
+    fixedArgs: [...launcher.fixedArgs, "--dir", "."],
     readonlyPaths: launcher.readonlyPaths,
     argumentPolicy: isAllowedPnpmArgs,
     timeoutMs: 120_000,
