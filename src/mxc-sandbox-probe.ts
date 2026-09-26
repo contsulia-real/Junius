@@ -184,6 +184,15 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
   config.process!.commandLine = commandLine;
   config.process!.cwd = workspaceRoot;
 
+  // MXC 0.8 treats a supplied environment as a complete, verbatim
+  // replacement. Windows ProcessContainer launch requires at least
+  // SYSTEMROOT and LOCALAPPDATA; our previous sparse block omitted
+  // LOCALAPPDATA and failed before the workload started with Win32 203.
+  //
+  // For this filesystem-confinement probe, omit process.env entirely so
+  // MXC supplies its backend-default user environment. Environment
+  // minimization is a separate security concern and will be tested after
+  // filesystem isolation is proven.
   const child = spawnSandboxFromConfig(
     config,
     {
@@ -192,12 +201,6 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
       debug: true,
     },
     workspaceRoot,
-    {
-      SystemRoot: process.env.SystemRoot,
-      WINDIR: process.env.WINDIR,
-      TEMP: workspaceRoot,
-      TMP: workspaceRoot,
-    },
   );
 
   const execution = await waitForChild(child);
