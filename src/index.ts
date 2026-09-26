@@ -10,14 +10,43 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-type SpikeToolName = "tool_a" | "tool_b";
-
 const MCP_HOST = "127.0.0.1";
 const MCP_PORT = parsePort(process.env.JUNIUS_MCP_PORT, 8787);
 const ADMIN_HOST = "127.0.0.1";
 const ADMIN_PORT = parsePort(process.env.JUNIUS_ADMIN_PORT, 8788);
 
-let activeTool: SpikeToolName = "tool_a";
+interface Capability {
+  readonly key: string;
+  execute(args: readonly string[]): Promise<string>;
+}
+
+function createTestCapability(key: string): Capability {
+  return {
+    key,
+    async execute(args) {
+      return `${key} executed; args=${JSON.stringify(args)}`;
+    },
+  };
+}
+
+/**
+ * Machine-level Capability Registry for this spike.
+ *
+ * These are deliberately synthetic adapters: this test is about the fixed
+ * run_command MCP surface plus dynamic Workspace Profile authorization. Real
+ * executable spawning belongs to the later Capability Adapter implementation.
+ */
+const capabilityRegistry = new Map<string, Capability>([
+  ["tool_a", createTestCapability("tool_a")],
+  ["tool_b", createTestCapability("tool_b")],
+]);
+
+/**
+ * Minimal in-memory Workspace Profile standing in for the future Dashboard
+ * persistence layer. The Dashboard/admin side may mutate this set at runtime;
+ * the MCP tool schema never changes.
+ */
+const workspaceAllowedKeys = new Set<string>(["tool_a"]);
 
 function parsePort(value: string | undefined, fallback: number): number {
   if (value === undefined) {
@@ -32,72 +61,102 @@ function parsePort(value: string | undefined, fallback: number): number {
   return port;
 }
 
-function toolTitle(name: SpikeToolName): string {
-  return name === "tool_a" ? "Junius Spike Tool A" : "Junius Spike Tool B";
+function registeredKeys(): string[] {
+  return [...capabilityRegistry.keys()].sort();
 }
 
-function toolDescription(name: SpikeToolName): string {
-  return `Dynamic MCP tool-list spike. The currently active tool is ${name}.`;
+function allowedKeys(): string[] {
+  return [...workspaceAllowedKeys].sort();
 }
 
-function toolResult(name: SpikeToolName) {
+function setOnlyAllowedKey(key: string): boolean {
+  if (!capabilityRegistry.has(key)) {
+    return false;
+  }
+
+  workspaceAllowedKeys.clear();
+  workspaceAllowedKeys.add(key);
+  return true;
+}
+
+async function runCapability(key: string, args: readonly string[]) {
+  const capability = capabilityRegistry.get(key);
+
+  if (capability === undefined) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: `capability_not_registered: ${key}`,
+        },
+      ],
+    };
+  }
+
+  if (!workspaceAllowedKeys.has(key)) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: `capability_not_allowed: ${key}`,
+        },
+      ],
+    };
+  }
+
+  const output = await capability.execute(args);
+
   return {
     content: [
       {
         type: "text" as const,
-        text: `${name} is active.`,
+        text: output,
       },
     ],
   };
 }
 
-function registerCurrentTool(server: McpServer) {
-  const name = activeTool;
-
-  return server.registerTool(
-    name,
+function registerRunCommand(server: McpServer): void {
+  server.registerTool(
+    "run_command",
     {
-      title: toolTitle(name),
-      description: toolDescription(name),
-      inputSchema: z.object({}),
+      title: "Run Junius Capability",
+      description:
+        "Run one Junius capability by key. The key must be registered on this machine and allowed by the current Workspace Profile. This tool does not accept executable paths or shell command strings.",
+      inputSchema: z.object({
+        key: z.string().min(1).describe("Registered Junius capability key."),
+        args: z.array(z.string()).default([]).describe("Argument vector passed to the capability adapter."),
+      }),
       _meta: {
         securitySchemes: [{ type: "noauth" }],
       },
       annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         destructiveHint: false,
-        idempotentHint: true,
+        idempotentHint: false,
         openWorldHint: false,
       },
     },
-    async () => toolResult(activeTool),
+    async ({ key, args }) => runCapability(key, args),
   );
 }
 
 function createMcpServer(): McpServer {
-  const server = new McpServer(
-    {
-      name: "Junius",
-      title: "Junius Dynamic Tools Spike",
-      version: "0.1.0",
-    },
-    {
-      capabilities: {
-        tools: {
-          listChanged: true,
-        },
-      },
-    },
-  );
+  const server = new McpServer({
+    name: "Junius",
+    title: "Junius Fixed Tool Surface Spike",
+    version: "0.2.0",
+  });
 
-  registerCurrentTool(server);
+  registerRunCommand(server);
   return server;
 }
 
 /**
- * Modern MCP (2026-07-28): each request gets a fresh server surface generated
- * from the current spike state. tools/list_changed is delivered through the
- * subscriptions/listen stream managed by createMcpHandler.
+ * Modern MCP (2026-07-28): every request uses the same fixed MCP tool schema.
+ * Runtime authorization is read from workspaceAllowedKeys inside run_command.
  */
 const modernHandler = createMcpHandler(() => createMcpServer(), {
   legacy: "reject",
@@ -107,56 +166,15 @@ const modernHandler = createMcpHandler(() => createMcpServer(), {
 });
 
 /**
- * Legacy MCP (2025 era): keep one stateful server/transport alive so the server
- * can push the unsolicited notifications/tools/list_changed notification.
- *
- * One legacy session is sufficient for this spike. Restart Junius before a
- * completely new legacy client session.
+ * Legacy MCP clients use the same fixed tool surface. No tools/list_changed
+ * notification is involved in this spike.
  */
-const legacyServer = new McpServer(
-  {
-    name: "Junius",
-    title: "Junius Dynamic Tools Spike",
-    version: "0.1.0",
-  },
-  {
-    capabilities: {
-      tools: {
-        listChanged: true,
-      },
-    },
-  },
-);
-
-const legacyTool = registerCurrentTool(legacyServer);
+const legacyServer = createMcpServer();
 const legacyTransport = new WebStandardStreamableHTTPServerTransport({
   sessionIdGenerator: randomUUID,
 });
 
 await legacyServer.connect(legacyTransport);
-
-function setActiveTool(next: SpikeToolName): boolean {
-  if (next === activeTool) {
-    return false;
-  }
-
-  activeTool = next;
-
-  // A single update produces one legacy tool-list change notification.
-  legacyTool.update({
-    name: next,
-    title: toolTitle(next),
-    description: toolDescription(next),
-  });
-
-  // Modern clients receive the corresponding event on subscriptions/listen.
-  modernHandler.notify.toolsChanged();
-  return true;
-}
-
-function isSpikeToolName(value: string): value is SpikeToolName {
-  return value === "tool_a" || value === "tool_b";
-}
 
 function nodeHeadersToWeb(req: IncomingMessage): Headers {
   const headers = new Headers();
@@ -256,25 +274,27 @@ function handleAdminRequest(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? "/", `http://${ADMIN_HOST}:${ADMIN_PORT}`);
 
   if (req.method === "GET" && url.pathname === "/state") {
-    sendJson(res, 200, { activeTool });
+    sendJson(res, 200, {
+      registeredKeys: registeredKeys(),
+      allowedKeys: allowedKeys(),
+    });
     return;
   }
 
-  if (req.method === "POST" && url.pathname.startsWith("/switch/")) {
-    const requested = url.pathname.slice("/switch/".length);
+  if (req.method === "POST" && url.pathname.startsWith("/workspace/only/")) {
+    const key = decodeURIComponent(url.pathname.slice("/workspace/only/".length));
 
-    if (!isSpikeToolName(requested)) {
+    if (!setOnlyAllowedKey(key)) {
       sendJson(res, 400, {
-        error: "invalid_tool",
-        allowed: ["tool_a", "tool_b"],
+        error: "capability_not_registered",
+        key,
+        registeredKeys: registeredKeys(),
       });
       return;
     }
 
-    const changed = setActiveTool(requested);
     sendJson(res, 200, {
-      activeTool,
-      changed,
+      allowedKeys: allowedKeys(),
     });
     return;
   }
