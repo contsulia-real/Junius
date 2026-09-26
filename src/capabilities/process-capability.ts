@@ -3,7 +3,7 @@ import type {
   Capability,
   CapabilityExecution,
   CapabilityExecutionContext,
-  type PrepareProcessResult,
+  PrepareProcessResult,
 } from "./types.js";
 
 export interface ProcessCapabilityOptions {
@@ -69,16 +69,18 @@ export class ProcessCapability implements Capability {
     if (!argumentsAllowed) {
       return {
         ok: false,
-        code: "arguments_not_allowed",
-        message: `Arguments are not allowed for capability ${this.key}.`,
-        exitCode: null,
-        signal: null,
-        stdout: "",
-        stderr: "",
-        durationMs: 0,
+        execution: {
+          ok: false,
+          code: "arguments_not_allowed",
+          message: `Arguments are not allowed for capability ${this.key}.`,
+          exitCode: null,
+          signal: null,
+          stdout: "",
+          stderr: "",
+          durationMs: 0,
+        },
       };
     }
-
 
     return {
       ok: true,
