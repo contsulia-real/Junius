@@ -39,6 +39,9 @@ export type WorkspaceFileErrorCode =
   | "binary_file"
   | "stale_file"
   | "expected_sha256_required"
+  | "invalid_write"
+  | "edit_not_found"
+  | "edit_not_unique"
   | "write_too_large"
   | "rg_not_available"
   | "rg_failed";
@@ -311,35 +314,60 @@ async function readTextFile(
   }
 
   const text = buffer.toString("utf8");
-  const lines = text.split(/\r?\n/u);
+  const lineStarts = [0];
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") {
+      lineStarts.push(index + 1);
+    }
+  }
+
+  const totalLines = lineStarts.length;
   const startLine = request.startLine ?? 1;
-  const requestedEnd = request.endLine ?? Math.min(lines.length, startLine + 399);
+  const requestedEnd =
+    request.endLine ?? Math.min(totalLines, startLine + 399);
   const endLine = Math.min(
-    lines.length,
+    totalLines,
     requestedEnd,
     startLine + MAX_READ_LINES_PER_FILE - 1,
   );
 
-  if (startLine < 1 || startLine > Math.max(lines.length, 1) || endLine < startLine) {
+  if (
+    startLine < 1 ||
+    startLine > totalLines ||
+    endLine < startLine
+  ) {
     throw new WorkspaceFileError(
       "invalid_path",
       `Invalid line range for ${request.path}: ${startLine}-${requestedEnd}`,
     );
   }
 
+  const startOffset = lineStarts[startLine - 1] ?? 0;
+  const endOffset =
+    endLine < totalLines
+      ? (lineStarts[endLine] ?? text.length)
+      : text.length;
+
   return {
     path: target.relativePath,
     sha256: sha256(buffer),
     startLine,
     endLine,
-    totalLines: lines.length,
-    content: lines.slice(startLine - 1, endLine).join("\n"),
+    totalLines,
+    content: text.slice(startOffset, endOffset),
   };
+}
+
+export interface WriteEdit {
+  readonly oldText: string;
+  readonly newText: string;
+  readonly replaceAll?: boolean;
 }
 
 export interface WriteRequest {
   readonly path: string;
-  readonly content: string;
+  readonly content?: string;
+  readonly edits?: readonly WriteEdit[];
   readonly expectedSha256?: string;
 }
 
@@ -361,11 +389,20 @@ async function validateWrite(
   readonly previousSha256?: string;
   readonly content: Buffer;
 }> {
-  const content = Buffer.from(request.content, "utf8");
-  if (content.length > MAX_WRITE_BYTES_PER_FILE) {
+  const hasContent = request.content !== undefined;
+  const hasEdits = request.edits !== undefined;
+
+  if (hasContent === hasEdits) {
     throw new WorkspaceFileError(
-      "write_too_large",
-      `Write exceeds ${MAX_WRITE_BYTES_PER_FILE} bytes: ${request.path}`,
+      "invalid_write",
+      `write requires exactly one of content or edits: ${request.path}`,
+    );
+  }
+
+  if (request.edits !== undefined && request.edits.length === 0) {
+    throw new WorkspaceFileError(
+      "invalid_write",
+      `edits must not be empty: ${request.path}`,
     );
   }
 
@@ -376,6 +413,21 @@ async function validateWrite(
       throw new WorkspaceFileError(
         "stale_file",
         `File does not exist but expected_sha256 was supplied: ${request.path}`,
+      );
+    }
+
+    if (request.content === undefined) {
+      throw new WorkspaceFileError(
+        "invalid_write",
+        `Creating a new file requires content: ${request.path}`,
+      );
+    }
+
+    const content = Buffer.from(request.content, "utf8");
+    if (content.length > MAX_WRITE_BYTES_PER_FILE) {
+      throw new WorkspaceFileError(
+        "write_too_large",
+        `Write exceeds ${MAX_WRITE_BYTES_PER_FILE} bytes: ${request.path}`,
       );
     }
 
@@ -400,12 +452,70 @@ async function validateWrite(
   }
 
   const previous = await readFile(target.path);
-  const previousSha256 = sha256(previous);
+  if (isProbablyBinary(previous)) {
+    throw new WorkspaceFileError("binary_file", request.path);
+  }
 
+  const previousSha256 = sha256(previous);
   if (previousSha256 !== request.expectedSha256) {
     throw new WorkspaceFileError(
       "stale_file",
       `File changed since it was read: ${request.path}`,
+    );
+  }
+
+  let nextText: string;
+
+  if (request.content !== undefined) {
+    nextText = request.content;
+  } else {
+    nextText = previous.toString("utf8");
+
+    for (const edit of request.edits ?? []) {
+      if (edit.oldText.length === 0) {
+        throw new WorkspaceFileError(
+          "invalid_write",
+          `old_text must not be empty: ${request.path}`,
+        );
+      }
+
+      let occurrences = 0;
+      let offset = 0;
+      for (;;) {
+        const index = nextText.indexOf(edit.oldText, offset);
+        if (index < 0) break;
+        occurrences += 1;
+        offset = index + edit.oldText.length;
+      }
+
+      if (occurrences === 0) {
+        throw new WorkspaceFileError(
+          "edit_not_found",
+          `old_text was not found: ${request.path}`,
+        );
+      }
+
+      if (edit.replaceAll === true) {
+        nextText = nextText.split(edit.oldText).join(edit.newText);
+        continue;
+      }
+
+      if (occurrences !== 1) {
+        throw new WorkspaceFileError(
+          "edit_not_unique",
+          `old_text matched ${occurrences} times: ${request.path}`,
+        );
+      }
+
+      nextText = nextText.replace(edit.oldText, edit.newText);
+    }
+  }
+
+  const content = Buffer.from(nextText, "utf8");
+  if (content.length > MAX_WRITE_BYTES_PER_FILE) {
+    throw new WorkspaceFileError(
+      "write_too_large",
+      `Write exceeds ${MAX_WRITE_BYTES_PER_FILE} bytes: ${request.path}`,
     );
   }
 
