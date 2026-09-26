@@ -235,3 +235,18 @@ The real fixed `run_command` path has passed through MXC on Windows:
 ```
 
 The first real development-tool capability, `pnpm`, is implemented on top of this execution path. Workspace authorization is argument-scoped rather than a per-key boolean, and Workspace selection is explicit per invocation, so multiple Workspaces can run concurrently with different subsets of the same machine capability. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
+
+
+## Workspace discovery
+
+Junius exposes a stable read-only MCP tool:
+
+```text
+list_workspaces()
+```
+
+It returns the registered Workspace IDs, canonical roots, and per-Workspace capability argument grants. This lets ChatGPT resolve project names such as "Junius" or "Weave" to the correct Workspace without the user having to provide internal Workspace IDs.
+
+When the user refers to a project by name, ChatGPT should use `list_workspaces` before `run_command`.
+
+This is a stable MCP tool, not a dynamic tool-list mutation.
