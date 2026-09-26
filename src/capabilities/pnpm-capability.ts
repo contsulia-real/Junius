@@ -7,7 +7,6 @@ import {
 import {
   basename,
   delimiter,
-  dirname,
   extname,
   join,
 } from "node:path";
