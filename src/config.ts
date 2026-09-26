@@ -5,6 +5,7 @@ export interface RuntimeConfig {
   readonly mcpPort: number;
   readonly adminHost: string;
   readonly adminPort: number;
+  readonly workspaceId: string;
   readonly workspaceRoot: string;
 }
 
@@ -30,6 +31,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     mcpPort: parsePort(process.env.JUNIUS_MCP_PORT, 8787),
     adminHost: "127.0.0.1",
     adminPort: parsePort(process.env.JUNIUS_ADMIN_PORT, 8788),
+    workspaceId: process.env.JUNIUS_WORKSPACE_ID ?? "default",
     workspaceRoot: await realpath(requestedWorkspaceRoot),
   };
 }
