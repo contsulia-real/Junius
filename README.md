@@ -275,3 +275,55 @@ The probe does not create a sandbox or modify system state. It only:
 
 If `candidateUsable` is false, Junius must not depend on the experimental API on that machine. The stable manual AppContainer / access-control / Job Object route remains a separate candidate.
 
+## Microsoft MXC sandbox probe
+
+Junius does not hand-encode the Windows `SandboxSpec` FlatBuffer.
+
+Microsoft publishes the ProcessContainer implementation and a TypeScript SDK as `@microsoft/mxc-sdk`. The SDK owns the policy-to-native translation, packaged Windows executor, host-capability detection, and ProcessContainer tier selection.
+
+For this spike Junius pins:
+
+```text
+@microsoft/mxc-sdk 0.8.0
+```
+
+The pin is intentional because MXC is still Public Preview.
+
+The current published 0.8.0 package supports the Node version used by this project. Future MXC main-branch requirements are not treated as requirements for this pinned release.
+
+After pulling the dependency change, update the local pnpm installation/lockfile:
+
+```powershell
+pnpm install
+```
+
+Then run:
+
+```powershell
+pnpm check
+pnpm sandbox:mxc-probe
+```
+
+The MXC probe recreates the same filesystem escape regression as `sandbox:probe`:
+
+- one readable/writable file inside the temporary Workspace
+- one secret file outside the Workspace
+- one junction inside the Workspace pointing to that outside directory
+
+It requests the Windows `processcontainer` backend with only the Workspace granted read/write. It does not grant the host TEMP directory. Tool discovery is deliberately restricted to the directory containing the exact Node executable so discovery cannot accidentally authorize a drive root and invalidate the test.
+
+The desired result is:
+
+```json
+{
+  "conclusions": {
+    "workspaceReadWorks": true,
+    "directOutsideReadBlocked": true,
+    "reparseOutsideReadBlocked": true
+  }
+}
+```
+
+The command also preserves the MXC executor's debug stderr. That output is part of the spike evidence because it shows which isolation tier the host actually selected.
+
+Passing this probe demonstrates filesystem confinement for this regression case. It does not by itself finish Junius sandbox validation; child-process containment, network posture, additional path namespace attacks, hard links, device paths, and other Windows escape cases still require separate adversarial tests.
