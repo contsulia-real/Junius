@@ -268,11 +268,9 @@ The local WebUI Dashboard v1 is implemented and locally validated.
 
 Machine Capability v1 is implemented and locally validated.
 
-Authorization UX v1 is implemented and awaiting local validation.
+Authorization UX v1 is implemented and locally validated.
 
-After validation, the next work should focus on:
-
-- broader Local Agent capability coverage where it provides concrete value.
+The next capability milestone is Desktop Automation v1.
 
 OS-level sandboxing is not part of the current execution implementation.
 
@@ -596,3 +594,33 @@ Verified behavior:
 - availability remains distinct from enablement, so a capability can remain enabled while its launcher is unavailable.
 
 This validates the intended separation between machine-level capability state and per-Workspace grants.
+
+
+## Desktop Automation direction
+
+Desktop Automation is a separate Local Agent capability from the WebUI Dashboard.
+
+Junius will use a thin Python helper rather than implementing a desktop-automation framework itself:
+
+```text
+ChatGPT
+-> desktop MCP tool
+-> Junius TypeScript adapter
+-> Python computer-use helper
+   -> pywinauto for Win32/UIA semantic automation
+   -> PyAutoGUI for screenshots, mouse, keyboard, and coordinate-based interaction
+-> local desktop application
+```
+
+The two layers are complementary:
+
+- `pywinauto` is preferred when an application exposes usable Win32/UI Automation controls.
+- `PyAutoGUI` provides the visual/input fallback for custom-drawn interfaces, games, and other applications where semantic accessibility trees are incomplete or absent.
+
+This means applications such as Minecraft are not excluded simply because they do not expose useful UI Automation elements. The fallback path is screenshot -> model vision -> mouse/keyboard interaction -> screenshot verification.
+
+Junius remains the orchestration, permission, validation, and MCP layer. It should not reimplement pywinauto, UI Automation, screenshot capture, or low-level mouse/keyboard input when the Python helper already provides those primitives.
+
+The Dashboard remains a local WebUI. This desktop-automation architecture does not imply a desktop-native Dashboard.
+
+Desktop Automation v1 is planned but not yet implemented.
