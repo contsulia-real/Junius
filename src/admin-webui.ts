@@ -1,9 +1,9 @@
 export const ADMIN_DASHBOARD_HTML = `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Junius Dashboard</title>
+  <title>Junius 控制台</title>
   <link rel="stylesheet" href="/dashboard.css">
 </head>
 <body>
@@ -13,27 +13,27 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="brand-mark">J</div>
         <div>
           <strong>Junius</strong>
-          <span>Local Agent</span>
+          <span>本地代理</span>
         </div>
       </div>
       <nav>
-        <button data-view="overview" class="nav-item active">Overview</button>
-        <button data-view="workspaces" class="nav-item">Workspaces</button>
-        <button data-view="permissions" class="nav-item">Permissions</button>
-        <button data-view="capabilities" class="nav-item">Capabilities</button>
-        <button data-view="jobs" class="nav-item">Jobs</button>
-        <button data-view="browser" class="nav-item">Browser</button>
+        <button data-view="overview" class="nav-item active">概览</button>
+        <button data-view="workspaces" class="nav-item">工作区</button>
+        <button data-view="permissions" class="nav-item">权限</button>
+        <button data-view="capabilities" class="nav-item">能力</button>
+        <button data-view="jobs" class="nav-item">后台任务</button>
+        <button data-view="browser" class="nav-item">浏览器</button>
       </nav>
-      <div class="local-only">Local only · 127.0.0.1</div>
+      <div class="local-only">仅本机 · 127.0.0.1</div>
     </aside>
 
     <main>
       <header class="topbar">
         <div>
-          <h1 id="page-title">Overview</h1>
-          <p id="page-subtitle">Local Agent status and controls</p>
+          <h1 id="page-title">概览</h1>
+          <p id="page-subtitle">Junius 本地代理状态与管理</p>
         </div>
-        <button id="refresh" class="button secondary">Refresh</button>
+        <button id="refresh" class="button secondary">刷新</button>
       </header>
 
       <div id="notice" class="notice hidden"></div>
@@ -43,8 +43,8 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Current state</h2>
-              <p>Runtime state exposed by the local Junius admin service.</p>
+              <h2>当前状态</h2>
+              <p>Junius 本地管理服务当前暴露的运行状态。</p>
             </div>
           </div>
           <div id="overview-details" class="detail-grid"></div>
@@ -55,8 +55,8 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Workspaces</h2>
-              <p>Register project roots available to Workspace-scoped capabilities.</p>
+              <h2>工作区</h2>
+              <p>管理可供工作区范围能力使用的本地项目根目录。</p>
             </div>
           </div>
           <form id="workspace-form" class="form-row">
@@ -65,10 +65,10 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
               <input id="workspace-id" required maxlength="64" placeholder="weave">
             </label>
             <label class="grow">
-              <span>Root path</span>
+              <span>根目录</span>
               <input id="workspace-root" required placeholder="C:\\Users\\...\\Project">
             </label>
-            <button class="button" type="submit">Add workspace</button>
+            <button class="button" type="submit">添加工作区</button>
           </form>
           <div id="workspace-list" class="stack"></div>
         </div>
@@ -78,33 +78,33 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Permissions</h2>
-              <p>Workspace capability grants remain argument-scoped.</p>
+              <h2>权限</h2>
+              <p>工作区能力授权仍然按参数范围控制。</p>
             </div>
           </div>
           <form id="permission-form" class="form-row">
             <label>
-              <span>Workspace</span>
+              <span>工作区</span>
               <select id="permission-workspace"></select>
             </label>
             <label>
-              <span>Capability</span>
+              <span>能力</span>
               <select id="permission-capability"></select>
             </label>
             <label>
-              <span>Mode</span>
+              <span>模式</span>
               <select id="permission-mode">
-                <option value="exact">exact</option>
-                <option value="prefix">prefix</option>
+                <option value="exact">精确匹配（exact）</option>
+                <option value="prefix">前缀匹配（prefix）</option>
               </select>
             </label>
             <label class="grow">
-              <span>Arguments</span>
+              <span>参数</span>
               <input id="permission-args" placeholder='run check'>
             </label>
-            <button class="button" type="submit">Add rule</button>
+            <button class="button" type="submit">添加规则</button>
           </form>
-          <p class="hint">Arguments use shell-like quoting only for this form; Junius still stores and executes an argument vector, never a raw shell command.</p>
+          <p class="hint">这里的引号语法只用于把输入拆成参数；Junius 仍然保存并执行参数向量，不会把它当作原始 Shell 命令。</p>
           <div id="permission-list" class="stack"></div>
         </div>
       </section>
@@ -113,8 +113,8 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Capabilities</h2>
-              <p>Machine-level process capabilities currently registered in Junius.</p>
+              <h2>能力</h2>
+              <p>当前已在 Junius 注册的机器级进程能力。</p>
             </div>
           </div>
           <div id="capability-list" class="stack"></div>
@@ -125,8 +125,8 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Jobs</h2>
-              <p>Process-local background jobs managed by Junius.</p>
+              <h2>后台任务</h2>
+              <p>由 Junius 当前进程管理的后台任务。</p>
             </div>
           </div>
           <div id="job-list" class="stack"></div>
@@ -134,10 +134,10 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div id="job-output-panel" class="panel hidden">
           <div class="panel-heading">
             <div>
-              <h2 id="job-output-title">Job output</h2>
-              <p>Captured stdout and stderr.</p>
+              <h2 id="job-output-title">任务输出</h2>
+              <p>捕获的标准输出和标准错误。</p>
             </div>
-            <button id="close-output" class="button secondary">Close</button>
+            <button id="close-output" class="button secondary">关闭</button>
           </div>
           <div class="output-grid">
             <div>
@@ -156,8 +156,8 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <div class="panel">
           <div class="panel-heading">
             <div>
-              <h2>Browser</h2>
-              <p>Local playwright-cli adapter status.</p>
+              <h2>浏览器</h2>
+              <p>本地 playwright-cli 适配器状态。</p>
             </div>
           </div>
           <div id="browser-details" class="detail-grid"></div>
@@ -267,13 +267,26 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   var currentView = "overview";
 
   var titles = {
-    overview: ["Overview", "Local Agent status and controls"],
-    workspaces: ["Workspaces", "Registered local project roots"],
-    permissions: ["Permissions", "Argument-scoped capability grants"],
-    capabilities: ["Capabilities", "Machine-level registered capabilities"],
-    jobs: ["Jobs", "Background process lifecycle"],
-    browser: ["Browser", "Local playwright-cli adapter"]
+    overview: ["概览", "Junius 本地代理状态与管理"],
+    workspaces: ["工作区", "已注册的本地项目根目录"],
+    permissions: ["权限", "按参数范围控制的能力授权"],
+    capabilities: ["能力", "机器级已注册能力"],
+    jobs: ["后台任务", "后台进程生命周期"],
+    browser: ["浏览器", "本地 playwright-cli 适配器"]
   };
+
+  var statusLabels = {
+    running: "运行中",
+    succeeded: "成功",
+    failed: "失败",
+    cancelled: "已取消",
+    available: "可用",
+    unavailable: "不可用"
+  };
+
+  function statusLabel(status) {
+    return statusLabels[status] || status;
+  }
 
   function esc(value) {
     return String(value == null ? "" : value)
@@ -319,16 +332,16 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     var cls = "warning";
     if (status === "succeeded" || status === "available") cls = "success";
     if (status === "failed" || status === "cancelled" || status === "unavailable") cls = "danger";
-    return '<span class="badge ' + cls + '">' + esc(status) + '</span>';
+    return '<span class="badge ' + cls + '">' + esc(statusLabel(status)) + '</span>';
   }
 
   function renderSummary() {
     var running = data.jobs.filter(function (job) { return job.status === "running"; }).length;
     var cards = [
-      [data.workspaces.length, "Workspaces"],
-      [data.registeredCapabilities.length, "Process capabilities"],
-      [running, "Running jobs"],
-      [data.browser.available ? "Ready" : "Missing", "Browser"]
+      [data.workspaces.length, "工作区"],
+      [data.registeredCapabilities.length, "进程能力"],
+      [running, "运行中任务"],
+      [data.browser.available ? "就绪" : "缺失", "浏览器"]
     ];
     document.getElementById("summary").innerHTML = cards.map(function (card) {
       return '<div class="summary-card"><div class="value">' + esc(card[0]) +
@@ -336,19 +349,19 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     }).join("");
 
     document.getElementById("overview-details").innerHTML =
-      '<div class="detail"><div class="key">Admin endpoint</div><div class="value">' +
+      '<div class="detail"><div class="key">管理地址</div><div class="value">' +
       esc(location.origin) + '</div></div>' +
-      '<div class="detail"><div class="key">Browser adapter</div><div class="value">' +
+      '<div class="detail"><div class="key">浏览器适配器</div><div class="value">' +
       badge(data.browser.available ? "available" : "unavailable") + '</div></div>' +
-      '<div class="detail"><div class="key">Browser state</div><div class="value">' +
+      '<div class="detail"><div class="key">浏览器状态目录</div><div class="value">' +
       esc(data.browser.statePath) + '</div></div>' +
-      '<div class="detail"><div class="key">MCP exposure</div><div class="value">Admin WebUI is local-only</div></div>';
+      '<div class="detail"><div class="key">MCP 暴露范围</div><div class="value">管理 WebUI 仅限本机访问</div></div>';
   }
 
   function renderWorkspaces() {
     var node = document.getElementById("workspace-list");
     if (data.workspaces.length === 0) {
-      node.innerHTML = '<div class="empty">No Workspaces registered.</div>';
+      node.innerHTML = '<div class="empty">尚未注册工作区。</div>';
       return;
     }
 
@@ -356,9 +369,9 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       return '<div class="item"><div class="item-main">' +
         '<div class="item-title">' + esc(workspace.id) + '</div>' +
         '<div class="item-meta">' + esc(workspace.rootPath) + '</div>' +
-        '<div class="item-meta">' + workspace.grants.length + ' capability grant(s)</div>' +
+        '<div class="item-meta">' + workspace.grants.length + ' 项能力授权</div>' +
         '</div><div class="item-actions">' +
-        '<button class="button danger" data-remove-workspace="' + esc(workspace.id) + '">Remove</button>' +
+        '<button class="button danger" data-remove-workspace="' + esc(workspace.id) + '">删除</button>' +
         '</div></div>';
     }).join("");
   }
@@ -366,7 +379,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   function renderCapabilities() {
     var node = document.getElementById("capability-list");
     if (data.registeredCapabilities.length === 0) {
-      node.innerHTML = '<div class="empty">No process capabilities registered.</div>';
+      node.innerHTML = '<div class="empty">尚未注册进程能力。</div>';
       return;
     }
 
@@ -414,7 +427,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
             '<span class="badge">' + esc(rule.mode) + '</span>' +
             '<code>' + esc(args || "(no args)") + '</code>' +
             '<button class="button secondary" data-remove-rule="' + esc(workspace.id) +
-            '" data-capability="' + esc(grant.key) + '" data-rule-index="' + index + '">Remove rule</button>' +
+            '" data-capability="' + esc(grant.key) + '" data-rule-index="' + index + '">删除规则</button>' +
             '</div>';
         }).join("");
 
@@ -423,32 +436,32 @@ export const ADMIN_DASHBOARD_JS = String.raw`
           rules +
           '</div><div class="item-actions">' +
           '<button class="button danger" data-revoke="' + esc(workspace.id) +
-          '" data-capability="' + esc(grant.key) + '">Revoke capability</button>' +
+          '" data-capability="' + esc(grant.key) + '">撤销能力授权</button>' +
           '</div></div>');
       });
     });
 
-    node.innerHTML = rows.length ? rows.join("") : '<div class="empty">No capability grants configured.</div>';
+    node.innerHTML = rows.length ? rows.join("") : '<div class="empty">尚未配置能力授权。</div>';
   }
 
   function renderJobs() {
     var node = document.getElementById("job-list");
     if (data.jobs.length === 0) {
-      node.innerHTML = '<div class="empty">No jobs in this Junius process.</div>';
+      node.innerHTML = '<div class="empty">当前 Junius 进程中没有后台任务。</div>';
       return;
     }
 
     node.innerHTML = data.jobs.map(function (job) {
-      var actions = '<button class="button secondary" data-view-job="' + esc(job.id) + '">Output</button>';
+      var actions = '<button class="button secondary" data-view-job="' + esc(job.id) + '">查看输出</button>';
       if (job.status === "running") {
-        actions += '<button class="button danger" data-cancel-job="' + esc(job.id) + '">Cancel</button>';
+        actions += '<button class="button danger" data-cancel-job="' + esc(job.id) + '">取消</button>';
       }
 
       return '<div class="item"><div class="item-main">' +
         '<div class="item-title">' + esc(job.key) + ' · ' + esc(job.workspace) + '</div>' +
         '<div class="item-meta">' + esc(job.id) + '</div>' +
-        '<div class="item-meta">Started ' + esc(job.startedAt) +
-        (job.exitCode === undefined ? "" : " · exit " + esc(job.exitCode)) + '</div>' +
+        '<div class="item-meta">开始时间：' + esc(job.startedAt) +
+        (job.exitCode === undefined ? "" : " · 退出码 " + esc(job.exitCode)) + '</div>' +
         '</div><div class="item-actions">' + badge(job.status) + actions + '</div></div>';
     }).join("");
   }
@@ -457,10 +470,10 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     document.getElementById("browser-details").innerHTML =
       '<div class="detail"><div class="key">playwright-cli</div><div class="value">' +
       badge(data.browser.available ? "available" : "unavailable") + '</div></div>' +
-      '<div class="detail"><div class="key">Runtime state directory</div><div class="value">' +
+      '<div class="detail"><div class="key">运行状态目录</div><div class="value">' +
       esc(data.browser.statePath) + '</div></div>' +
-      '<div class="detail"><div class="key">Default visibility</div><div class="value">headed</div></div>' +
-      '<div class="detail"><div class="key">Default profile mode</div><div class="value">persistent</div></div>';
+      '<div class="detail"><div class="key">默认窗口模式</div><div class="value">可见窗口（headed）</div></div>' +
+      '<div class="detail"><div class="key">默认 Profile 模式</div><div class="value">持久化（persistent）</div></div>';
   }
 
   function render() {
@@ -516,7 +529,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       current += ch;
     }
 
-    if (quote !== null) throw new Error("Unclosed quote in arguments.");
+    if (quote !== null) throw new Error("参数中存在未闭合的引号。");
     if (escaped) current += "\\";
     if (current.length) result.push(current);
     return result;
@@ -533,8 +546,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     var mode = document.getElementById("permission-mode").value;
     var args = parseArgs(document.getElementById("permission-args").value);
 
-    if (!workspaceId || !key) throw new Error("Workspace and capability are required.");
-    if (mode === "prefix" && args.length === 0) throw new Error("prefix requires at least one argument.");
+    if (!workspaceId || !key) throw new Error("必须选择工作区和能力。");
+    if (mode === "prefix" && args.length === 0) throw new Error("前缀匹配至少需要一个参数。");
 
     var workspace = workspaceById(workspaceId);
     var existing = workspace.grants.find(function (grant) { return grant.key === key; });
@@ -549,7 +562,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
 
     document.getElementById("permission-args").value = "";
     await refresh();
-    showNotice("Permission rule added.");
+    showNotice("权限规则已添加。");
   }
 
   async function removePermissionRule(workspaceId, key, index) {
@@ -571,13 +584,13 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     }
 
     await refresh();
-    showNotice("Permission rule removed.");
+    showNotice("权限规则已删除。");
   }
 
   async function loadJobOutput(id) {
     var stdout = await api("/jobs/" + encodeURIComponent(id) + "/output?stream=stdout");
     var stderr = await api("/jobs/" + encodeURIComponent(id) + "/output?stream=stderr");
-    document.getElementById("job-output-title").textContent = "Job output · " + id;
+    document.getElementById("job-output-title").textContent = "任务输出 · " + id;
     document.getElementById("job-stdout").textContent = stdout.output.content || "";
     document.getElementById("job-stderr").textContent = stderr.output.content || "";
     document.getElementById("job-output-panel").classList.remove("hidden");
@@ -588,7 +601,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   });
 
   document.getElementById("refresh").addEventListener("click", function () {
-    refresh().then(function () { showNotice("State refreshed."); }).catch(function (error) { showNotice(error.message, true); });
+    refresh().then(function () { showNotice("状态已刷新。"); }).catch(function (error) { showNotice(error.message, true); });
   });
 
   document.getElementById("workspace-form").addEventListener("submit", function (event) {
@@ -604,7 +617,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       event.target.reset();
       return refresh();
     }).then(function () {
-      showNotice("Workspace added.");
+      showNotice("工作区已添加。");
     }).catch(function (error) {
       showNotice(error.message, true);
     });
@@ -623,19 +636,19 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     if (!target) return;
 
     if (target.dataset.removeWorkspace) {
-      if (!confirm("Remove Workspace " + target.dataset.removeWorkspace + "?")) return;
+      if (!confirm("确定删除工作区 " + target.dataset.removeWorkspace + " 吗？")) return;
       api("/workspaces/" + encodeURIComponent(target.dataset.removeWorkspace), { method: "DELETE" })
         .then(refresh)
-        .then(function () { showNotice("Workspace removed."); })
+        .then(function () { showNotice("工作区已删除。"); })
         .catch(function (error) { showNotice(error.message, true); });
       return;
     }
 
     if (target.dataset.revoke) {
-      if (!confirm("Revoke " + target.dataset.capability + " from " + target.dataset.revoke + "?")) return;
+      if (!confirm("确定撤销工作区 " + target.dataset.revoke + " 的 " + target.dataset.capability + " 能力授权吗？")) return;
       api("/workspaces/" + encodeURIComponent(target.dataset.revoke) + "/grants/" + encodeURIComponent(target.dataset.capability), { method: "DELETE" })
         .then(refresh)
-        .then(function () { showNotice("Capability revoked."); })
+        .then(function () { showNotice("能力授权已撤销。"); })
         .catch(function (error) { showNotice(error.message, true); });
       return;
     }
@@ -652,7 +665,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     if (target.dataset.cancelJob) {
       api("/jobs/" + encodeURIComponent(target.dataset.cancelJob) + "/cancel", { method: "POST" })
         .then(refresh)
-        .then(function () { showNotice("Job cancellation requested."); })
+        .then(function () { showNotice("已请求取消后台任务。"); })
         .catch(function (error) { showNotice(error.message, true); });
       return;
     }
@@ -663,7 +676,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   });
 
   refresh().catch(function (error) {
-    showNotice("Failed to load Junius state: " + error.message, true);
+    showNotice("加载 Junius 状态失败：" + error.message, true);
   });
 })();
 `;
