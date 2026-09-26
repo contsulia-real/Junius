@@ -430,7 +430,7 @@ Arbitrary JavaScript/code execution, storage mutation, CDP attachment, request i
 
 Browser sessions are independent of Workspaces. The default session is `junius`; callers may use other valid named sessions when concurrent browser state is needed.
 
-`open` defaults to playwright-cli persistent mode so the CLI-managed profile can keep its browser state across browser restarts. This profile is separate from ordinary Chrome/Edge user profiles.
+`open` defaults to playwright-cli persistent and headed modes so the CLI-managed profile can keep its browser state across browser restarts while the local browser window remains visible. This profile is separate from ordinary Chrome/Edge user profiles.
 
 `snapshot` is invoked through playwright-cli's raw-output mode so the snapshot YAML and element refs are returned directly through MCP rather than requiring Junius to read a generated snapshot file.
 
