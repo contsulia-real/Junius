@@ -165,6 +165,17 @@ await writeFile(resultPath, JSON.stringify(result), "utf8");
         readwritePaths: [workspaceRoot],
         readonlyPaths: toolPolicy.readonlyPaths,
       },
+      // The first successful BaseContainer launch reached the child process
+      // but Node exited during DLL initialization with STATUS_DLL_INIT_FAILED
+      // (0xC0000142). MXC documents this as a common symptom of blocking the
+      // Win32k/UI subsystem. This probe is about filesystem confinement, so
+      // allow the window subsystem while keeping clipboard and input injection
+      // denied. UI isolation will be tested separately.
+      ui: {
+        allowWindows: true,
+        clipboard: "none",
+        allowInputInjection: false,
+      },
       timeoutMs: 10_000,
     },
     "process",
