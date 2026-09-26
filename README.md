@@ -126,3 +126,96 @@ For the current ChatGPT personal MCP app flow, the model-visible MCP tool catalo
 
 Therefore Junius must not use runtime mutation of the real MCP tool list as the normal Workspace capability-switching mechanism. The fallback decision must be made at the Junius architecture level rather than assuming a session reconnect can refresh tools.
 
+## Fixed `run_command` spike
+
+This is the second architecture spike. It tests the fallback selected after the dynamic MCP tool-list experiment failed in ChatGPT.
+
+The MCP tool catalog is now fixed. ChatGPT sees one stable tool:
+
+```text
+run_command
+```
+
+The tool accepts:
+
+```json
+{
+  "key": "tool_a",
+  "args": []
+}
+```
+
+The `key` is a Junius capability key. It is not an executable path and it is not a shell command string.
+
+For this spike, the machine Capability Registry contains two synthetic adapters:
+
+```text
+tool_a
+tool_b
+```
+
+The current Workspace Profile starts with only:
+
+```text
+tool_a
+```
+
+allowed.
+
+The local admin API on port `8788` stands in for the future Junius Dashboard. It changes the Workspace Profile without changing the MCP tool schema.
+
+Check state:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8788/state
+```
+
+Expected initial state:
+
+```json
+{
+  "registeredKeys": ["tool_a", "tool_b"],
+  "allowedKeys": ["tool_a"]
+}
+```
+
+Switch the Workspace Profile so only `tool_b` is allowed:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/only/tool_b
+```
+
+Switch back:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/only/tool_a
+```
+
+### ChatGPT test
+
+Because the MCP tool surface changed from the previous dynamic-tool spike to the new fixed `run_command` tool, delete the old Junius MCP app and recreate it once. This is only needed for this migration between spikes.
+
+After recreating the app:
+
+1. In a new ChatGPT conversation, call `run_command` with `key = "tool_a"`. It should succeed.
+2. In the same conversation, call `run_command` with `key = "tool_b"`. It should return `capability_not_allowed: tool_b`.
+3. Without deleting, recreating, reconnecting, or refreshing the ChatGPT app, run:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/only/tool_b
+```
+
+4. In the same ChatGPT conversation, call `run_command` with `key = "tool_b"`. It should now succeed.
+5. Call `run_command` with `key = "tool_a"`. It should now return `capability_not_allowed: tool_a`.
+
+If this works, the tested property is:
+
+```text
+fixed ChatGPT MCP tool catalog
+        +
+dynamic Workspace Profile authorization by key
+        =
+no ChatGPT app recreation when Workspace permissions change
+```
+
+This spike intentionally uses synthetic capability adapters. It does not yet test executable spawning, argument policy, filesystem sandboxing, process-tree restrictions, or the final Dashboard persistence model.
