@@ -79,6 +79,16 @@ The built-in `node` capability currently permits only:
 ["-p", "process.platform"]
 ```
 
+Junius also registers a `pnpm` capability when the running environment exposes a usable pnpm launcher. It permits:
+
+```text
+["--version"]
+["run", "<script>"]
+["run", "<script>", "--", ...scriptArgs]
+```
+
+It does not expose `install`, `add`, `exec`, or `dlx`. The `pnpm` capability is registered but is **not automatically authorized** for the active Workspace.
+
 The model supplies only `key + args`. Junius owns the executable path and constructs the Windows command line with trusted quoting.
 
 ## Local admin
@@ -99,6 +109,20 @@ Allow it again:
 
 ```powershell
 Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/allow/node
+```
+
+If `pnpm` is listed under `registeredCapabilities`, explicitly authorize it for the Workspace with:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8788/workspace/allow/pnpm
+```
+
+Then the fixed MCP tool can invoke package scripts without exposing a shell:
+
+```text
+run_command
+key = pnpm
+args = ["run", "check"]
 ```
 
 The admin API is temporary; the final Dashboard persistence format is not frozen.
@@ -164,4 +188,4 @@ The real fixed `run_command` path has passed through MXC on Windows:
 }
 ```
 
-The next development phase is adding real development-tool capabilities on top of this execution path rather than adding more one-off sandbox probes.
+The first real development-tool capability, `pnpm`, is now implemented on top of this execution path. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
