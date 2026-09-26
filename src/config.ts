@@ -10,11 +10,15 @@ export interface RuntimeConfig {
   readonly workspaceId: string;
   readonly workspaceRoot: string;
   readonly workspaceStatePath: string;
+  readonly machineCapabilityStatePath: string;
 }
 
-function defaultWorkspaceStatePath(): string {
-  if (process.env.JUNIUS_WORKSPACE_STATE_PATH !== undefined) {
-    return process.env.JUNIUS_WORKSPACE_STATE_PATH;
+function defaultJuniusStatePath(
+  override: string | undefined,
+  fileName: string,
+): string {
+  if (override !== undefined) {
+    return override;
   }
 
   if (process.platform === "win32") {
@@ -22,14 +26,28 @@ function defaultWorkspaceStatePath(): string {
       process.env.LOCALAPPDATA ??
       join(homedir(), "AppData", "Local");
 
-    return join(localAppData, "Junius", "workspace-state.json");
+    return join(localAppData, "Junius", fileName);
   }
 
   const stateRoot =
     process.env.XDG_STATE_HOME ??
     join(homedir(), ".local", "state");
 
-  return join(stateRoot, "Junius", "workspace-state.json");
+  return join(stateRoot, "Junius", fileName);
+}
+
+function defaultWorkspaceStatePath(): string {
+  return defaultJuniusStatePath(
+    process.env.JUNIUS_WORKSPACE_STATE_PATH,
+    "workspace-state.json",
+  );
+}
+
+function defaultMachineCapabilityStatePath(): string {
+  return defaultJuniusStatePath(
+    process.env.JUNIUS_MACHINE_CAPABILITY_STATE_PATH,
+    "machine-capability-state.json",
+  );
 }
 
 function parsePort(value: string | undefined, fallback: number): number {
@@ -57,5 +75,6 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     workspaceId: process.env.JUNIUS_WORKSPACE_ID ?? "default",
     workspaceRoot: await realpath(requestedWorkspaceRoot),
     workspaceStatePath: defaultWorkspaceStatePath(),
+    machineCapabilityStatePath: defaultMachineCapabilityStatePath(),
   };
 }
