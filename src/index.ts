@@ -9,6 +9,7 @@ import {
 } from "./http-bridge.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
+import { JobManager } from "./job-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
@@ -59,9 +60,11 @@ if (persistedWorkspaces === undefined) {
 
 const runCommandService = new RunCommandService(registry, workspaceManager);
 const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
+const jobManager = new JobManager(runCommandService);
 const mcpRuntime = await createMcpRuntime(
   runCommandService,
   workspaceFilesService,
+  jobManager,
 );
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
@@ -131,6 +134,7 @@ async function shutdown(signal: string): Promise<void> {
   mcpHttpServer.close();
   adminHttpServer.close();
   await mcpRuntime.close();
+  await jobManager.close();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
