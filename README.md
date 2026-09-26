@@ -339,3 +339,23 @@ CreateProcessInSandbox failed with Win32 error 203
 Microsoft's current MXC source identifies error 203 here as `ERROR_ENVVAR_NOT_FOUND`. A caller-supplied ProcessContainer environment must include both `SYSTEMROOT` and `LOCALAPPDATA`; MXC 0.8 treats an explicit environment as a complete replacement.
 
 The filesystem probe now omits `process.env` entirely so MXC supplies its backend-default user environment. This keeps the filesystem-confinement test focused. Environment minimization remains a separate security test.
+
+### MXC Node initialization note
+
+After fixing the environment block, BaseContainer successfully created the Node process, but Node exited immediately with:
+
+```text
+STATUS_DLL_INIT_FAILED (0xC0000142)
+```
+
+The MXC debug output showed Win32k/UI system calls were fully blocked. Microsoft's ProcessContainer diagnostics identify this exit code as a common symptom of required UI subsystem access being denied.
+
+The filesystem probe now sets:
+
+```text
+ui.allowWindows = true
+ui.clipboard = "none"
+ui.allowInputInjection = false
+```
+
+This does not change the filesystem grant under test. UI confinement remains a separate security dimension and will be tested independently after filesystem confinement is proven.
