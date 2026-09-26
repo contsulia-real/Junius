@@ -8,6 +8,7 @@ import { createMcpServer } from "./mcp-server.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
 import { JobManager } from "./job-manager.js";
+import { PlaywrightCliService } from "./playwright-cli.js";
 
 export interface McpRuntime {
   handle(request: Request): Promise<Response>;
@@ -18,9 +19,10 @@ export async function createMcpRuntime(
   commands: RunCommandService,
   files: WorkspaceFilesService,
   jobs: JobManager,
+  playwrightCli: PlaywrightCliService,
 ): Promise<McpRuntime> {
   const modernHandler = createMcpHandler(
-    () => createMcpServer(commands, files, jobs),
+    () => createMcpServer(commands, files, jobs, playwrightCli),
     {
     legacy: "reject",
     onerror(error) {
@@ -29,7 +31,7 @@ export async function createMcpRuntime(
     },
   );
 
-  const legacyServer = createMcpServer(commands, files, jobs);
+  const legacyServer = createMcpServer(commands, files, jobs, playwrightCli);
   const legacyTransport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: randomUUID,
   });
