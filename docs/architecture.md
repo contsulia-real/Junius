@@ -172,11 +172,13 @@ Binary files are rejected by the current text-file API.
 
 ### write
 
-Creates or replaces one or more UTF-8 text files.
+Creates, replaces, or exact-text edits one or more UTF-8 text files.
 
-Before any file is changed, Junius validates every requested write. Existing files require the SHA-256 returned by `read`; if the file changed in the meantime, the whole write request is rejected before any requested file is modified.
+Before any file is changed, Junius validates every requested write. Existing files require the SHA-256 returned by `read`; if the file changed in the meantime, the write is rejected as stale.
 
-New files may be created under the Workspace without an existing hash.
+For partial edits, `write` matches an exact `old_text` string and replaces it with `new_text`. A non-`replace_all` edit must match exactly once, which prevents an ambiguous edit from silently changing the wrong location.
+
+New files may be created under the Workspace with full `content` and without an existing hash.
 
 ### rg
 
