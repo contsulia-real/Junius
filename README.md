@@ -2,22 +2,18 @@
 
 Junius is a Local Agent that lets ChatGPT call explicitly authorized local-computer capabilities through MCP.
 
+Junius is an **authorization-controlled local executor**, not an OS security sandbox.
+
 ## Requirements
 
 - Node.js 20+
 - pnpm 12.6.0
 - OpenAI Secure MCP Tunnel `tunnel-client`
-- Windows for the current MXC ProcessContainer runtime path
-
-Junius pins:
-
-```text
-@microsoft/mxc-sdk 0.8.0
-```
 
 ## Run
 
 ```powershell
+pnpm install
 pnpm check
 pnpm dev
 ```
@@ -33,26 +29,16 @@ Optional environment variables:
 - `JUNIUS_ADMIN_PORT`
 - `JUNIUS_WORKSPACE_ID`
 - `JUNIUS_WORKSPACE_ROOT`
-
-The initial Workspace ID defaults to `default`. If `JUNIUS_WORKSPACE_ROOT` is not set, the current process working directory is used as that initial Workspace root. Additional Workspaces can be registered through the local admin surface without replacing or activating a global Workspace.
+- `JUNIUS_WORKSPACE_STATE_PATH`
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
-## MCP schema migration
+## Execution model
 
-`run_command` now requires an explicit `workspace` ID:
-
-```text
-run_command(workspace, key, args)
-```
-
-This is a deliberate schema change required for parallel multi-Workspace routing. Because the current ChatGPT personal-app flow snapshots the MCP tool schema, recreate the Junius App once after pulling this change. Future Workspace registration and permission changes remain runtime data and do not require another App recreation.
-
-## Fixed MCP command model
-
-The current ChatGPT personal-app flow snapshots the MCP tool catalog when the app is created. Runtime `tools/list_changed` and reconnecting did not make tool-list mutations visible reliably, so Junius uses one stable MCP tool:
+Junius exposes stable MCP tools:
 
 ```text
+list_workspaces()
 run_command(workspace, key, args)
 ```
 
@@ -60,30 +46,46 @@ The execution path is:
 
 ```text
 ChatGPT
+  -> list_workspaces when project resolution is needed
   -> run_command(workspace, key, args)
   -> WorkspaceManager lookup by stable Workspace ID
   -> that Workspace's argument grant
   -> Machine Capability Registry
   -> machine capability argument policy
-  -> MxcProcessCapability(cwd = Workspace root)
-  -> MXC ProcessContainer
-  -> registered executable
+  -> ProcessCapability
+  -> spawn(executable, args, { shell: false, cwd: Workspace })
 ```
 
-Each invocation names a registered Workspace ID explicitly. Junius has no global "active Workspace", so multiple Workspaces can execute concurrently without changing shared routing state. Each Workspace authorizes both a capability key and the argument shapes it may use. The machine capability remains the upper bound, so an invocation must pass both the Workspace grant and the capability's own policy. A Workspace ID is not a filesystem path, and a Workspace cannot provide arbitrary executable paths or raw shell command lines.
+There is no global active Workspace. Multiple Workspaces can execute concurrently.
 
-## Current implementation
+A Workspace grant and the machine capability policy are both required. The effective permission is their intersection.
 
-The runtime contains:
+A Workspace ID is not a filesystem path. The model cannot provide an executable path or a raw shell command line.
 
-- `CapabilityRegistry`: machine-level registered capabilities.
-- `WorkspaceProfile`: one Workspace root plus that Workspace's per-capability argument grants.
-- `WorkspaceManager`: maps stable Workspace IDs to independent profiles; there is no global active Workspace.
-- `RunCommandService`: resolves the Workspace ID on every invocation, then performs Workspace argument authorization and capability execution.
-- `MxcProcessCapability`: MXC-backed process execution.
-- `ProcessCapability`: plain-process baseline used only by unit-level code/tests.
-- MCP server exposing the fixed `run_command` tool.
-- Local admin server acting as a temporary Dashboard stand-in.
+## Security boundary
+
+Junius does **not** provide filesystem, network, registry, UI, token, or process-tree isolation.
+
+An authorized executable runs with the permissions of the Junius process. It can access anything the operating-system user account can access unless the executable itself applies additional restrictions.
+
+The current process adapter:
+
+- uses a registry-owned executable path;
+- passes arguments as a vector with `shell: false`;
+- starts the process with the selected Workspace as `cwd`;
+- enforces machine-level argument policy;
+- enforces per-Workspace argument grants before launch;
+- applies timeout and captured-output limits.
+
+It also inherits the Junius host environment. Therefore an authorized project script can observe environment variables available to Junius.
+
+Timeout termination currently targets the directly spawned process only. Junius does not claim process-tree containment.
+
+The `Workspace` concept is therefore an authorization/routing boundary, not an OS access-control boundary.
+
+## Capabilities
+
+### node
 
 The built-in `node` capability currently permits only:
 
@@ -92,7 +94,11 @@ The built-in `node` capability currently permits only:
 ["-p", "process.platform"]
 ```
 
-Junius also registers a `pnpm` capability when the running environment exposes a usable pnpm launcher. It permits:
+### pnpm
+
+Junius registers a `pnpm` capability when it can resolve a usable pnpm launcher.
+
+Machine-level pnpm policy permits:
 
 ```text
 ["--version"]
@@ -100,21 +106,51 @@ Junius also registers a `pnpm` capability when the running environment exposes a
 ["run", "<script>", "--", ...scriptArgs]
 ```
 
-It does not expose `install`, `add`, `exec`, or `dlx`. The `pnpm` capability is registered but is **not automatically authorized** for the active Workspace.
+It does not expose `install`, `add`, `exec`, or `dlx`.
 
-The model supplies only `key + args`. Junius owns the executable path and constructs the Windows command line with trusted quoting.
+pnpm runs directly in the selected Workspace. Junius does not add `--dir` indirection or a sandbox portal.
+
+## Workspace discovery
+
+`list_workspaces()` returns registered Workspace IDs, canonical roots, and each Workspace's capability grants.
+
+When the user names a project rather than an internal Workspace ID, ChatGPT should use `list_workspaces` first and then call `run_command` with the resolved Workspace ID.
+
+## Per-Workspace argument grants
+
+A grant is argument-scoped rather than a simple boolean.
+
+Example:
+
+```text
+default:
+  pnpm --version
+  pnpm run check
+
+weave:
+  pnpm --version
+  pnpm run typecheck
+```
+
+Even though the machine-level pnpm capability understands `run <script>`, `weave` cannot run `pnpm run check` unless that argument shape is explicitly granted to `weave`.
+
+Grant rules support:
+
+- `exact`: the complete argument vector must match.
+- `prefix`: the configured prefix must match; trailing arguments are permitted.
+
+A Workspace grant can only narrow a machine capability. It cannot expand the machine-level argument policy.
 
 ## Local admin
 
 Inspect all registered Workspaces and machine capabilities:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8788/state
+Invoke-RestMethod http://127.0.0.1:8788/state |
+  ConvertTo-Json -Depth 20
 ```
 
-The response contains a `workspaces` array. Every entry has its own stable `id`, canonical `rootPath`, and independent capability grants.
-
-Register another Workspace without changing any other Workspace:
+Register a Workspace:
 
 ```powershell
 $body = @{
@@ -129,13 +165,13 @@ Invoke-RestMethod `
   http://127.0.0.1:8788/workspaces
 ```
 
-Grant only selected pnpm argument shapes to that Workspace:
+Grant selected pnpm arguments:
 
 ```powershell
 $body = @{
   arguments = @(
-    @{ mode = "exact";  args = @("--version") }
-    @{ mode = "prefix"; args = @("run", "check") }
+    @{ mode = "exact"; args = @("--version") }
+    @{ mode = "exact"; args = @("run", "typecheck") }
   )
 } | ConvertTo-Json -Depth 5
 
@@ -146,17 +182,6 @@ Invoke-RestMethod `
   http://127.0.0.1:8788/workspaces/weave/grants/pnpm
 ```
 
-The fixed MCP tool then addresses that Workspace explicitly:
-
-```text
-run_command
-workspace = weave
-key = pnpm
-args = ["run", "check"]
-```
-
-Another Workspace can use the same `pnpm` capability concurrently with a different grant set and a different MXC working directory.
-
 Revoke one capability grant:
 
 ```powershell
@@ -164,7 +189,7 @@ Invoke-RestMethod -Method Delete `
   http://127.0.0.1:8788/workspaces/weave/grants/pnpm
 ```
 
-Remove a registered Workspace:
+Remove a Workspace:
 
 ```powershell
 Invoke-RestMethod -Method Delete `
@@ -173,87 +198,9 @@ Invoke-RestMethod -Method Delete `
 
 The admin API is temporary; the final Dashboard persistence format is not frozen.
 
-## MXC runtime policy
-
-The current Windows execution adapter uses MXC schema `0.8.0-alpha` with:
-
-- Workspace read/write access.
-- Registered executable directory read/execute access.
-- Explicit minimal child environment rather than inheriting the host environment.
-- Default-deny network egress and ingress.
-- Host loopback denied.
-- Clipboard disabled.
-- Input injection disabled.
-- Win32 window subsystem enabled because the tested Node runtime requires it.
-- Timeout and output-size limits.
-
-The explicit Windows environment includes the MXC-required `SYSTEMROOT` and `LOCALAPPDATA`, plus Workspace-scoped `TEMP` / `TMP` and any capability-specific allowlisted variables.
-
-## Sandbox regression suite
-
-The exploratory probes have been removed. The remaining files are retained as regression cases for behavior that materially affects the Junius security boundary.
-
-Run all retained MXC regressions with one command:
-
-```powershell
-pnpm sandbox:regression
-```
-
-On the tested Windows BaseContainer host, the retained regressions have established:
-
-- Direct outside-Workspace reads are blocked.
-- Junction/reparse-point outside reads and writes are blocked.
-- Workspace writes succeed while direct outside creates/overwrites are blocked.
-- Descendant processes inherit the filesystem boundary.
-- `detached + unref()` descendants are terminated with the sandbox lifecycle.
-- Host loopback is unreachable from the sandbox under the default-deny policy.
-- Explicit child environments do not inherit unrelated host variables.
-- The real `run_command -> Workspace argument grant -> machine argument policy -> MxcProcessCapability -> MXC` path works.
-
-## Known MXC limitation: NTFS hard-link aliases
-
-NTFS hard links are an accepted residual risk.
-
-A hard link inside an authorized Workspace can name the same underlying file object as a path outside the Workspace. In the tested MXC BaseContainer configuration, the sandbox could read and write that file through the in-Workspace hard-link path.
-
-Therefore Junius does **not** describe the Workspace grant as an absolute object-level filesystem boundary.
-
-Junius currently does not recursively scan or reject Workspace hard links and does not stage/copy the entire Workspace solely to compensate for this limitation. The retained hard-link regression remains in the suite so a future MXC release that changes this behavior can be detected.
-
-## Verified run_command integration
-
-The real fixed `run_command` path has passed through MXC on Windows:
-
-```json
-{
-  "conclusions": {
-    "runCommandVersionWorks": true,
-    "runCommandPlatformWorks": true,
-    "argumentPolicyStillEnforced": true
-  }
-}
-```
-
-The first real development-tool capability, `pnpm`, is implemented on top of this execution path. Workspace authorization is argument-scoped rather than a per-key boolean, and Workspace selection is explicit per invocation, so multiple Workspaces can run concurrently with different subsets of the same machine capability. Further tools should reuse the same registry/profile/MXC model rather than introducing one-off sandbox probes.
-
-
-## Workspace discovery
-
-Junius exposes a stable read-only MCP tool:
-
-```text
-list_workspaces()
-```
-
-It returns the registered Workspace IDs, canonical roots, and per-Workspace capability argument grants. This lets ChatGPT resolve project names such as "Junius" or "Weave" to the correct Workspace without the user having to provide internal Workspace IDs.
-
-When the user refers to a project by name, ChatGPT should use `list_workspaces` before `run_command`.
-
-This is a stable MCP tool, not a dynamic tool-list mutation.
-
 ## Workspace state persistence
 
-Workspace registration and per-Workspace capability grants are persisted outside the repository.
+Workspace registration and per-Workspace grants are persisted outside the repository.
 
 Default Windows location:
 
@@ -267,7 +214,9 @@ Override it with:
 JUNIUS_WORKSPACE_STATE_PATH
 ```
 
-The state file is internal, versioned Junius state rather than a public configuration contract. The current format is:
+The state file is internal, versioned Junius state rather than a public configuration contract.
+
+Current shape:
 
 ```json
 {
@@ -284,19 +233,22 @@ The state file is internal, versioned Junius state rather than a public configur
 
 Startup behavior:
 
-- If the state file exists, Junius restores all Workspace IDs, roots, and grants from it.
-- If the state file does not exist, Junius creates the configured initial Workspace and immediately writes the first state file.
-- An existing but invalid state file fails startup rather than silently discarding authorization state.
-- Registering/removing Workspaces and changing/revoking grants writes the new state immediately.
-- State writes are serialized so concurrent admin changes cannot race each other.
+- If the state file exists, Junius restores Workspace IDs, roots, and grants.
+- If it does not exist, Junius creates the configured initial Workspace and writes the first state file.
+- An invalid existing state file fails startup rather than silently discarding authorization state.
+- Workspace registration/removal and grant changes are written immediately.
+- Writes are serialized so concurrent admin changes do not race.
 
-For one-time migration from a pre-persistence Junius process, the loader also accepts the existing local admin `/state` response shape and ignores its machine-capability metadata.
+## Current direction
 
-## pnpm Workspace portal
+Junius deliberately keeps the MCP surface stable while capabilities and Workspace policy remain runtime data.
 
-Native pnpm canonicalizes its effective `--dir` before running package scripts. Under the Windows MXC policy, directly canonicalizing a host Workspace path can require traversal through host ancestor directories that Junius intentionally does not grant.
+The next work should focus on:
 
-Junius does not broaden those ancestor grants. The pnpm capability instead creates a per-execution Junius-owned runtime directory with a `workspace` junction that targets the authorized Workspace. MXC continues to grant the real Workspace read/write access, while the temporary runtime directory is read-only inside the sandbox. pnpm runs with `--dir .` and its sandbox cwd set to that portal.
+- real capability coverage;
+- long-running jobs and process lifecycle;
+- Dashboard-based Workspace/capability management;
+- persistent machine capability configuration;
+- clearer authorization UX.
 
-The portal is created before the sandbox starts and removed after the MXC executor exits. This is runtime namespace indirection, not a copy or staging of the Workspace.
-
+OS-level sandboxing is not part of the current Junius execution model.
