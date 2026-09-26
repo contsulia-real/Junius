@@ -36,6 +36,8 @@ async function fixture() {
   const browser = new PlaywrightCliService({
     ...process.env,
     PATH: "",
+    JUNIUS_PLAYWRIGHT_CLI_PATH: undefined,
+    PLAYWRIGHT_CLI_HOME: undefined,
     JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
   });
 
