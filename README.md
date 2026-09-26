@@ -367,3 +367,30 @@ A later probe showed Node failing with `EPERM: lstat 'C:\\'` while resolving a s
 The released SDK remains `@microsoft/mxc-sdk 0.8.0`. The probe therefore keeps schema `0.8.0-alpha` and executes its small probe program through `node -e` instead of a script file. This avoids Node's entry-script realpath traversal without broadening filesystem read permissions.
 
 MXC's repository contains newer schema work such as `0.9.0-alpha`, but that schema version must not be confused with an npm package version.
+
+## MXC filesystem confinement result
+
+The MXC BaseContainer filesystem regression passed on Windows.
+
+Observed with `pnpm sandbox:mxc-probe`:
+
+```json
+{
+  "conclusions": {
+    "workspaceReadWorks": true,
+    "directOutsideReadBlocked": true,
+    "reparseOutsideReadBlocked": true
+  }
+}
+```
+
+The executor diagnostics also confirmed:
+
+```text
+selected isolation tier: base-container
+loaded Experimental_CreateProcessInSandbox from processmodel.dll
+```
+
+The sandboxed Node process could read the Workspace file, while both the direct outside path and the Workspace junction pointing outside failed with `EPERM`.
+
+This validates filesystem confinement for the original regression case on this host. It does not yet prove descendant-process containment, network confinement, UI isolation, device/NT namespace behavior, hard-link behavior, or the final Junius production sandbox integration.
