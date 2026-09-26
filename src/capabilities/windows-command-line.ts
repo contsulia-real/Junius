@@ -3,7 +3,7 @@ export function quoteWindowsArgument(value: string): string {
     return '""';
   }
 
-  if (!/[\\s"]/u.test(value)) {
+  if (!/[\s"]/u.test(value)) {
     return value;
   }
 
