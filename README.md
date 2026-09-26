@@ -250,3 +250,45 @@ It returns the registered Workspace IDs, canonical roots, and per-Workspace capa
 When the user refers to a project by name, ChatGPT should use `list_workspaces` before `run_command`.
 
 This is a stable MCP tool, not a dynamic tool-list mutation.
+
+## Workspace state persistence
+
+Workspace registration and per-Workspace capability grants are persisted outside the repository.
+
+Default Windows location:
+
+```text
+%LOCALAPPDATA%\Junius\workspace-state.json
+```
+
+Override it with:
+
+```text
+JUNIUS_WORKSPACE_STATE_PATH
+```
+
+The state file is internal, versioned Junius state rather than a public configuration contract. The current format is:
+
+```json
+{
+  "version": 1,
+  "workspaces": [
+    {
+      "id": "example",
+      "rootPath": "C:\\path\\to\\project",
+      "grants": []
+    }
+  ]
+}
+```
+
+Startup behavior:
+
+- If the state file exists, Junius restores all Workspace IDs, roots, and grants from it.
+- If the state file does not exist, Junius creates the configured initial Workspace and immediately writes the first state file.
+- An existing but invalid state file fails startup rather than silently discarding authorization state.
+- Registering/removing Workspaces and changing/revoking grants writes the new state immediately.
+- State writes are serialized so concurrent admin changes cannot race each other.
+
+For one-time migration from a pre-persistence Junius process, the loader also accepts the existing local admin `/state` response shape and ignores its machine-capability metadata.
+
