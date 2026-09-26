@@ -13,6 +13,7 @@ The current implementation does not provide an OS security sandbox.
 - Node.js 20+
 - pnpm 12.6.0
 - OpenAI Secure MCP Tunnel `tunnel-client`
+- `playwright-cli` / `@playwright/cli` for browser capability
 
 ## Run
 
@@ -34,6 +35,8 @@ Optional environment variables:
 - `JUNIUS_WORKSPACE_ID`
 - `JUNIUS_WORKSPACE_ROOT`
 - `JUNIUS_WORKSPACE_STATE_PATH`
+- `JUNIUS_PLAYWRIGHT_CLI_PATH`
+- `JUNIUS_BROWSER_STATE_PATH`
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
@@ -47,6 +50,7 @@ ls
 read
 write
 rg
+playwright_cli
 start_job
 get_job
 wait_job
@@ -258,7 +262,7 @@ Junius remains a general Local Agent. The current file/process tools are the fir
 
 The next work should focus on:
 
-- browser capability;
+- black-box validation of the browser capability;
 - broader local capability coverage;
 - Dashboard-based Workspace/capability management;
 - persistent machine capability configuration;
@@ -372,3 +376,74 @@ pnpm typecheck && pnpm test
 The observed test run completed with 32 tests passed, 0 failed, 0 cancelled, and 0 skipped.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
+
+
+## Browser capability
+
+Junius uses the locally installed `playwright-cli` as its browser execution layer. It does not reimplement Playwright through a second browser framework.
+
+The MCP surface adds one thin tool:
+
+```text
+playwright_cli
+```
+
+The tool accepts a named browser session, one whitelisted `playwright-cli` command, and that command's validated arguments.
+
+The current allowlist covers ordinary browser navigation and interaction:
+
+```text
+open
+goto
+snapshot
+find
+click
+dblclick
+fill
+type
+press
+keydown
+keyup
+hover
+select
+check
+uncheck
+drag
+dialog-accept
+dialog-dismiss
+resize
+go-back
+go-forward
+reload
+mousemove
+mousedown
+mouseup
+mousewheel
+tab-list
+tab-new
+tab-close
+tab-select
+close
+```
+
+Arbitrary JavaScript/code execution, storage mutation, CDP attachment, request interception, and arbitrary CLI commands are not exposed in this first version.
+
+Browser sessions are independent of Workspaces. The default session is `junius`; callers may use other valid named sessions when concurrent browser state is needed.
+
+`open` defaults to playwright-cli persistent mode so the CLI-managed profile can keep its browser state across browser restarts. This profile is separate from ordinary Chrome/Edge user profiles.
+
+`snapshot` is invoked through playwright-cli's raw-output mode so the snapshot YAML and element refs are returned directly through MCP rather than requiring Junius to read a generated snapshot file.
+
+Junius runs playwright-cli with a dedicated local state working directory:
+
+```text
+%LOCALAPPDATA%\Junius\browser
+```
+
+On non-Windows systems it uses the equivalent XDG/local state directory. Override it with `JUNIUS_BROWSER_STATE_PATH`.
+
+This keeps playwright-cli runtime artifacts such as generated snapshots outside registered project Workspaces.
+
+Launcher discovery supports a native executable, the JavaScript entry point, and Windows npm-style `.cmd` shims that resolve to the real `playwright-cli.js` entry. `JUNIUS_PLAYWRIGHT_CLI_PATH` can explicitly provide the launcher/entry when automatic discovery is insufficient.
+
+Browser capability v1 is implemented and awaiting black-box MCP validation.
