@@ -77,6 +77,7 @@ export class ProcessCapability implements Capability {
       const stderrChunks: Buffer[] = [];
       let capturedBytes = 0;
       let settled = false;
+      let timer: NodeJS.Timeout | undefined;
 
       const child = spawn(this.#executable, [...args], {
         cwd: context.cwd,
@@ -99,7 +100,9 @@ export class ProcessCapability implements Capability {
         }
 
         settled = true;
-        clearTimeout(timer);
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
         resolve(result);
       };
 
@@ -177,7 +180,9 @@ export class ProcessCapability implements Capability {
         });
       });
 
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
+        // This terminates only the directly spawned process. It is not a
+        // process-tree sandbox; Windows Job Object isolation is a later spike.
         child.kill();
         const captured = capturedText();
         finish({
