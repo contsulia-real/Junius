@@ -226,6 +226,67 @@ Current timeout termination targets the directly spawned process. Junius does no
 
 Long-running job management remains future work.
 
+## Job Manager
+
+Long-running process work is separated from synchronous `run_command`.
+
+The stable job lifecycle is:
+
+```text
+start_job
+-> get_job / wait_job
+-> read_job_output
+-> cancel_job when needed
+```
+
+### Authorization
+
+`start_job(workspace, key, args)` reuses the exact same authorization path as `run_command`:
+
+```text
+Workspace lookup
+-> Workspace capability grant
+-> Workspace argument grant
+-> machine capability lookup
+-> machine capability argument policy
+-> prepared process
+```
+
+There is no second job-specific permission model.
+
+Only process-backed capabilities expose a prepared process and can be started as jobs.
+
+### Runtime state
+
+Job state is intentionally process-local in v1. Junius does not persist job IDs across restart and does not claim it can reattach to processes created by an earlier Junius process.
+
+Each running job records:
+
+- stable job ID for the lifetime of the Junius process;
+- Workspace and capability key;
+- PID;
+- running/succeeded/failed/cancelled state;
+- start/end time and exit information;
+- bounded stdout/stderr capture.
+
+Each output stream is capped at 4 Mi characters. Truncating captured output does not terminate the job.
+
+### Waiting and output
+
+`wait_job` waits for completion for at most 60 seconds in one MCP call and otherwise returns the current running state.
+
+`read_job_output` uses character offsets so the model can incrementally consume stdout or stderr without receiving the full log on every call.
+
+### Cancellation
+
+Cancellation is best-effort process termination, not sandbox containment.
+
+On Windows, Junius directly launches the system `taskkill.exe` with `/PID <pid> /T /F` and `shell: false` so descendants are included.
+
+On non-Windows platforms, the current implementation sends SIGTERM to the direct child and escalates to SIGKILL after two seconds if it has not exited. It does not currently claim full descendant-process-tree termination there.
+
+Graceful Junius shutdown asks the Job Manager to cancel jobs that are still running.
+
 ## Workspace persistence
 
 Workspace registration and grants are persisted outside the repository.
