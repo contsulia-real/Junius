@@ -19,7 +19,6 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
       <nav>
         <button data-view="overview" class="nav-item active">概览</button>
         <button data-view="workspaces" class="nav-item">工作区</button>
-        <button data-view="permissions" class="nav-item">权限</button>
         <button data-view="capabilities" class="nav-item">能力</button>
         <button data-view="jobs" class="nav-item">后台任务</button>
         <button data-view="browser" class="nav-item">浏览器</button>
@@ -56,7 +55,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
           <div class="panel-heading">
             <div>
               <h2>工作区</h2>
-              <p>管理可供工作区范围能力使用的本地项目根目录。</p>
+              <p>管理本地项目根目录，以及每个工作区自己的能力授权。</p>
             </div>
           </div>
           <form id="workspace-form" class="form-row">
@@ -71,41 +70,6 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
             <button class="button" type="submit">添加工作区</button>
           </form>
           <div id="workspace-list" class="stack"></div>
-        </div>
-      </section>
-
-      <section id="view-permissions" class="view">
-        <div class="panel">
-          <div class="panel-heading">
-            <div>
-              <h2>权限</h2>
-              <p>工作区能力授权仍然按参数范围控制。</p>
-            </div>
-          </div>
-          <form id="permission-form" class="form-row">
-            <label>
-              <span>工作区</span>
-              <select id="permission-workspace"></select>
-            </label>
-            <label>
-              <span>能力</span>
-              <select id="permission-capability"></select>
-            </label>
-            <label>
-              <span>模式</span>
-              <select id="permission-mode">
-                <option value="exact">精确匹配（exact）</option>
-                <option value="prefix">前缀匹配（prefix）</option>
-              </select>
-            </label>
-            <label class="grow">
-              <span>参数</span>
-              <input id="permission-args" placeholder='run check'>
-            </label>
-            <button class="button" type="submit">添加规则</button>
-          </form>
-          <p class="hint">这里的引号语法只用于把输入拆成参数；Junius 仍然保存并执行参数向量，不会把它当作原始 Shell 命令。</p>
-          <div id="permission-list" class="stack"></div>
         </div>
       </section>
 
@@ -220,6 +184,22 @@ h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spa
 .item-title { font-weight: 650; overflow-wrap: anywhere; }
 .item-meta { color: var(--muted); font-size: 13px; margin-top: 5px; overflow-wrap: anywhere; }
 .item-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.workspace-card { display: block; padding: 0; overflow: hidden; }
+.workspace-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px; }
+.workspace-settings { border-top: 1px solid var(--border); padding: 16px; background: #151a22; }
+.workspace-settings h3 { margin-bottom: 10px; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 14px; }
+.workspace-settings-copy { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+.grant-list { display: grid; gap: 10px; margin-bottom: 16px; }
+.grant-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--panel-2); }
+.grant-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.grant-title { font-weight: 650; }
+.grant-status { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.rule-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.rule-copy { min-width: 0; }
+.rule-label { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+.rule-command { display: inline-block; max-width: 100%; overflow-wrap: anywhere; background: #11151c; border-radius: 7px; padding: 6px 8px; }
+.workspace-permission-form { margin-top: 4px; }
 .button { border: 1px solid transparent; border-radius: 9px; padding: 9px 12px; background: var(--accent); color: #10131a; cursor: pointer; font-weight: 650; white-space: nowrap; }
 .button.secondary { color: var(--text); background: var(--panel-2); border-color: var(--border); }
 .button.danger { color: #fff; background: #792f38; border-color: #9c3d48; }
@@ -265,11 +245,11 @@ export const ADMIN_DASHBOARD_JS = String.raw`
 
   var data = null;
   var currentView = "overview";
+  var openWorkspaceSettings = Object.create(null);
 
   var titles = {
     overview: ["概览", "Junius 本地代理状态与管理"],
-    workspaces: ["工作区", "已注册的本地项目根目录"],
-    permissions: ["权限", "按参数范围控制的能力授权"],
+    workspaces: ["工作区", "项目根目录与工作区授权"],
     capabilities: ["能力", "机器级已注册能力"],
     jobs: ["后台任务", "后台进程生命周期"],
     browser: ["浏览器", "本地 playwright-cli 适配器"]
@@ -358,6 +338,113 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       '<div class="detail"><div class="key">MCP 暴露范围</div><div class="value">管理 WebUI 仅限本机访问</div></div>';
   }
 
+  function formatArgument(arg) {
+    if (arg === "") return '""';
+    return /\s|["\\]/.test(arg) ? JSON.stringify(arg) : arg;
+  }
+
+  function rulePresentation(capabilityKey, rule) {
+    var args = rule.args.map(formatArgument);
+    var command = [capabilityKey].concat(args).join(" ");
+    if (rule.mode === "prefix") {
+      command += " …";
+    }
+
+    return {
+      label: rule.mode === "exact"
+        ? "仅允许这组参数"
+        : "允许此前缀参数",
+      command: command
+    };
+  }
+
+  function machineCapabilityFor(key) {
+    return (data.machineCapabilities || []).find(function (capability) {
+      return capability.key === key;
+    });
+  }
+
+  function grantStatusHtml(key) {
+    var capability = machineCapabilityFor(key);
+    if (!capability) {
+      return '<span class="badge warning">未知机器能力</span>';
+    }
+
+    var parts = [];
+    if (!capability.enabled) {
+      parts.push('<span class="badge danger">机器级已禁用</span>');
+    } else if (!capability.available) {
+      parts.push('<span class="badge danger">当前不可用</span>');
+    } else if (capability.active) {
+      parts.push('<span class="badge success">当前可执行</span>');
+    } else {
+      parts.push('<span class="badge warning">当前未激活</span>');
+    }
+    return parts.join(" ");
+  }
+
+  function capabilityOptions() {
+    return data.registeredCapabilities.map(function (capability) {
+      return '<option value="' + esc(capability.key) + '">' +
+        esc(capability.key) + '</option>';
+    }).join("");
+  }
+
+  function renderWorkspaceGrants(workspace) {
+    if (workspace.grants.length === 0) {
+      return '<div class="empty">尚未给这个工作区授权任何进程能力。</div>';
+    }
+
+    return '<div class="grant-list">' + workspace.grants.map(function (grant) {
+      var rules = grant.arguments.map(function (rule, index) {
+        var presentation = rulePresentation(grant.key, rule);
+        return '<div class="rule-row">' +
+          '<div class="rule-copy">' +
+            '<div class="rule-label">' + esc(presentation.label) +
+              ' <span class="badge">' + esc(rule.mode) + '</span></div>' +
+            '<code class="rule-command">' + esc(presentation.command) + '</code>' +
+          '</div>' +
+          '<button class="button secondary" data-remove-rule="' + esc(workspace.id) +
+            '" data-capability="' + esc(grant.key) +
+            '" data-rule-index="' + index + '">删除规则</button>' +
+        '</div>';
+      }).join("");
+
+      return '<div class="grant-card">' +
+        '<div class="grant-header">' +
+          '<div>' +
+            '<div class="grant-title">' + esc(grant.key) + '</div>' +
+            '<div class="grant-status">' + grantStatusHtml(grant.key) + '</div>' +
+          '</div>' +
+          '<button class="button danger" data-revoke="' + esc(workspace.id) +
+            '" data-capability="' + esc(grant.key) + '">撤销此能力</button>' +
+        '</div>' +
+        rules +
+      '</div>';
+    }).join("") + '</div>';
+  }
+
+  function renderWorkspacePermissionForm(workspace) {
+    var options = capabilityOptions();
+    if (!options) {
+      return '<div class="empty">当前没有可授权的已激活机器能力。</div>';
+    }
+
+    return '<form class="form-row workspace-permission-form" data-workspace-permission-form="' +
+      esc(workspace.id) + '">' +
+      '<label><span>能力</span><select name="capability">' + options + '</select></label>' +
+      '<label><span>允许范围</span><select name="mode">' +
+        '<option value="exact">仅允许这组参数</option>' +
+        '<option value="prefix">允许此前缀参数</option>' +
+      '</select></label>' +
+      '<label class="grow"><span>参数</span>' +
+        '<input name="args" placeholder="例如：run check">' +
+      '</label>' +
+      '<button class="button" type="submit">添加授权</button>' +
+    '</form>' +
+    '<p class="hint">参数输入支持引号分组；界面展示成命令形式便于阅读，底层仍保存参数向量，不会执行原始 Shell 字符串。</p>';
+  }
+
   function renderWorkspaces() {
     var node = document.getElementById("workspace-list");
     if (data.workspaces.length === 0) {
@@ -366,13 +453,30 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     }
 
     node.innerHTML = data.workspaces.map(function (workspace) {
-      return '<div class="item"><div class="item-main">' +
-        '<div class="item-title">' + esc(workspace.id) + '</div>' +
-        '<div class="item-meta">' + esc(workspace.rootPath) + '</div>' +
-        '<div class="item-meta">' + workspace.grants.length + ' 项能力授权</div>' +
-        '</div><div class="item-actions">' +
-        '<button class="button danger" data-remove-workspace="' + esc(workspace.id) + '">删除</button>' +
-        '</div></div>';
+      var isOpen = openWorkspaceSettings[workspace.id] === true;
+      return '<div class="item workspace-card">' +
+        '<div class="workspace-header">' +
+          '<div class="item-main">' +
+            '<div class="item-title">' + esc(workspace.id) + '</div>' +
+            '<div class="item-meta">' + esc(workspace.rootPath) + '</div>' +
+            '<div class="item-meta">' + workspace.grants.length + ' 项能力授权</div>' +
+          '</div>' +
+          '<div class="item-actions">' +
+            '<button class="button secondary" data-workspace-settings="' +
+              esc(workspace.id) + '">' + (isOpen ? '收起设置' : '设置') + '</button>' +
+            '<button class="button danger" data-remove-workspace="' +
+              esc(workspace.id) + '">删除工作区</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="workspace-settings ' + (isOpen ? '' : 'hidden') + '">' +
+          '<h3>能力授权</h3>' +
+          '<p class="workspace-settings-copy">这些授权只属于工作区 ' +
+            esc(workspace.id) + '。机器级能力必须同时处于可用和启用状态，授权才会生效。</p>' +
+          renderWorkspaceGrants(workspace) +
+          '<h3>添加授权</h3>' +
+          renderWorkspacePermissionForm(workspace) +
+        '</div>' +
+      '</div>';
     }).join("");
   }
 
@@ -418,59 +522,6 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     }).join("");
   }
 
-  function renderPermissionSelectors() {
-    var workspaceSelect = document.getElementById("permission-workspace");
-    var capabilitySelect = document.getElementById("permission-capability");
-
-    var oldWorkspace = workspaceSelect.value;
-    var oldCapability = capabilitySelect.value;
-
-    workspaceSelect.innerHTML = data.workspaces.map(function (workspace) {
-      return '<option value="' + esc(workspace.id) + '">' + esc(workspace.id) + '</option>';
-    }).join("");
-
-    capabilitySelect.innerHTML = data.registeredCapabilities.map(function (capability) {
-      return '<option value="' + esc(capability.key) + '">' + esc(capability.key) + '</option>';
-    }).join("");
-
-    if (data.workspaces.some(function (w) { return w.id === oldWorkspace; })) {
-      workspaceSelect.value = oldWorkspace;
-    }
-    if (data.registeredCapabilities.some(function (c) { return c.key === oldCapability; })) {
-      capabilitySelect.value = oldCapability;
-    }
-  }
-
-  function renderPermissions() {
-    renderPermissionSelectors();
-    var node = document.getElementById("permission-list");
-    var rows = [];
-
-    data.workspaces.forEach(function (workspace) {
-      workspace.grants.forEach(function (grant) {
-        var rules = grant.arguments.map(function (rule, index) {
-          var args = rule.args.map(function (arg) { return JSON.stringify(arg); }).join(" ");
-          return '<div class="rule">' +
-            '<span class="badge">' + esc(rule.mode) + '</span>' +
-            '<code>' + esc(args || "(no args)") + '</code>' +
-            '<button class="button secondary" data-remove-rule="' + esc(workspace.id) +
-            '" data-capability="' + esc(grant.key) + '" data-rule-index="' + index + '">删除规则</button>' +
-            '</div>';
-        }).join("");
-
-        rows.push('<div class="item"><div class="item-main">' +
-          '<div class="item-title">' + esc(workspace.id) + ' · ' + esc(grant.key) + '</div>' +
-          rules +
-          '</div><div class="item-actions">' +
-          '<button class="button danger" data-revoke="' + esc(workspace.id) +
-          '" data-capability="' + esc(grant.key) + '">撤销能力授权</button>' +
-          '</div></div>');
-      });
-    });
-
-    node.innerHTML = rows.length ? rows.join("") : '<div class="empty">尚未配置能力授权。</div>';
-  }
-
   function renderJobs() {
     var node = document.getElementById("job-list");
     if (data.jobs.length === 0) {
@@ -506,7 +557,6 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   function render() {
     renderSummary();
     renderWorkspaces();
-    renderPermissions();
     renderCapabilities();
     renderJobs();
     renderBrowser();
@@ -566,30 +616,40 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     return data.workspaces.find(function (workspace) { return workspace.id === id; });
   }
 
-  async function addPermissionRule(event) {
-    event.preventDefault();
-    var workspaceId = document.getElementById("permission-workspace").value;
-    var key = document.getElementById("permission-capability").value;
-    var mode = document.getElementById("permission-mode").value;
-    var args = parseArgs(document.getElementById("permission-args").value);
+  async function addPermissionRule(form) {
+    var workspaceId = form.dataset.workspacePermissionForm;
+    var key = form.elements.capability.value;
+    var mode = form.elements.mode.value;
+    var args = parseArgs(form.elements.args.value);
 
-    if (!workspaceId || !key) throw new Error("必须选择工作区和能力。");
-    if (mode === "prefix" && args.length === 0) throw new Error("前缀匹配至少需要一个参数。");
+    if (!workspaceId || !key) {
+      throw new Error("必须选择工作区和能力。");
+    }
+    if (mode === "prefix" && args.length === 0) {
+      throw new Error("“允许此前缀参数”至少需要一个参数。");
+    }
 
     var workspace = workspaceById(workspaceId);
-    var existing = workspace.grants.find(function (grant) { return grant.key === key; });
+    var existing = workspace.grants.find(function (grant) {
+      return grant.key === key;
+    });
     var rules = existing ? existing.arguments.slice() : [];
     rules.push({ mode: mode, args: args });
 
-    await api("/workspaces/" + encodeURIComponent(workspaceId) + "/grants/" + encodeURIComponent(key), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ arguments: rules })
-    });
+    await api(
+      "/workspaces/" + encodeURIComponent(workspaceId) +
+      "/grants/" + encodeURIComponent(key),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ arguments: rules })
+      }
+    );
 
-    document.getElementById("permission-args").value = "";
+    openWorkspaceSettings[workspaceId] = true;
+    form.elements.args.value = "";
     await refresh();
-    showNotice("权限规则已添加。");
+    showNotice("工作区授权已添加。");
   }
 
   async function removePermissionRule(workspaceId, key, index) {
@@ -610,8 +670,9 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       });
     }
 
+    openWorkspaceSettings[workspaceId] = true;
     await refresh();
-    showNotice("权限规则已删除。");
+    showNotice("工作区授权规则已删除。");
   }
 
   async function loadJobOutput(id) {
@@ -650,8 +711,14 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     });
   });
 
-  document.getElementById("permission-form").addEventListener("submit", function (event) {
-    addPermissionRule(event).catch(function (error) { showNotice(error.message, true); });
+  document.addEventListener("submit", function (event) {
+    var form = event.target.closest("[data-workspace-permission-form]");
+    if (!form) return;
+
+    event.preventDefault();
+    addPermissionRule(form).catch(function (error) {
+      showNotice(error.message, true);
+    });
   });
 
   document.getElementById("close-output").addEventListener("click", function () {
@@ -661,6 +728,14 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   document.addEventListener("click", function (event) {
     var target = event.target.closest("button");
     if (!target) return;
+
+    if (target.dataset.workspaceSettings) {
+      var workspaceId = target.dataset.workspaceSettings;
+      openWorkspaceSettings[workspaceId] =
+        openWorkspaceSettings[workspaceId] !== true;
+      renderWorkspaces();
+      return;
+    }
 
     if (target.dataset.toggleCapability) {
       var key = target.dataset.toggleCapability;
@@ -699,8 +774,11 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     if (target.dataset.revoke) {
       if (!confirm("确定撤销工作区 " + target.dataset.revoke + " 的 " + target.dataset.capability + " 能力授权吗？")) return;
       api("/workspaces/" + encodeURIComponent(target.dataset.revoke) + "/grants/" + encodeURIComponent(target.dataset.capability), { method: "DELETE" })
-        .then(refresh)
-        .then(function () { showNotice("能力授权已撤销。"); })
+        .then(function () {
+          openWorkspaceSettings[target.dataset.revoke] = true;
+          return refresh();
+        })
+        .then(function () { showNotice("工作区能力授权已撤销。"); })
         .catch(function (error) { showNotice(error.message, true); });
       return;
     }
