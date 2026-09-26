@@ -1,4 +1,5 @@
 import { MxcProcessCapability } from "./mxc-process-capability.js";
+import { createPnpmCapability } from "./pnpm-capability.js";
 import { CapabilityRegistry } from "./registry.js";
 
 export function createDefaultCapabilityRegistry(): CapabilityRegistry {
@@ -8,7 +9,7 @@ export function createDefaultCapabilityRegistry(): CapabilityRegistry {
     new MxcProcessCapability({
       key: "node",
       description:
-        "Node.js executable. During this spike only --version and -p process.platform are permitted.",
+        "Node.js executable. Only --version and -p process.platform are permitted.",
       executable: process.execPath,
       allowedArgVectors: [
         ["--version"],
@@ -18,6 +19,11 @@ export function createDefaultCapabilityRegistry(): CapabilityRegistry {
       maxOutputBytes: 16 * 1024,
     }),
   );
+
+  const pnpm = createPnpmCapability();
+  if (pnpm !== undefined) {
+    registry.register(pnpm);
+  }
 
   return registry;
 }
