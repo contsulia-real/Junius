@@ -69,7 +69,7 @@ async function createWorkspaceRuntime(
   }
 
   return {
-    sandboxCwd: workspacePortal,
+    sandboxCwd: runtimeRoot,
     executorCwd: runtimeRoot,
     readonlyPaths: [runtimeRoot],
     async dispose() {
@@ -259,7 +259,7 @@ export class MxcProcessCapability implements Capability {
     let environment: string[];
     try {
       environment = buildExplicitEnvironment(
-        runtime.sandboxCwd,
+        context.cwd,
         this.#environment,
       );
     } catch (error) {
