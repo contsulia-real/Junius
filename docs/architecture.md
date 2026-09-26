@@ -287,7 +287,7 @@ On non-Windows platforms, the current implementation sends SIGTERM to the direct
 
 Graceful Junius shutdown asks the Job Manager to cancel jobs that are still running.
 
-Job Manager v1 is implemented and awaiting black-box MCP validation.
+Job Manager v1 is implemented and black-box verified through ChatGPT.
 
 ## Workspace persistence
 
@@ -428,3 +428,23 @@ run_command
 
 Workspace Files v1 is therefore considered implemented and black-box verified.
 
+
+
+## Verified Job Manager status
+
+Job Manager v1 has passed real black-box validation through ChatGPT.
+
+The validated interaction was:
+
+```text
+user asks for Junius full check as a background task
+-> start_job
+-> job status inspection
+-> captured output inspection
+-> wait_job
+-> terminal succeeded state
+```
+
+The verified execution returned exit code `0` and ran the real Junius full-check path (`pnpm typecheck && pnpm test`). The observed suite completed with 32 passing tests and no failures, cancellations, or skips.
+
+This confirms that the background process path, job identity, status transitions, captured output, wait semantics, and existing Workspace/capability authorization work together through the real MCP surface.
