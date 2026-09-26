@@ -113,6 +113,32 @@ function appendCaptured(
   };
 }
 
+async function waitForCompletion(
+  record: JobRecord,
+  timeoutMs: number,
+): Promise<void> {
+  if (terminal(record.status)) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+
+    const timer = setTimeout(finish, timeoutMs);
+    void record.completion.then(finish);
+  });
+}
+
 function snapshot(record: JobRecord): JobSnapshot {
   return {
     id: record.id,
@@ -382,12 +408,7 @@ export class JobManager {
       Math.min(timeoutMs, MAX_WAIT_MS),
     );
 
-    await Promise.race([
-      record.completion,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, boundedTimeout);
-      }),
-    ]);
+    await waitForCompletion(record, boundedTimeout);
 
     return snapshot(record);
   }
@@ -437,12 +458,7 @@ export class JobManager {
     record.cancelRequested = true;
     await terminateProcessTree(record.child);
 
-    await Promise.race([
-      record.completion,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 5_000);
-      }),
-    ]);
+    await waitForCompletion(record, 5_000);
 
     return snapshot(record);
   }
