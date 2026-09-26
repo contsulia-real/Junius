@@ -8,8 +8,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "check": "pnpm typecheck && pnpm test",
-    "sandbox:regression": "tsx src/mxc-sandbox-probe.ts && tsx src/mxc-child-process-probe.ts && tsx src/mxc-lifecycle-probe.ts && tsx src/mxc-network-probe.ts && tsx src/mxc-environment-probe.ts && tsx src/mxc-filesystem-mutation-probe.ts && tsx src/mxc-hardlink-probe.ts && tsx src/mxc-run-command-probe.ts"
+    "check": "pnpm typecheck && pnpm test"
   },
   "keywords": [],
   "author": "",
@@ -28,8 +27,7 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/server": "^2.1.0",
-    "zod": "^4.6.5",
-    "@microsoft/mxc-sdk": "0.8.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
