@@ -6,7 +6,7 @@ Junius is a **Local Agent** that lets ChatGPT use capabilities of the user's loc
 
 Local files, processes, jobs, and browser automation are Local Agent capabilities. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
 
-Junius does not plan to provide desktop-UI automation. Its user-facing management surface is a local WebUI.
+Junius's user-facing management surface is a local WebUI rather than a desktop Dashboard. This UI choice is independent of whether desktop-automation capabilities are added later.
 
 ```text
 Junius
@@ -18,8 +18,8 @@ current capabilities
 user-facing management
 = local WebUI
 
-desktop/UI automation
-= out of scope
+desktop automation capability
+= separate product/capability decision
 
 Workspace / Capability Registry / grants
 = authorization and routing mechanisms
@@ -415,7 +415,7 @@ Workspace registration/removal and grant changes are persisted immediately. Writ
 
 ## Local WebUI and admin surface
 
-Junius uses a local WebUI as its user-facing management interface. Desktop-native UI and desktop-UI automation are out of scope.
+Junius uses a local WebUI as its user-facing management interface. A desktop-native Dashboard is out of scope. Desktop automation is a separate Local Agent capability question and is not decided by the Dashboard implementation.
 
 The existing local admin HTTP surface is the backend foundation for that WebUI.
 
@@ -460,7 +460,7 @@ The next architecture work should focus on:
 1. local WebUI for Workspace, permission, capability, job, and browser-state management;
 2. persistent machine-level capability configuration;
 3. clearer authorization UX and review flows;
-4. broader non-desktop Local Agent capability coverage where it provides concrete value;
+4. broader Local Agent capability coverage where it provides concrete value;
 5. capability-specific adapters where generic process execution is insufficient.
 
 OS-level sandboxing is not part of the current execution implementation.
