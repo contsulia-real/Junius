@@ -254,3 +254,17 @@ The next work should focus on:
 - clearer authorization UX.
 
 OS-level sandboxing is not part of the current Junius execution model.
+
+## Verified end-to-end execution
+
+The authorization-controlled direct execution path has been verified through ChatGPT against two registered Workspaces.
+
+Observed black-box result:
+
+- Junius Workspace: `pnpm run check` completed with exit code `0`; TypeScript checking and the project test suite completed successfully.
+- Weave Workspace: `pnpm run typecheck` reached the project's TypeScript compiler and returned exit code `2` with a real project compilation diagnostic.
+
+This verifies that Workspace discovery/routing, per-Workspace pnpm grants, direct `ProcessCapability` execution, working-directory selection, and stdout/stderr/exit-code propagation operate through the real MCP path.
+
+The Weave compiler failure is project-level output, not a Junius execution-layer failure.
+
