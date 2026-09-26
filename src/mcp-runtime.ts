@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createMcpServer } from "./mcp-server.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
+import { JobManager } from "./job-manager.js";
 
 export interface McpRuntime {
   handle(request: Request): Promise<Response>;
@@ -16,9 +17,10 @@ export interface McpRuntime {
 export async function createMcpRuntime(
   commands: RunCommandService,
   files: WorkspaceFilesService,
+  jobs: JobManager,
 ): Promise<McpRuntime> {
   const modernHandler = createMcpHandler(
-    () => createMcpServer(commands, files),
+    () => createMcpServer(commands, files, jobs),
     {
     legacy: "reject",
     onerror(error) {
@@ -27,7 +29,7 @@ export async function createMcpRuntime(
     },
   );
 
-  const legacyServer = createMcpServer(commands, files);
+  const legacyServer = createMcpServer(commands, files, jobs);
   const legacyTransport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: randomUUID,
   });
