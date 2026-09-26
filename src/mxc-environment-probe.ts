@@ -113,7 +113,7 @@ try {
   const sandboxSource = [
     'const wanted = ["SYSTEMROOT","LOCALAPPDATA","TEMP","TMP","JUNIUS_MXC_EXPLICIT_MARKER","JUNIUS_MXC_HOST_SECRET_SENTINEL"];',
     'const selected = Object.fromEntries(wanted.map((name) => [name, process.env[name] ?? null]));',
-    'process.stdout.write(JSON.stringify({ selected, keys: Object.keys(process.env).sort() }));',
+    'process.stdout.write(JSON.stringify({ selected, keys: Object.keys(process.env).sort() }) + "\\n");',
   ].join("\n");
 
   const config = createConfigFromPolicy(
