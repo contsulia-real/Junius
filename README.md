@@ -284,7 +284,7 @@ Microsoft publishes the ProcessContainer implementation and a TypeScript SDK as 
 For this spike Junius pins:
 
 ```text
-@microsoft/mxc-sdk 0.9.0
+@microsoft/mxc-sdk 0.8.0
 ```
 
 The pin is intentional because MXC is still Public Preview.
@@ -360,39 +360,10 @@ ui.allowInputInjection = false
 
 This does not change the filesystem grant under test. UI confinement remains a separate security dimension and will be tested independently after filesystem confinement is proven.
 
-### MXC 0.9 enumerate-only traversal
+### Node entry-point path-resolution note
 
-The Node entry-point failure exposed a separate requirement: Node queries ancestor path metadata while resolving a main script. Granting the entire Workspace drive as `readonlyPaths` would invalidate the sandbox regression by making the outside secret readable.
+A later probe showed Node failing with `EPERM: lstat 'C:\\'` while resolving a script-file entry point. Granting the whole drive as `readonlyPaths` would invalidate the outside-file regression.
 
-Junius therefore upgrades the sandbox spike to:
+The released SDK remains `@microsoft/mxc-sdk 0.8.0`. The probe therefore keeps schema `0.8.0-alpha` and executes its small probe program through `node -e` instead of a script file. This avoids Node's entry-script realpath traversal without broadening filesystem read permissions.
 
-```text
-@microsoft/mxc-sdk 0.9.0
-schema 0.9.0-alpha
-```
-
-and uses:
-
-```text
-processContainer.filesystem.enumeratePaths = [Workspace drive root]
-```
-
-Microsoft documents `enumeratePaths` as allowing path query/list operations without granting file-content reads. It is BaseContainer/PSEC 1.1-specific and must fail rather than silently fall back when unsupported.
-
-The intended distinction is now:
-
-```text
-C:\ path metadata / traversal
-    -> allowed through enumeratePaths
-
-Workspace contents
-    -> read/write
-
-outside secret contents
-    -> not granted
-
-junction to outside secret
-    -> not granted
-```
-
-This keeps the original inside/direct-outside/junction-outside regression meaningful while giving Node only the metadata traversal it needs to locate the Workspace entry script.
+MXC's repository contains newer schema work such as `0.9.0-alpha`, but that schema version must not be confused with an npm package version.
