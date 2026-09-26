@@ -24,12 +24,18 @@ The current stable MCP tools are:
 
 ```text
 list_workspaces()
+ls(workspace, ...)
+read(workspace, ...)
+write(workspace, ...)
+rg(workspace, ...)
 run_command(workspace, key, args)
 ```
 
-`list_workspaces` exposes registered Workspace IDs, canonical roots, and their current grants.
+`list_workspaces` exposes registered Workspace IDs, canonical roots, and their current command grants.
 
-`run_command` always requires an explicit Workspace ID. There is no global active Workspace.
+`ls`, `read`, `write`, and `rg` are built-in Workspace file operations. Registering a Workspace defines the filesystem scope available to these built-in tools. Their paths are always Workspace-relative and are resolved by Junius rather than passed to a shell.
+
+`run_command` always requires an explicit Workspace ID and separately requires that Workspace's capability/argument grant. There is no global active Workspace.
 
 ## Parallel Workspace model
 
@@ -142,6 +148,49 @@ Junius must not describe this model as:
 - network isolation;
 - OS sandboxing;
 - escape-proof Workspace confinement.
+
+## Workspace file tools
+
+Junius exposes four short, stable file-tool names:
+
+```text
+ls
+read
+write
+rg
+```
+
+### ls
+
+Lists a Workspace directory. It can recurse to a bounded depth and returns Workspace-relative paths.
+
+### read
+
+Reads one or more UTF-8 text files with optional line ranges. Each result includes the SHA-256 of the complete file so a later write can detect stale content.
+
+Binary files are rejected by the current text-file API.
+
+### write
+
+Creates or replaces one or more UTF-8 text files.
+
+Before any file is changed, Junius validates every requested write. Existing files require the SHA-256 returned by `read`; if the file changed in the meantime, the whole write request is rejected before any requested file is modified.
+
+New files may be created under the Workspace without an existing hash.
+
+### rg
+
+Runs ripgrep with Junius-controlled arguments and a Workspace-scoped search root. Model input supplies the search query and bounded search options, not an arbitrary rg command line.
+
+ripgrep config loading is disabled for this tool.
+
+### File path boundary
+
+These four tools are implemented by Junius and therefore apply their own path checks even though `run_command` is not sandboxed.
+
+They reject absolute paths and `..` traversal. Existing targets are canonicalized and must resolve within the Workspace. New writes validate the nearest existing ancestor before directories are created. Directory traversal does not follow symlink entries.
+
+This boundary applies only to Junius's built-in file tools. It does not restrict what an executable launched through `run_command` can access.
 
 ## Process lifecycle
 
