@@ -25,6 +25,10 @@ export class CapabilityRegistry {
     return this.#capabilities.has(key);
   }
 
+  unregister(key: string): boolean {
+    return this.#capabilities.delete(key);
+  }
+
   list(): readonly Capability[] {
     return [...this.#capabilities.values()].sort((left, right) =>
       left.key.localeCompare(right.key),
