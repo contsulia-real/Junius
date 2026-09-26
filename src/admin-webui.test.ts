@@ -12,6 +12,26 @@ test("Dashboard assets contain the expected local WebUI shell", () => {
   assert.match(ADMIN_DASHBOARD_HTML, /C:\\Users\\\.\.\.\\Project/u);
   assert.match(ADMIN_DASHBOARD_CSS, /\.sidebar/u);
   assert.match(ADMIN_DASHBOARD_JS, /fetch\(path/u);
+  assert.doesNotMatch(
+    ADMIN_DASHBOARD_HTML,
+    /data-view="permissions"/u,
+  );
+  assert.doesNotMatch(
+    ADMIN_DASHBOARD_HTML,
+    /id="view-permissions"/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_JS,
+    /data-workspace-permission-form/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_JS,
+    /仅允许这组参数/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_JS,
+    /允许此前缀参数/u,
+  );
 });
 
 test("Dashboard JavaScript is syntactically valid", () => {
