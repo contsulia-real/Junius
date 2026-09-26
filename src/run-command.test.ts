@@ -3,6 +3,7 @@ import test from "node:test";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import type { Capability } from "./capabilities/types.js";
 import { RunCommandService } from "./run-command.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
 const fakeCapability: Capability = {
@@ -22,7 +23,7 @@ const fakeCapability: Capability = {
 test("run_command rejects unregistered capability keys", async () => {
   const service = new RunCommandService(
     new CapabilityRegistry(),
-    new WorkspaceProfile(process.cwd()),
+    new WorkspaceManager(new WorkspaceProfile(process.cwd())),
   );
 
   const result = await service.run("missing", []);
@@ -38,7 +39,10 @@ test("run_command distinguishes missing capability grant from disallowed argumen
   registry.register(fakeCapability);
 
   const profile = new WorkspaceProfile(process.cwd());
-  const service = new RunCommandService(registry, profile);
+  const service = new RunCommandService(
+    registry,
+    new WorkspaceManager(profile),
+  );
 
   const deniedCapability = await service.run("demo", ["a"]);
   assert.equal(deniedCapability.ok, false);
@@ -82,7 +86,10 @@ test("revoking a Workspace grant disables the capability", async () => {
       arguments: [{ mode: "exact", args: ["ok"] }],
     },
   ]);
-  const service = new RunCommandService(registry, profile);
+  const service = new RunCommandService(
+    registry,
+    new WorkspaceManager(profile),
+  );
 
   assert.equal((await service.run("demo", ["ok"])).ok, true);
 
