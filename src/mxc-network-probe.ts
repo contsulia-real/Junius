@@ -7,7 +7,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -107,59 +107,47 @@ try {
   const port = address.port;
 
   // Prove the listener is genuinely reachable from the host before asking the
-  // sandbox to connect. This prevents "blocked" from being a false positive
-  // caused by a dead test server.
-  const hostControlSource = `import { connect } from "node:net";
+  // sandbox to connect. This must be asynchronous in this process: using
+  // spawnSync here blocks the same event loop that owns the test server, so
+  // the listener cannot accept the control connection and the probe deadlocks.
+  const hostControl = await new Promise<{
+    readonly connected: boolean;
+    readonly data?: string;
+    readonly error?: string;
+  }>((resolve) => {
+    const socket = connect({ host, port });
+    let data = "";
+    let settled = false;
 
-const [host, portText] = process.argv.slice(1);
-const port = Number(portText);
-
-const result = await new Promise((resolve) => {
-  const socket = connect({ host, port });
-  let data = "";
-
-  socket.setEncoding("utf8");
-  socket.setTimeout(2000);
-
-  socket.on("connect", () => {
-    socket.end();
-  });
-  socket.on("data", (chunk) => {
-    data += chunk;
-  });
-  socket.on("close", () => {
-    resolve({ connected: true, data });
-  });
-  socket.on("timeout", () => {
-    socket.destroy(new Error("timeout"));
-  });
-  socket.on("error", (error) => {
-    resolve({ connected: false, error: error.message });
-  });
-});
-
-process.stdout.write(JSON.stringify(result));
-`;
-
-  const control = await import("node:child_process").then(({ spawnSync }) =>
-    spawnSync(
-      process.execPath,
-      ["-e", hostControlSource, host, String(port)],
-      {
-        encoding: "utf8",
-        windowsHide: true,
-        shell: false,
-      },
-    )
-  );
-
-  const hostControl = control.stdout
-    ? JSON.parse(control.stdout) as {
-        connected: boolean;
-        data?: string;
-        error?: string;
+    const finish = (result: {
+      readonly connected: boolean;
+      readonly data?: string;
+      readonly error?: string;
+    }) => {
+      if (settled) {
+        return;
       }
-    : { connected: false, error: control.stderr || control.error?.message };
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    socket.setEncoding("utf8");
+    socket.setTimeout(2000);
+
+    socket.on("data", (chunk: string) => {
+      data += chunk;
+    });
+    socket.on("end", () => {
+      finish({ connected: true, data });
+    });
+    socket.on("timeout", () => {
+      finish({ connected: false, error: "timeout" });
+    });
+    socket.on("error", (error) => {
+      finish({ connected: false, error: error.message });
+    });
+  });
 
   if (!hostControl.connected) {
     throw new Error(
