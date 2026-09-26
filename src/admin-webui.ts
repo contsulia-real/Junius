@@ -259,7 +259,7 @@ pre { min-height: 180px; max-height: 460px; overflow: auto; white-space: pre-wra
 }
 `;
 
-export const ADMIN_DASHBOARD_JS = `
+export const ADMIN_DASHBOARD_JS = String.raw`
 (function () {
   "use strict";
 
