@@ -286,8 +286,8 @@ rg
 ```
 
 - `ls` lists Workspace-relative directory entries with bounded recursion.
-- `read` reads UTF-8 text files and also returns the complete-file SHA-256 as optional metadata.
-- `write` validates the whole batch before writing and supports full replacement or exact-text edits. It does not require a prior `read`; `expected_sha256` is optional stale-write protection.
+- `read` reads UTF-8 text files with optional line ranges.
+- `write` directly creates, replaces, or exact-text edits UTF-8 files; no version token or prior `read` is required.
 - `rg` searches with ripgrep using Junius-controlled arguments and a Workspace-scoped target.
 
 The built-in file tools reject absolute paths, `..` traversal, and existing paths that canonicalize outside the registered Workspace. This is a boundary implemented by the file tools themselves; it does not turn `run_command` into a sandbox.
