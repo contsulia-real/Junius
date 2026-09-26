@@ -8,7 +8,7 @@ import {
 } from "./admin-webui.js";
 
 test("Dashboard assets contain the expected local WebUI shell", () => {
-  assert.match(ADMIN_DASHBOARD_HTML, /Junius Dashboard/u);
+  assert.match(ADMIN_DASHBOARD_HTML, /Junius 控制台/u);
   assert.match(ADMIN_DASHBOARD_HTML, /C:\\Users\\\.\.\.\\Project/u);
   assert.match(ADMIN_DASHBOARD_CSS, /\.sidebar/u);
   assert.match(ADMIN_DASHBOARD_JS, /fetch\(path/u);
