@@ -284,7 +284,7 @@ Microsoft publishes the ProcessContainer implementation and a TypeScript SDK as 
 For this spike Junius pins:
 
 ```text
-@microsoft/mxc-sdk 0.8.0
+@microsoft/mxc-sdk 0.9.0
 ```
 
 The pin is intentional because MXC is still Public Preview.
@@ -359,3 +359,40 @@ ui.allowInputInjection = false
 ```
 
 This does not change the filesystem grant under test. UI confinement remains a separate security dimension and will be tested independently after filesystem confinement is proven.
+
+### MXC 0.9 enumerate-only traversal
+
+The Node entry-point failure exposed a separate requirement: Node queries ancestor path metadata while resolving a main script. Granting the entire Workspace drive as `readonlyPaths` would invalidate the sandbox regression by making the outside secret readable.
+
+Junius therefore upgrades the sandbox spike to:
+
+```text
+@microsoft/mxc-sdk 0.9.0
+schema 0.9.0-alpha
+```
+
+and uses:
+
+```text
+processContainer.filesystem.enumeratePaths = [Workspace drive root]
+```
+
+Microsoft documents `enumeratePaths` as allowing path query/list operations without granting file-content reads. It is BaseContainer/PSEC 1.1-specific and must fail rather than silently fall back when unsupported.
+
+The intended distinction is now:
+
+```text
+C:\ path metadata / traversal
+    -> allowed through enumeratePaths
+
+Workspace contents
+    -> read/write
+
+outside secret contents
+    -> not granted
+
+junction to outside secret
+    -> not granted
+```
+
+This keeps the original inside/direct-outside/junction-outside regression meaningful while giving Node only the metadata traversal it needs to locate the Workspace entry script.
