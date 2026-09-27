@@ -86,6 +86,7 @@ list_workspaces()
 ls
 read
 write
+workspace_apply
 rg
 workspace_batch
 playwright_cli
@@ -389,7 +390,7 @@ rg
 
 - `ls` lists Workspace-relative directory entries with bounded recursion.
 - `read` reads UTF-8 text files with optional line ranges.
-- `write` directly creates, replaces, or exact-text edits UTF-8 files; no version token or prior `read` is required.
+- `write` creates, replaces, or exact-text edits UTF-8 files through the transactional multi-file commit path; no version token or prior `read` is required.
 - `rg` searches with ripgrep using Junius-controlled arguments and a Workspace-scoped target.
 
 The built-in file tools reject absolute paths, `..` traversal, and existing paths that canonicalize outside the registered Workspace. This is a boundary implemented by the file tools themselves; it does not turn `run_command` into a sandbox.
@@ -463,7 +464,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm typecheck && pnpm test
 ```
 
-The current full check completes with 81 tests passed, 0 failed, 0 cancelled, and 0 skipped, including real Host/Worker proxying, hot-swap affinity, read batching, and Windows Python desktop-helper integration tests.
+The current full check completes with 84 tests passed, 0 failed, 0 cancelled, and 0 skipped, including real Host/Worker proxying, hot-swap affinity, read batching, transactional Workspace writes, and Windows Python desktop-helper integration tests.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -508,7 +509,13 @@ Desktop UIA refs remain Worker-local. The Host therefore binds a named desktop s
 
 Desktop is machine-scoped like browser. It has persisted `enabled`, runtime `available`, and derived `active` state and does not use Workspace grants.
 
-## Workspace read batching
+## Workspace batching and transactional writes
 
 `workspace_batch` executes up to 16 independent `ls`, `read`, and `rg` operations in one MCP round trip. The operations run concurrently, expected Workspace-file failures are isolated per operation, and per-result/aggregate response budgets prevent one batch from returning unbounded data. Each sub-operation and the whole batch report `durationMs` so Junius can distinguish local execution time from external MCP round-trip latency.
+
+`write` now uses the same transactional multi-file commit path used by `workspace_apply`: all targets are resolved and read in parallel, duplicate targets and size limits are checked, complete next-file contents are prepared in memory, and same-directory temporary files are fully written before any target replacement starts. Immediately before replacement, Junius rechecks existing target contents so an IDE or another process cannot silently change a file between validation and commit.
+
+During commit, existing targets are renamed to temporary backups and prepared files are renamed into place. If a later replacement fails, Junius walks the staged set in reverse and attempts to restore the backups and remove newly created targets. This is a best-effort application-level transaction; Junius does not claim the filesystem provides one atomic commit across multiple files.
+
+`workspace_apply` combines that write phase with optional post-commit `ls`, `read`, and `rg` verification in the same MCP round trip. Verification operations are observational: their results are returned to the caller, but Junius does not infer success criteria or autonomously undo an otherwise successful commit.
 

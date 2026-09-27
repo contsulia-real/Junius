@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
+  chmod,
   lstat,
   mkdir,
   readFile,
   readdir,
   realpath,
+  rename,
+  rm,
+  rmdir,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -40,6 +45,7 @@ export type WorkspaceFileErrorCode =
   | "edit_not_found"
   | "edit_not_unique"
   | "write_too_large"
+  | "write_failed"
   | "rg_not_available"
   | "rg_failed";
 
@@ -368,15 +374,19 @@ export interface WriteResult {
   readonly bytes: number;
 }
 
-async function validateWrite(
-  resolver: WorkspacePathResolver,
-  request: WriteRequest,
-): Promise<{
+interface PreparedWrite {
   readonly targetPath: string;
   readonly relativePath: string;
   readonly created: boolean;
   readonly content: Buffer;
-}> {
+  readonly previous?: Buffer;
+  readonly mode?: number;
+}
+
+async function validateWrite(
+  resolver: WorkspacePathResolver,
+  request: WriteRequest,
+): Promise<PreparedWrite> {
   const hasContent = request.content !== undefined;
   const hasEdits = request.edits !== undefined;
 
@@ -490,7 +500,272 @@ async function validateWrite(
     relativePath: target.relativePath,
     created: false,
     content,
+    previous,
+    mode: info.mode,
   };
+}
+
+function writePathKey(path: string): string {
+  return process.platform === "win32" ? path.toLowerCase() : path;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function prepareWriteSet(
+  resolver: WorkspacePathResolver,
+  requests: readonly WriteRequest[],
+): Promise<readonly PreparedWrite[]> {
+  const prepared = await Promise.all(
+    requests.map((request) => validateWrite(resolver, request)),
+  );
+
+  const targets = new Set<string>();
+  let totalBytes = 0;
+
+  for (const item of prepared) {
+    totalBytes += item.content.length;
+    if (totalBytes > MAX_WRITE_BYTES_TOTAL) {
+      throw new WorkspaceFileError(
+        "write_too_large",
+        `write exceeds ${MAX_WRITE_BYTES_TOTAL} total bytes.`,
+      );
+    }
+
+    const key = writePathKey(item.targetPath);
+    if (targets.has(key)) {
+      throw new WorkspaceFileError(
+        "invalid_write",
+        `Duplicate write target: ${item.relativePath}`,
+      );
+    }
+    targets.add(key);
+  }
+
+  return prepared;
+}
+
+async function missingParentDirectories(
+  resolver: WorkspacePathResolver,
+  targetPath: string,
+): Promise<readonly string[]> {
+  const missing: string[] = [];
+  let current = dirname(targetPath);
+
+  while (current !== resolver.rootPath && pathInside(resolver.rootPath, current)) {
+    try {
+      const info = await lstat(current);
+      if (!info.isDirectory()) {
+        throw new WorkspaceFileError(
+          "invalid_path",
+          `Write parent is not a directory: ${current}`,
+        );
+      }
+      break;
+    } catch (error) {
+      if (
+        error instanceof WorkspaceFileError ||
+        !(
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+      ) {
+        throw error;
+      }
+
+      missing.push(current);
+      current = dirname(current);
+    }
+  }
+
+  return missing;
+}
+
+interface StagedWrite {
+  readonly prepared: PreparedWrite;
+  readonly tempPath: string;
+  backupPath?: string;
+  installed: boolean;
+}
+
+async function assertTargetUnchanged(item: PreparedWrite): Promise<void> {
+  if (item.created) {
+    try {
+      await lstat(item.targetPath);
+      throw new WorkspaceFileError(
+        "write_failed",
+        `Write target appeared after validation: ${item.relativePath}`,
+      );
+    } catch (error) {
+      if (
+        error instanceof WorkspaceFileError ||
+        !(
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+      ) {
+        throw error;
+      }
+    }
+    return;
+  }
+
+  const info = await lstat(item.targetPath);
+  if (!info.isFile() || info.isSymbolicLink()) {
+    throw new WorkspaceFileError(
+      "write_failed",
+      `Write target changed type after validation: ${item.relativePath}`,
+    );
+  }
+
+  const current = await readFile(item.targetPath);
+  if (item.previous === undefined || !current.equals(item.previous)) {
+    throw new WorkspaceFileError(
+      "write_failed",
+      `Write target changed after validation: ${item.relativePath}`,
+    );
+  }
+}
+
+async function cleanupDirectories(
+  directories: readonly string[],
+): Promise<void> {
+  const unique = [...new Set(directories)].sort(
+    (left, right) => right.length - left.length,
+  );
+
+  for (const directory of unique) {
+    try {
+      await rmdir(directory);
+    } catch {
+      // Keep non-empty or concurrently created directories.
+    }
+  }
+}
+
+async function transactionalWrite(
+  resolver: WorkspacePathResolver,
+  requests: readonly WriteRequest[],
+): Promise<readonly WriteResult[]> {
+  const prepared = await prepareWriteSet(resolver, requests);
+  const createdDirectories: string[] = [];
+  const staged: StagedWrite[] = [];
+
+  try {
+    const missingLists = await Promise.all(
+      prepared.map((item) =>
+        missingParentDirectories(resolver, item.targetPath),
+      ),
+    );
+
+    for (const directory of missingLists.flat()) {
+      if (!createdDirectories.includes(directory)) {
+        createdDirectories.push(directory);
+      }
+    }
+
+    await Promise.all(
+      prepared.map((item) => mkdir(dirname(item.targetPath), { recursive: true })),
+    );
+
+    await Promise.all(
+      prepared.map(async (item) => {
+        const tempPath = join(
+          dirname(item.targetPath),
+          `.junius-${randomUUID()}.tmp`,
+        );
+        const stage: StagedWrite = {
+          prepared: item,
+          tempPath,
+          installed: false,
+        };
+        staged.push(stage);
+
+        await writeFile(tempPath, item.content, { flag: "wx" });
+        if (item.mode !== undefined) {
+          await chmod(tempPath, item.mode);
+        }
+      }),
+    );
+
+    for (const stage of staged) {
+      const item = stage.prepared;
+      await assertTargetUnchanged(item);
+
+      if (!item.created) {
+        const backupPath = join(
+          dirname(item.targetPath),
+          `.junius-${randomUUID()}.bak`,
+        );
+        await rename(item.targetPath, backupPath);
+        stage.backupPath = backupPath;
+      }
+
+      await rename(stage.tempPath, item.targetPath);
+      stage.installed = true;
+    }
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+
+    for (const stage of [...staged].reverse()) {
+      const item = stage.prepared;
+
+      if (stage.installed) {
+        try {
+          await rm(item.targetPath, { force: true });
+        } catch (rollbackError) {
+          rollbackErrors.push(errorMessage(rollbackError));
+        }
+      }
+
+      if (stage.backupPath !== undefined) {
+        try {
+          await rename(stage.backupPath, item.targetPath);
+          stage.backupPath = undefined;
+        } catch (rollbackError) {
+          rollbackErrors.push(errorMessage(rollbackError));
+        }
+      }
+
+      try {
+        await rm(stage.tempPath, { force: true });
+      } catch (rollbackError) {
+        rollbackErrors.push(errorMessage(rollbackError));
+      }
+    }
+
+    await cleanupDirectories(createdDirectories);
+
+    if (error instanceof WorkspaceFileError && rollbackErrors.length === 0) {
+      throw error;
+    }
+
+    throw new WorkspaceFileError(
+      "write_failed",
+      `Transactional write failed: ${errorMessage(error)}${
+        rollbackErrors.length === 0
+          ? ""
+          : `; rollback errors: ${rollbackErrors.join(" | ")}`
+      }`,
+    );
+  }
+
+  await Promise.allSettled(
+    staged.flatMap((stage) =>
+      stage.backupPath === undefined ? [] : [rm(stage.backupPath, { force: true })],
+    ),
+  );
+
+  return prepared.map((item) => ({
+    path: item.relativePath,
+    created: item.created,
+    bytes: item.content.length,
+  }));
 }
 
 function resolveRgExecutable(environment: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -759,34 +1034,10 @@ export class WorkspaceFilesService {
       );
     }
 
-    const resolver = getResolver(this.manager, workspace);
-    const validated = [];
-    let totalBytes = 0;
-
-    for (const file of files) {
-      const item = await validateWrite(resolver, file);
-      totalBytes += item.content.length;
-      if (totalBytes > MAX_WRITE_BYTES_TOTAL) {
-        throw new WorkspaceFileError(
-          "write_too_large",
-          `write exceeds ${MAX_WRITE_BYTES_TOTAL} total bytes.`,
-        );
-      }
-      validated.push(item);
-    }
-
-    const results: WriteResult[] = [];
-    for (const item of validated) {
-      await mkdir(dirname(item.targetPath), { recursive: true });
-      await writeFile(item.targetPath, item.content);
-      results.push({
-        path: item.relativePath,
-        created: item.created,
-        bytes: item.content.length,
-      });
-    }
-
-    return results;
+    return transactionalWrite(
+      getResolver(this.manager, workspace),
+      files,
+    );
   }
 
   async rg(

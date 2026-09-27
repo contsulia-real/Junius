@@ -86,6 +86,7 @@ list_workspaces()
 ls(workspace, ...)
 read(workspace, ...)
 write(workspace, ...)
+workspace_apply(workspace, files, verify)
 rg(workspace, ...)
 workspace_batch(workspace, operations)
 playwright_cli(session, command, args)
@@ -103,6 +104,8 @@ run_command(workspace, key, args)
 `ls`, `read`, `write`, and `rg` are built-in Workspace file operations. Registering a Workspace defines the filesystem scope available to these built-in tools. Their paths are always Workspace-relative and are resolved by Junius rather than passed to a shell.
 
 `workspace_batch` is a read-only orchestration surface over `ls`, `read`, and `rg`. It does not add new filesystem authority. Up to 16 known read operations execute concurrently in one MCP round trip; expected file errors are returned per operation instead of aborting unrelated operations, and bounded result budgets prevent batch amplification.
+
+`workspace_apply` is the write-oriented orchestration surface. It uses the same transactional write implementation as `write`, then optionally performs bounded read-only verification operations in the same MCP round trip.
 
 `run_command` always requires an explicit Workspace ID and separately requires that Workspace's capability/argument grant. There is no global active Workspace.
 
@@ -342,11 +345,28 @@ Binary files are rejected by the current text-file API.
 
 Creates, replaces, or exact-text edits one or more UTF-8 text files.
 
-Before any file is changed, Junius validates every requested write. Existing files can be replaced or edited directly; there is no SHA/version token and no required prior `read`.
+Before any file is changed, Junius validates every requested write. Validation and source-file reads are performed before commit and may run concurrently. Duplicate targets are rejected, aggregate/per-file size limits are checked, and the complete next contents are prepared before target replacement begins. Existing files do not require a SHA/version token or prior model-issued `read`, but Junius retains the validated bytes internally and rechecks the target immediately before replacement to reject concurrent external changes.
 
 For partial edits, `write` matches an exact `old_text` string and replaces it with `new_text`. A non-`replace_all` edit must match exactly once, which prevents an ambiguous edit from silently changing the wrong location.
 
 New files may be created under the Workspace with full `content`.
+
+For commit, Junius writes same-directory temporary files first. Existing targets are then moved to temporary backups and the prepared files are renamed into place. A later commit failure triggers reverse best-effort rollback: installed targets are removed, backups are restored, uncommitted temporary files are deleted, and newly created empty directories are cleaned when possible. This provides transactional application semantics without claiming a filesystem-level atomic transaction across multiple files.
+
+### workspace_apply
+
+`workspace_apply` accepts the same bounded multi-file write model as `write`, followed by optional `ls`, `read`, and `rg` verification operations. Verification runs only after a successful commit and is observational; a verification result does not autonomously roll the commit back.
+
+The intended fast path is:
+
+```text
+known edits
+-> one transactional write commit
+-> parallel read/search verification
+-> one MCP response
+```
+
+This removes the common `write -> read/rg` round trips while keeping the decision about whether the resulting state is acceptable in the calling agent.
 
 ### rg
 
