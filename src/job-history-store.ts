@@ -8,209 +8,30 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import {
+  parseJobHistoryMetadata,
+  validJobHistoryId,
+} from "./job-history-metadata.js";
+import type {
+  JobHistoryRetention,
+  JobHistoryStats,
+  PersistedJobMetadata,
+  PersistedJobRecord,
+} from "./job-history-types.js";
 
-export type PersistedJobStatus =
-  | "succeeded"
-  | "failed"
-  | "cancelled";
-
-export interface PersistedJobMetadata {
-  readonly version: 1;
-  readonly id: string;
-  readonly workspace: string;
-  readonly key: string;
-  readonly status: PersistedJobStatus;
-  readonly pid: number | null;
-  readonly startedAt: string;
-  readonly endedAt: string;
-  readonly exitCode?: number | null;
-  readonly signal?: NodeJS.Signals | null;
-  readonly message?: string;
-  readonly stdoutChars: number;
-  readonly stderrChars: number;
-  readonly stdoutBytes?: number;
-  readonly stderrBytes?: number;
-  readonly stdoutTruncated: boolean;
-  readonly stderrTruncated: boolean;
-}
-
-export interface PersistedJobRecord
-  extends PersistedJobMetadata {
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-export interface JobHistoryRetention {
-  readonly maxEntries?: number;
-  readonly maxAgeMs?: number;
-}
-
-export interface JobHistoryStats {
-  readonly entries: number;
-  readonly capturedBytes: number;
-  readonly metadataCacheEntries: number;
-  readonly metadataCacheLimit: number;
-  readonly oldestEndedAt?: string;
-  readonly newestEndedAt?: string;
-  readonly retention: JobHistoryRetention;
-}
-
-function validId(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
-    id,
-  );
-}
-
-function positiveInteger(
-  value: string | undefined,
-): number | undefined {
-  if (value === undefined || value.trim() === "") {
-    return undefined;
-  }
-
-  const parsed = Number(value);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed <= 0
-  ) {
-    return undefined;
-  }
-
-  return parsed;
-}
-
-export function resolveJobHistoryRetention(
-  environment: NodeJS.ProcessEnv = process.env,
-): JobHistoryRetention {
-  return {
-    ...(positiveInteger(
-      environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
-    ) === undefined
-      ? {}
-      : {
-          maxEntries: positiveInteger(
-            environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
-          ),
-        }),
-    ...(positiveInteger(
-      environment.JUNIUS_JOB_HISTORY_MAX_AGE_MS,
-    ) === undefined
-      ? {}
-      : {
-          maxAgeMs: positiveInteger(
-            environment.JUNIUS_JOB_HISTORY_MAX_AGE_MS,
-          ),
-        }),
-  };
-}
-
-export function resolveJuniusRuntimeRoot(
-  environment: NodeJS.ProcessEnv = process.env,
-  cwd = process.cwd(),
-): string {
-  const projectRoot =
-    environment.JUNIUS_PROJECT_ROOT ?? cwd;
-
-  return resolve(
-    environment.JUNIUS_RUNTIME_ROOT ??
-      join(projectRoot, ".junius", "runtime"),
-  );
-}
-
-export function resolveJobHistoryPath(
-  environment: NodeJS.ProcessEnv = process.env,
-  cwd = process.cwd(),
-): string {
-  return join(
-    resolveJuniusRuntimeRoot(
-      environment,
-      cwd,
-    ),
-    "jobs",
-  );
-}
-
-function parseMetadata(
-  value: unknown,
-): PersistedJobMetadata | undefined {
-  if (
-    typeof value !== "object" ||
-    value === null
-  ) {
-    return undefined;
-  }
-
-  const record = value as Partial<PersistedJobMetadata>;
-
-  if (
-    record.version !== 1 ||
-    typeof record.id !== "string" ||
-    !validId(record.id) ||
-    typeof record.workspace !== "string" ||
-    typeof record.key !== "string" ||
-    !["succeeded", "failed", "cancelled"].includes(
-      String(record.status),
-    ) ||
-    !(
-      record.pid === null ||
-      typeof record.pid === "number"
-    ) ||
-    typeof record.startedAt !== "string" ||
-    typeof record.endedAt !== "string" ||
-    typeof record.stdoutChars !== "number" ||
-    !Number.isSafeInteger(record.stdoutChars) ||
-    record.stdoutChars < 0 ||
-    typeof record.stderrChars !== "number" ||
-    !Number.isSafeInteger(record.stderrChars) ||
-    record.stderrChars < 0 ||
-    typeof record.stdoutTruncated !== "boolean" ||
-    typeof record.stderrTruncated !== "boolean"
-  ) {
-    return undefined;
-  }
-
-  for (const bytes of [
-    record.stdoutBytes,
-    record.stderrBytes,
-  ]) {
-    if (
-      bytes !== undefined &&
-      (
-        typeof bytes !== "number" ||
-        !Number.isSafeInteger(bytes) ||
-        bytes < 0
-      )
-    ) {
-      return undefined;
-    }
-  }
-
-  if (
-    record.exitCode !== undefined &&
-    record.exitCode !== null &&
-    typeof record.exitCode !== "number"
-  ) {
-    return undefined;
-  }
-
-  if (
-    record.signal !== undefined &&
-    record.signal !== null &&
-    typeof record.signal !== "string"
-  ) {
-    return undefined;
-  }
-
-  if (
-    record.message !== undefined &&
-    typeof record.message !== "string"
-  ) {
-    return undefined;
-  }
-
-  return record as PersistedJobMetadata;
-}
+export {
+  resolveJobHistoryPath,
+  resolveJobHistoryRetention,
+  resolveJuniusRuntimeRoot,
+} from "./job-history-config.js";
+export type {
+  JobHistoryRetention,
+  JobHistoryStats,
+  PersistedJobMetadata,
+  PersistedJobRecord,
+  PersistedJobStatus,
+} from "./job-history-types.js";
 
 const DEFAULT_METADATA_CACHE_LIMIT = 256;
 
@@ -225,7 +46,7 @@ export class JobHistoryStore {
   ) {}
 
   #jobRoot(id: string): string {
-    if (!validId(id)) {
+    if (!validJobHistoryId(id)) {
       throw new Error("invalid_job_id");
     }
     return join(this.rootPath, id);
@@ -378,7 +199,7 @@ export class JobHistoryStore {
     }
 
     try {
-      return parseMetadata(JSON.parse(text));
+      return parseJobHistoryMetadata(JSON.parse(text));
     } catch {
       return undefined;
     }
@@ -486,7 +307,7 @@ export class JobHistoryStore {
           .filter(
             (entry) =>
               entry.isDirectory() &&
-              validId(entry.name),
+              validJobHistoryId(entry.name),
           )
           .map((entry) =>
             this.#readMetadataFile(entry.name),
