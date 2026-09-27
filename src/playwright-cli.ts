@@ -1,12 +1,4 @@
-import {
-  closeSync,
-  openSync,
-  readFileSync,
-  readSync,
-  statSync,
-} from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 import {
   PlaywrightCliBrokerClient,
@@ -16,16 +8,25 @@ import { resolveNodeExecutable } from "./capabilities/node-capability.js";
 import { withoutEnvironmentVariables } from "./execution-environment.js";
 import { terminateProcessTree } from "./process-termination.js";
 import {
-  delimiter,
-  dirname,
-  extname,
-  isAbsolute,
-  join,
-  resolve,
-} from "node:path";
+  resolveBrowserStatePath,
+  resolvePlaywrightCliLauncher,
+  supportsPersistentBroker,
+  type PlaywrightCliLauncher,
+} from "./playwright-cli-launcher.js";
+import {
+  PLAYWRIGHT_CLI_COMMANDS,
+  playwrightCliCommandArgs,
+  validatePlaywrightCliArgs,
+  type PlaywrightCliCommand,
+} from "./playwright-cli-policy.js";
+import {
+  PlaywrightCliError,
+  type PlaywrightCliErrorCode,
+  type PlaywrightCliExecution,
+  type PlaywrightCliServiceOptions,
+} from "./playwright-cli-types.js";
 
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const REF_PATTERN = /^e\d+$/u;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_IDLE_MS = 10 * 60_000;
@@ -46,438 +47,10 @@ function positiveIntegerOr(
   return Math.max(1, Math.floor(value));
 }
 
-export const PLAYWRIGHT_CLI_COMMANDS = [
-  "open",
-  "goto",
-  "snapshot",
-  "find",
-  "click",
-  "dblclick",
-  "fill",
-  "type",
-  "press",
-  "keydown",
-  "keyup",
-  "hover",
-  "select",
-  "check",
-  "uncheck",
-  "drag",
-  "dialog-accept",
-  "dialog-dismiss",
-  "resize",
-  "go-back",
-  "go-forward",
-  "reload",
-  "mousemove",
-  "mousedown",
-  "mouseup",
-  "mousewheel",
-  "tab-list",
-  "tab-new",
-  "tab-close",
-  "tab-select",
-  "close",
-] as const;
-
-export type PlaywrightCliCommand =
-  (typeof PLAYWRIGHT_CLI_COMMANDS)[number];
-
-export type PlaywrightCliErrorCode =
-  | "playwright_cli_disabled"
-  | "playwright_cli_not_available"
-  | "invalid_session"
-  | "command_not_allowed"
-  | "arguments_not_allowed"
-  | "spawn_failed"
-  | "process_timeout"
-  | "output_limit"
-  | "nonzero_exit";
-
-export class PlaywrightCliError extends Error {
-  constructor(
-    readonly code: PlaywrightCliErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-interface PlaywrightCliLauncher {
-  readonly executable: string;
-  readonly fixedArgs: readonly string[];
-  readonly entryPath?: string;
-}
-
-export interface PlaywrightCliServiceOptions {
-  readonly sessionIdleMs?: number;
-  readonly maxSessions?: number;
-}
-
 interface BrowserSessionState {
   lastUsedAt: number;
   inFlight: number;
   timer?: NodeJS.Timeout;
-}
-
-export interface PlaywrightCliExecution {
-  readonly session: string;
-  readonly command: PlaywrightCliCommand;
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly durationMs: number;
-  readonly transport: "broker" | "spawn";
-}
-
-function isFile(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function isPortableExecutable(path: string): boolean {
-  let handle: number | undefined;
-
-  try {
-    handle = openSync(path, "r");
-    const header = Buffer.allocUnsafe(2);
-    const bytesRead = readSync(handle, header, 0, 2, 0);
-    return bytesRead === 2 && header[0] === 0x4d && header[1] === 0x5a;
-  } catch {
-    return false;
-  } finally {
-    if (handle !== undefined) {
-      closeSync(handle);
-    }
-  }
-}
-
-function launcherFromCandidate(
-  candidate: string,
-  nodeExecutable: string | undefined,
-): PlaywrightCliLauncher | undefined {
-  if (!isFile(candidate)) {
-    return undefined;
-  }
-
-  const extension = extname(candidate).toLowerCase();
-
-  if (extension === ".exe" || isPortableExecutable(candidate)) {
-    return {
-      executable: candidate,
-      fixedArgs: [],
-    };
-  }
-
-  if ([".js", ".cjs", ".mjs"].includes(extension)) {
-    if (nodeExecutable === undefined) return undefined;
-
-    return {
-      executable: nodeExecutable,
-      fixedArgs: [candidate],
-      entryPath: candidate,
-    };
-  }
-
-  return undefined;
-}
-
-function targetFromWindowsCmdShim(
-  shimPath: string,
-): string | undefined {
-  if (process.platform !== "win32" || extname(shimPath).toLowerCase() !== ".cmd") {
-    return undefined;
-  }
-
-  try {
-    const text = readFileSync(shimPath, "utf8");
-    const match = text.match(
-      /["']?([^"'\r\n]*playwright-cli\.js)["']?/iu,
-    );
-
-    if (match?.[1] === undefined) {
-      return undefined;
-    }
-
-    const expanded = match[1]
-      .replaceAll("%dp0%", dirname(shimPath) + "\\")
-      .replaceAll("%~dp0", dirname(shimPath) + "\\");
-
-    return isAbsolute(expanded)
-      ? resolve(expanded)
-      : resolve(dirname(shimPath), expanded);
-  } catch {
-    return undefined;
-  }
-}
-
-export function resolveBrowserStatePath(
-  environment: NodeJS.ProcessEnv = process.env,
-): string {
-  if (environment.JUNIUS_BROWSER_STATE_PATH) {
-    return environment.JUNIUS_BROWSER_STATE_PATH;
-  }
-
-  if (process.platform === "win32") {
-    const localAppData =
-      environment.LOCALAPPDATA ??
-      join(homedir(), "AppData", "Local");
-
-    return join(localAppData, "Junius", "browser");
-  }
-
-  const stateRoot =
-    environment.XDG_STATE_HOME ??
-    join(homedir(), ".local", "state");
-
-  return join(stateRoot, "Junius", "browser");
-}
-
-function environmentPath(
-  environment: NodeJS.ProcessEnv,
-): string {
-  return (
-    environment.PATH ??
-    environment.Path ??
-    environment.path ??
-    ""
-  );
-}
-
-function candidatePaths(
-  environment: NodeJS.ProcessEnv,
-): readonly string[] {
-  const candidates: string[] = [];
-
-  for (const rawEntry of environmentPath(environment).split(delimiter)) {
-    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
-    if (!entry) continue;
-
-    candidates.push(
-      join(entry, "playwright-cli.exe"),
-      join(entry, "playwright-cli"),
-      join(entry, "playwright-cli.js"),
-      join(entry, "playwright-cli.cjs"),
-      join(entry, "playwright-cli.mjs"),
-      join(entry, "playwright-cli.cmd"),
-    );
-  }
-
-  return candidates;
-}
-
-export function resolvePlaywrightCliLauncher(
-  environment: NodeJS.ProcessEnv = process.env,
-  nodeExecutable = resolveNodeExecutable(environment),
-): PlaywrightCliLauncher | undefined {
-  for (const candidate of candidatePaths(environment)) {
-    const direct = launcherFromCandidate(candidate, nodeExecutable);
-    if (direct) {
-      return direct;
-    }
-
-    const shimTarget = targetFromWindowsCmdShim(candidate);
-    if (shimTarget) {
-      const resolved = launcherFromCandidate(shimTarget, nodeExecutable);
-      if (resolved) {
-        return resolved;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function supportsPersistentBroker(
-  entryPath: string | undefined,
-): entryPath is string {
-  if (entryPath === undefined) return false;
-
-  try {
-    const source = readFileSync(entryPath, "utf8");
-    return /\{\s*program\s*\}\s*=\s*require\(["'][^"']+["']\)/u.test(
-      source,
-    );
-  } catch {
-    return false;
-  }
-}
-
-function isInteger(value: string): boolean {
-  return /^-?\d+$/u.test(value);
-}
-
-function isRef(value: string): boolean {
-  return REF_PATTERN.test(value);
-}
-
-function isButton(value: string): boolean {
-  return ["left", "right", "middle"].includes(value);
-}
-
-function isOpenOption(value: string): boolean {
-  return (
-    value === "--headed" ||
-    value === "--mobile" ||
-    value === "--persistent" ||
-    /^--browser=(chromium|chrome|msedge|firefox|webkit)$/u.test(value) ||
-    /^--device=.{1,128}$/u.test(value) ||
-    /^--idle-timeout=\d+$/u.test(value)
-  );
-}
-
-function validateArgs(
-  command: PlaywrightCliCommand,
-  args: readonly string[],
-): boolean {
-  switch (command) {
-    case "open": {
-      let positional = 0;
-      for (const arg of args) {
-        if (arg.startsWith("--")) {
-          if (!isOpenOption(arg)) return false;
-        } else {
-          positional += 1;
-          if (positional > 1) return false;
-        }
-      }
-      return true;
-    }
-
-    case "goto":
-      return args.length === 1 && !args[0]!.startsWith("-");
-
-    case "snapshot":
-      return (
-        args.length <= 3 &&
-        args.every(
-          (arg) =>
-            isRef(arg) ||
-            arg === "--boxes" ||
-            /^--depth=\d+$/u.test(arg),
-        ) &&
-        args.filter(isRef).length <= 1
-      );
-
-    case "find":
-      return (
-        (args.length === 1 && args[0]!.length > 0) ||
-        (args.length === 2 &&
-          args[0] === "--regex" &&
-          args[1]!.length > 0)
-      );
-
-    case "click":
-    case "dblclick":
-      return (
-        (args.length === 1 && isRef(args[0]!)) ||
-        (args.length === 2 &&
-          isRef(args[0]!) &&
-          isButton(args[1]!))
-      );
-
-    case "fill":
-      return (
-        (args.length === 2 && isRef(args[0]!)) ||
-        (args.length === 3 &&
-          isRef(args[0]!) &&
-          args[2] === "--submit")
-      );
-
-    case "type":
-      return args.length === 1;
-
-    case "press":
-    case "keydown":
-    case "keyup":
-      return args.length === 1 && args[0]!.length > 0;
-
-    case "hover":
-    case "check":
-    case "uncheck":
-      return args.length === 1 && isRef(args[0]!);
-
-    case "select":
-      return args.length === 2 && isRef(args[0]!);
-
-    case "drag":
-      return (
-        args.length === 2 &&
-        isRef(args[0]!) &&
-        isRef(args[1]!)
-      );
-
-    case "dialog-accept":
-      return args.length <= 1;
-
-    case "dialog-dismiss":
-    case "go-back":
-    case "go-forward":
-    case "reload":
-    case "tab-list":
-    case "close":
-      return args.length === 0;
-
-    case "resize":
-    case "mousemove":
-    case "mousewheel":
-      return (
-        args.length === 2 &&
-        isInteger(args[0]!) &&
-        isInteger(args[1]!)
-      );
-
-    case "mousedown":
-    case "mouseup":
-      return (
-        args.length === 0 ||
-        (args.length === 1 && isButton(args[0]!))
-      );
-
-    case "tab-new":
-      return (
-        args.length === 0 ||
-        (args.length === 1 && !args[0]!.startsWith("-"))
-      );
-
-    case "tab-close":
-      return (
-        args.length === 0 ||
-        (args.length === 1 && /^\d+$/u.test(args[0]!))
-      );
-
-    case "tab-select":
-      return args.length === 1 && /^\d+$/u.test(args[0]!);
-  }
-}
-
-function commandArgs(
-  session: string,
-  command: PlaywrightCliCommand,
-  args: readonly string[],
-): readonly string[] {
-  const prefix = [`-s=${session}`];
-
-  if (command === "snapshot") {
-    prefix.push("--raw");
-  }
-
-  const commandSpecific = [...args];
-
-  if (command === "open") {
-    if (!commandSpecific.includes("--persistent")) {
-      commandSpecific.push("--persistent");
-    }
-
-    if (!commandSpecific.includes("--headed")) {
-      commandSpecific.push("--headed");
-    }
-  }
-
-  return [...prefix, command, ...commandSpecific];
 }
 
 export class PlaywrightCliService {
@@ -666,7 +239,7 @@ export class PlaywrightCliService {
       );
     }
 
-    if (!validateArgs(command, args)) {
+    if (!validatePlaywrightCliArgs(command, args)) {
       throw new PlaywrightCliError(
         "arguments_not_allowed",
         `Arguments are not allowed for playwright-cli command ${command}.`,
@@ -713,7 +286,7 @@ export class PlaywrightCliService {
       await mkdir(this.#statePath, { recursive: true });
 
     const startedAt = performance.now();
-    const cliArgs = commandArgs(session, command, args);
+    const cliArgs = playwrightCliCommandArgs(session, command, args);
 
     if (this.#broker?.available === true) {
       try {
@@ -1056,3 +629,17 @@ export class PlaywrightCliService {
     await this.#broker?.close();
   }
 }
+
+
+export {
+  PLAYWRIGHT_CLI_COMMANDS,
+  PlaywrightCliError,
+  resolveBrowserStatePath,
+  resolvePlaywrightCliLauncher,
+};
+export type {
+  PlaywrightCliCommand,
+  PlaywrightCliErrorCode,
+  PlaywrightCliExecution,
+  PlaywrightCliServiceOptions,
+};
