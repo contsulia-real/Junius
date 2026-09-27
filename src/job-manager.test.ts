@@ -10,7 +10,9 @@ import { RunCommandService } from "./run-command.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
-async function fixture() {
+async function fixture(
+  onTerminal?: ConstructorParameters<typeof JobManager>[1],
+) {
   const root = await mkdtemp(join(tmpdir(), "junius-jobs-"));
   const registry = new CapabilityRegistry();
 
@@ -42,7 +44,7 @@ async function fixture() {
   ]);
 
   const commands = new RunCommandService(registry, workspaces);
-  const jobs = new JobManager(commands);
+  const jobs = new JobManager(commands, onTerminal);
 
   return {
     root,
@@ -80,6 +82,29 @@ test("JobManager starts, waits, and reads process output", async () => {
     assert.equal(stdout.eof, true);
     assert.equal(stderr.content, "done\n");
     assert.equal(stderr.eof, true);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("JobManager emits one terminal snapshot when a job finishes", async () => {
+  const terminalJobs: string[] = [];
+  const f = await fixture((job) => {
+    terminalJobs.push(`${job.id}:${job.status}`);
+  });
+
+  try {
+    const started = f.jobs.start(
+      "demo",
+      "test-node",
+      ["-e", "setTimeout(() => {}, 20)"],
+    );
+
+    const finished = await f.jobs.wait(started.id, 2_000);
+    assert.equal(finished.status, "succeeded");
+    assert.deepEqual(terminalJobs, [
+      `${started.id}:succeeded`,
+    ]);
   } finally {
     await f.dispose();
   }

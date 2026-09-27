@@ -17,9 +17,14 @@ function check(ok: boolean): SourceCheckResult {
   };
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function fakeWorker(id: string): {
   worker: ManagedWorker;
   exit(): void;
+  message(value: unknown): void;
   closed(): boolean;
 } {
   const child = new EventEmitter() as unknown as ChildProcess;
@@ -48,6 +53,9 @@ function fakeWorker(id: string): {
       if (exited) return;
       exited = true;
       child.emit("exit", 1, null);
+    },
+    message(value: unknown) {
+      child.emit("message", value);
     },
     closed: () => closed,
   };
@@ -174,6 +182,140 @@ test("WorkerSupervisor keeps resource affinity on retiring worker until released
     } finally {
       newLease.release();
     }
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor expires idle browser affinity without violating rollback window", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 30,
+    browserResourceIdleMs: 5,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindResource(
+      "browser:idle",
+      first.worker.id,
+    );
+    await supervisor.reload("good-edit");
+
+    await delay(12);
+    assert.equal(first.closed(), false);
+    assert.equal(
+      supervisor.state().resourceBindings.some(
+        (binding) => binding.key === "browser:idle",
+      ),
+      false,
+    );
+
+    await delay(35);
+    assert.equal(first.closed(), true);
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retained results", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 5,
+    jobResultRetentionMs: 20,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindResource("job:abc", first.worker.id);
+    await supervisor.reload("good-edit");
+
+    await delay(15);
+    assert.equal(first.closed(), false);
+    assert.equal(
+      supervisor.state().resourceBindings.find(
+        (binding) => binding.key === "job:abc",
+      )?.expiresAt,
+      undefined,
+    );
+
+    first.message({
+      type: "junius-job-terminal",
+      workerId: first.worker.id,
+      jobId: "abc",
+    });
+
+    assert.equal(
+      typeof supervisor.state().resourceBindings.find(
+        (binding) => binding.key === "job:abc",
+      )?.expiresAt,
+      "string",
+    );
+
+    await delay(10);
+    const lease = supervisor.acquire(
+      undefined,
+      "job:abc",
+    );
+    lease.release();
+
+    await delay(12);
+    assert.equal(first.closed(), false);
+
+    await delay(20);
+    assert.equal(first.closed(), true);
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor remembers terminal IPC that arrives before job binding", async () => {
+  const first = fakeWorker("worker-1");
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    jobResultRetentionMs: 50,
+    validate: async () => check(true),
+    spawnWorker: async () => first.worker,
+  });
+
+  try {
+    await supervisor.startInitial();
+    first.message({
+      type: "junius-job-terminal",
+      workerId: first.worker.id,
+      jobId: "fast",
+    });
+
+    supervisor.bindResource(
+      "job:fast",
+      first.worker.id,
+    );
+
+    assert.equal(
+      typeof supervisor.state().resourceBindings.find(
+        (binding) => binding.key === "job:fast",
+      )?.expiresAt,
+      "string",
+    );
   } finally {
     await supervisor.close();
   }

@@ -228,7 +228,10 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
 export class JobManager {
   readonly #jobs = new Map<string, JobRecord>();
 
-  constructor(private readonly commands: RunCommandService) {}
+  constructor(
+    private readonly commands: RunCommandService,
+    private readonly onTerminal?: (job: JobSnapshot) => void,
+  ) {}
 
   start(
     workspace: string,
@@ -357,6 +360,12 @@ export class JobManager {
       record.signal = signal;
       record.message = message;
       record.resolveCompletion();
+
+      try {
+        this.onTerminal?.(snapshot(record));
+      } catch {
+        // Job completion must not be changed by observer failures.
+      }
     };
 
     child.once("error", (error) => {

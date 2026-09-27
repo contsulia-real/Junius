@@ -13,7 +13,10 @@ import {
   toWebRequest,
   writeWebResponse,
 } from "./http-bridge.js";
-import { JobManager } from "./job-manager.js";
+import {
+  JobManager,
+  type JobSnapshot,
+} from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
@@ -32,6 +35,7 @@ export interface AgentWorkerOptions {
   readonly adminListenPort?: number;
   readonly publicMcpOrigin?: string;
   readonly publicAdminOrigin?: string;
+  readonly onJobTerminal?: (job: JobSnapshot) => void;
 }
 
 export interface AgentWorkerHandle {
@@ -133,7 +137,10 @@ export async function startAgentWorker(
 
   const commands = new RunCommandService(registry, workspaces);
   const files = new WorkspaceFilesService(workspaces);
-  const jobs = new JobManager(commands);
+  const jobs = new JobManager(
+    commands,
+    options.onJobTerminal,
+  );
   const mcpRuntime = await createMcpRuntime(
     commands,
     files,

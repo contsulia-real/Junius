@@ -70,7 +70,7 @@ source change
 -> keep previous Worker during rollback/drain window
 ```
 
-If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their original retiring Worker. For modern sessionless MCP calls, the Host also keeps resource affinity for Job IDs, named browser sessions, and Desktop UIA refs so hot swaps do not move process-local state to the wrong Worker.
+If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their original retiring Worker. For modern sessionless MCP calls, the Host also keeps resource affinity for Job IDs, named browser sessions, and Desktop UIA refs so hot swaps do not move process-local state to the wrong Worker. Resource affinity is bounded: browser bindings expire after 10 minutes of inactivity, Desktop UIA-ref bindings expire after 5 minutes of inactivity, and Jobs remain pinned indefinitely while running. When a Worker reports that a Job reached a terminal state, its result/output affinity enters a 30-minute retention window that is extended by subsequent Job reads or queries. Retiring Workers are never reaped before the rollback window ends.
 
 Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. Supervisor state is available locally at `/__junius/supervisor`.
 
@@ -463,7 +463,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm typecheck && pnpm test
 ```
 
-The current full check covers 92 tests across Host/Worker proxying, layered latency tracing, hot-swap affinity, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 96 tests across Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -488,7 +488,7 @@ For compatible `@playwright/cli` JavaScript installations, each Worker prewarms 
 
 On the current Windows development machine, the verified broker path reduced repeated `snapshot` calls from roughly 0.36–0.60 s of local execution to 13–15 ms, and `tab-list` from roughly 0.40–0.65 s to 17 ms. Browser `open` still includes the cost of starting/navigating the headed browser and therefore remains much heavier than later commands.
 
-Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants. The Host keeps a named browser session on the Worker that owns it across hot swaps and releases that affinity when the session is closed.
+Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants. The Host keeps a named browser session on the Worker that owns it across hot swaps and releases that affinity when the session is closed. An otherwise-idle browser affinity also expires after 10 minutes; the Playwright named session itself remains managed by Playwright, while the Host stops pinning the retired Junius Worker.
 
 ## Latency tracing
 

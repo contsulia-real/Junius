@@ -37,6 +37,14 @@ try {
     adminListenPort: 0,
     publicMcpOrigin,
     publicAdminOrigin,
+    onJobTerminal: (job) => {
+      process.send?.({
+        type: "junius-job-terminal",
+        workerId,
+        jobId: job.id,
+        status: job.status,
+      });
+    },
   });
 
   process.send?.({
