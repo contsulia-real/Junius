@@ -337,32 +337,28 @@ test("desktop reuses one persistent helper process across actions", async () => 
   }
 });
 
-test("desktop resolves Python from PATH", async () => {
+test("desktop resolves the project-local virtualenv Python", async () => {
   const root = await mkdtemp(
-    join(tmpdir(), "junius-desktop-python-path-"),
+    join(tmpdir(), "junius-desktop-venv-"),
   );
-  const helper = join(root, "desktop_helper.py");
-  const bin = join(root, "bin");
+  const helper = join(root, "python", "desktop_helper.py");
+  const pythonExecutable =
+    process.platform === "win32"
+      ? join(root, ".venv", "Scripts", "python.exe")
+      : join(root, ".venv", "bin", "python");
 
   try {
     const { mkdir } = await import("node:fs/promises");
-    await mkdir(bin, { recursive: true });
+    await mkdir(join(root, "python"), { recursive: true });
+    await mkdir(join(root, ".venv", process.platform === "win32" ? "Scripts" : "bin"), {
+      recursive: true,
+    });
     await writeFile(helper, "# helper\n", "utf8");
-
-    const pythonName =
-      process.platform === "win32"
-        ? "python.exe"
-        : "python3";
-    const pythonExecutable = join(bin, pythonName);
     await writeFile(pythonExecutable, "fake", "utf8");
 
     const service = new DesktopComputerUseService({
       environment: {
-        PATH: bin,
-        JUNIUS_PYTHON_PATH: join(
-          root,
-          "ignored-python.exe",
-        ),
+        PATH: "",
       },
       helperPath: helper,
       platform: "win32",
@@ -373,8 +369,7 @@ test("desktop resolves Python from PATH", async () => {
         service.state().pythonExecutable,
         pythonExecutable,
       );
-      assert.equal(service.state().pythonReady, false);
-      assert.equal(service.available, false);
+      assert.equal(service.available, true);
     } finally {
       await service.close();
     }

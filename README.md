@@ -16,7 +16,7 @@ The current implementation does not provide an OS security sandbox.
 - pnpm 12.6.0
 - OpenAI Secure MCP Tunnel `tunnel-client`
 - `playwright-cli` / `@playwright/cli` for browser capability
-- Windows desktop capability: a Python interpreter on `PATH` with `pywinauto`, `PyAutoGUI`, Pillow, and Windows bindings
+- Windows desktop capability: the project `.venv` with Python plus `pywinauto`, `PyAutoGUI`, Pillow, and Windows bindings
 
 ## Run
 
@@ -506,7 +506,7 @@ Desktop element refs are scoped to a named desktop session and are rebuilt by `i
 
 Text input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, so non-ASCII input is supported without relying on clipboard mutation.
 
-The Python helper now runs as a persistent JSONL server inside each Worker. The Python interpreter is resolved from inherited `PATH`; the helper script itself remains a Junius-owned internal file. Python, `pywinauto`, and PyAutoGUI are loaded once on the first desktop action and reused for later actions instead of spawning a fresh Python process per mouse/key/screenshot/UIA request. If the helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
+The Python helper now runs as a persistent JSONL server inside each Worker. Desktop Computer Use is bound to Junius's project-local `.venv` (`.venv/Scripts/python.exe` on Windows) rather than an arbitrary Python discovered from `PATH`; the helper script itself is the Junius-owned `python/desktop_helper.py`. Python, `pywinauto`, and PyAutoGUI are loaded once on the first desktop action and reused for later actions instead of spawning a fresh Python process per mouse/key/screenshot/UIA request. If the helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
 
 Desktop UIA refs remain Worker-local. The Host therefore binds a named desktop session to the Worker that performed `inspect`; a later `inspect` is the explicit migration boundary to the current active Worker.
 
