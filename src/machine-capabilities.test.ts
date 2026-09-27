@@ -21,9 +21,6 @@ function services(root: string): MachineCapabilityServices {
     browser: new PlaywrightCliService({
       ...process.env,
       PATH: "",
-      npm_execpath: undefined,
-      JUNIUS_PLAYWRIGHT_CLI_PATH: undefined,
-      PLAYWRIGHT_CLI_HOME: undefined,
       JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
     }),
     desktop: new DesktopComputerUseService({
@@ -37,15 +34,8 @@ function services(root: string): MachineCapabilityServices {
 test("MachineCapabilityManager registers available built-ins by default", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
   try {
-    const pnpmHome = join(root, "pnpm-home");
-    await import("node:fs/promises").then(({ mkdir }) =>
-      mkdir(pnpmHome, { recursive: true }),
-    );
-    await writeFile(
-      join(pnpmHome, "pnpm.js"),
-      "process.exit(0)\n",
-      "utf8",
-    );
+    const pnpmExecutable = join(root, "pnpm.exe");
+    await writeFile(pnpmExecutable, "fake", "utf8");
 
     const gitExecutable = join(root, "git.exe");
     await writeFile(gitExecutable, "fake", "utf8");
@@ -61,8 +51,6 @@ test("MachineCapabilityManager registers available built-ins by default", async 
       {
         ...process.env,
         PATH: root,
-        npm_execpath: undefined,
-        PNPM_HOME: pnpmHome,
       },
       process.execPath,
     );
@@ -137,9 +125,6 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
       {
         ...process.env,
         PATH: "",
-        npm_execpath: undefined,
-        PNPM_HOME: undefined,
-        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );
@@ -160,9 +145,6 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
       {
         ...process.env,
         PATH: "",
-        npm_execpath: undefined,
-        PNPM_HOME: undefined,
-        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );
@@ -201,9 +183,6 @@ test("MachineCapabilityManager keeps unavailable launchers distinct from disable
       {
         ...process.env,
         PATH: "",
-        npm_execpath: undefined,
-        PNPM_HOME: undefined,
-        JUNIUS_GIT_PATH: undefined,
         ProgramFiles: undefined,
         "ProgramFiles(x86)": undefined,
         LOCALAPPDATA: undefined,
@@ -237,9 +216,6 @@ test("MachineCapabilityManager validates Workspace grants against machine policy
       {
         ...process.env,
         PATH: "",
-        npm_execpath: undefined,
-        PNPM_HOME: undefined,
-        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );
@@ -294,9 +270,6 @@ test("MachineCapabilityManager rejects unknown capability keys", async () => {
       {
         ...process.env,
         PATH: "",
-        npm_execpath: undefined,
-        PNPM_HOME: undefined,
-        JUNIUS_GIT_PATH: undefined,
       },
       process.execPath,
     );

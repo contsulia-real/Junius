@@ -25,8 +25,7 @@ async function fixture() {
   const service = new PlaywrightCliService(
     {
       ...process.env,
-      PATH: "",
-      JUNIUS_PLAYWRIGHT_CLI_PATH: launcher,
+      PATH: root,
       JUNIUS_BROWSER_STATE_PATH: root,
     },
     process.execPath,

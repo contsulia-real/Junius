@@ -620,6 +620,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       (data.desktop.enabled ? "已启用" : "已禁用") + '</div></div>' +
       '<div class="detail"><div class="key">Python</div><div class="value">' +
       esc(data.desktop.pythonExecutable || "未解析") + '</div></div>' +
+      '<div class="detail"><div class="key">Python 依赖</div><div class="value">' +
+      (data.desktop.pythonReady ? "就绪" : "缺失 / 不可用") + '</div></div>' +
       '<div class="detail"><div class="key">Helper</div><div class="value">' +
       esc(data.desktop.helperPath) + '</div></div>' +
       '<div class="detail"><div class="key">Helper 进程</div><div class="value">' +

@@ -263,7 +263,7 @@ active
 
 This distinction allows a capability such as pnpm to remain enabled in configuration even when its launcher is temporarily unavailable.
 
-Node executable selection follows the inherited `PATH` directly and uses the first matching `node` executable in command-search order. `process.execPath` is not used as a launcher fallback. Executable paths are treated only as locations; Junius never derives a runtime version from directory or file names. JavaScript pnpm/Playwright launchers use the same PATH-resolved Node executable.
+External user-tool executables are resolved from the inherited `PATH` in command-search order. This applies to Node, pnpm, Git, playwright-cli, Python for Desktop Computer Use, and ripgrep. `process.execPath`, `PNPM_HOME`, `npm_execpath`, fixed installation-directory scans, and private executable override variables are not launcher fallbacks. Executable paths are treated only as locations; Junius never derives a runtime version from directory or file names. On Windows, a PATH-resolved `.cmd` shim may be inspected to reach the target declared by that shim while preserving `shell: false` execution. OS components such as `%SystemRoot%\System32\taskkill.exe` and Junius-owned internal files such as `python/desktop_helper.py` are not user-tool discovery and remain explicit internal paths.
 
 The persisted machine state is stored separately from Workspace grants.
 

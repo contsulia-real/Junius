@@ -1,14 +1,17 @@
 import {
   closeSync,
   openSync,
+  readFileSync,
   readSync,
   statSync,
 } from "node:fs";
 import {
-  basename,
   delimiter,
+  dirname,
   extname,
+  isAbsolute,
   join,
+  resolve,
 } from "node:path";
 import { ProcessCapability } from "./process-capability.js";
 import { resolveNodeExecutable } from "./node-capability.js";
@@ -110,56 +113,69 @@ function launcherFromCandidate(
   return undefined;
 }
 
+function environmentPath(
+  environment: NodeJS.ProcessEnv,
+): string {
+  return (
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    ""
+  );
+}
+
+function targetFromWindowsCmdShim(
+  shimPath: string,
+): string | undefined {
+  if (
+    process.platform !== "win32" ||
+    extname(shimPath).toLowerCase() !== ".cmd"
+  ) {
+    return undefined;
+  }
+
+  try {
+    const text = readFileSync(shimPath, "utf8");
+    const match = text.match(
+      /["']?([^"'\r\n]*(?:pnpm\.exe|pnpm\.(?:cjs|mjs|js)))["']?/iu,
+    );
+
+    if (match?.[1] === undefined) {
+      return undefined;
+    }
+
+    const expanded = match[1]
+      .replaceAll("%dp0%", dirname(shimPath) + "\\")
+      .replaceAll("%~dp0", dirname(shimPath) + "\\");
+
+    return isAbsolute(expanded)
+      ? resolve(expanded)
+      : resolve(dirname(shimPath), expanded);
+  } catch {
+    return undefined;
+  }
+}
+
 function candidatePaths(
   environment: NodeJS.ProcessEnv,
 ): readonly string[] {
   const candidates: string[] = [];
 
-  const direct = environment.npm_execpath;
-  if (direct && /pnpm/iu.test(basename(direct))) {
-    candidates.push(direct);
-  }
-
-  const pnpmHome = environment.PNPM_HOME;
-  if (pnpmHome) {
-    candidates.push(
-      join(pnpmHome, "pnpm.exe"),
-      join(pnpmHome, "pnpm"),
-      join(pnpmHome, "pnpm.cjs"),
-      join(pnpmHome, "pnpm.js"),
-      join(pnpmHome, "pnpm.mjs"),
-      join(pnpmHome, "bin", "pnpm.exe"),
-      join(pnpmHome, "bin", "pnpm"),
-    );
-  }
-
-  for (const rawEntry of (environment.PATH ?? "").split(delimiter)) {
-    const entry = rawEntry.trim();
-    if (!entry) {
-      continue;
-    }
+  for (const rawEntry of environmentPath(environment).split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
+    if (!entry) continue;
 
     candidates.push(
       join(entry, "pnpm.exe"),
       join(entry, "pnpm"),
+      join(entry, "pnpm.cmd"),
       join(entry, "pnpm.cjs"),
       join(entry, "pnpm.js"),
       join(entry, "pnpm.mjs"),
-
-      // npm global installation layouts
-      join(entry, "node_modules", "pnpm", "pnpm.exe"),
-      join(entry, "node_modules", "pnpm", "pnpm"),
-      join(entry, "node_modules", "pnpm", "bin", "pnpm.cjs"),
-      join(entry, "node_modules", "pnpm", "bin", "pnpm.js"),
-      join(entry, "node_modules", "pnpm", "bin", "pnpm.mjs"),
-
-      // Corepack installation layout
-      join(entry, "node_modules", "corepack", "dist", "pnpm.js"),
-      join(entry, "node_modules", "corepack", "dist", "pnpm.cjs"),
     );
   }
 
-  return [...new Set(candidates)];
+  return candidates;
 }
 
 export function resolvePnpmLauncher(
@@ -170,6 +186,17 @@ export function resolvePnpmLauncher(
     const launcher = launcherFromCandidate(candidate, nodeExecutable);
     if (launcher) {
       return launcher;
+    }
+
+    const shimTarget = targetFromWindowsCmdShim(candidate);
+    if (shimTarget !== undefined) {
+      const resolved = launcherFromCandidate(
+        shimTarget,
+        nodeExecutable,
+      );
+      if (resolved !== undefined) {
+        return resolved;
+      }
     }
   }
 

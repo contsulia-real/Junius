@@ -773,9 +773,14 @@ function resolveRgExecutable(environment: NodeJS.ProcessEnv = process.env): stri
     process.platform === "win32"
       ? ["rg.exe", "rg"]
       : ["rg"];
+  const pathValue =
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    "";
 
-  for (const rawEntry of (environment.PATH ?? "").split(delimiter)) {
-    const entry = rawEntry.trim();
+  for (const rawEntry of pathValue.split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
     if (!entry) continue;
 
     for (const name of names) {

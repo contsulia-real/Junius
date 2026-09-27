@@ -1,15 +1,18 @@
 import {
   closeSync,
   openSync,
+  readFileSync,
   readSync,
   statSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
 import {
-  basename,
   delimiter,
+  dirname,
   extname,
+  isAbsolute,
   join,
+  resolve,
 } from "node:path";
 
 const MAX_OUTPUT_CHARS = 512 * 1024;
@@ -119,49 +122,78 @@ function resolvePathNode(
   return undefined;
 }
 
+function targetFromWindowsCmdShim(
+  shimPath: string,
+): string | undefined {
+  if (
+    process.platform !== "win32" ||
+    extname(shimPath).toLowerCase() !== ".cmd"
+  ) {
+    return undefined;
+  }
+
+  try {
+    const text = readFileSync(shimPath, "utf8");
+    const match = text.match(
+      /["']?([^"'\r\n]*(?:pnpm\.exe|pnpm\.(?:cjs|mjs|js)))["']?/iu,
+    );
+
+    if (match?.[1] === undefined) {
+      return undefined;
+    }
+
+    const expanded = match[1]
+      .replaceAll("%dp0%", dirname(shimPath) + "\\")
+      .replaceAll("%~dp0", dirname(shimPath) + "\\");
+
+    return isAbsolute(expanded)
+      ? resolve(expanded)
+      : resolve(dirname(shimPath), expanded);
+  } catch {
+    return undefined;
+  }
+}
+
 function resolveHostPnpm(
   environment: NodeJS.ProcessEnv,
 ): PnpmLauncher | undefined {
   const candidates: string[] = [];
   const nodeExecutable = resolvePathNode(environment);
-  const npmExecPath = environment.npm_execpath;
+  const pathValue =
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    "";
 
-  if (
-    npmExecPath &&
-    /pnpm/iu.test(basename(npmExecPath))
-  ) {
-    candidates.push(npmExecPath);
-  }
-
-  if (environment.PNPM_HOME) {
-    candidates.push(
-      join(environment.PNPM_HOME, "pnpm.exe"),
-      join(environment.PNPM_HOME, "pnpm.cjs"),
-      join(environment.PNPM_HOME, "pnpm.js"),
-      join(environment.PNPM_HOME, "pnpm.mjs"),
-    );
-  }
-
-  for (const rawEntry of (environment.PATH ?? "").split(delimiter)) {
-    const entry = rawEntry.trim();
+  for (const rawEntry of pathValue.split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
     if (!entry) continue;
 
     candidates.push(
       join(entry, "pnpm.exe"),
+      join(entry, "pnpm"),
+      join(entry, "pnpm.cmd"),
       join(entry, "pnpm.cjs"),
       join(entry, "pnpm.js"),
       join(entry, "pnpm.mjs"),
-      join(entry, "node_modules", "pnpm", "bin", "pnpm.cjs"),
-      join(entry, "node_modules", "corepack", "dist", "pnpm.js"),
     );
   }
 
-  for (const candidate of [...new Set(candidates)]) {
+  for (const candidate of candidates) {
     const launcher = launcherFromCandidate(
       candidate,
       nodeExecutable,
     );
     if (launcher !== undefined) return launcher;
+
+    const shimTarget = targetFromWindowsCmdShim(candidate);
+    if (shimTarget !== undefined) {
+      const resolved = launcherFromCandidate(
+        shimTarget,
+        nodeExecutable,
+      );
+      if (resolved !== undefined) return resolved;
+    }
   }
 
   return undefined;

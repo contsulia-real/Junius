@@ -16,7 +16,7 @@ The current implementation does not provide an OS security sandbox.
 - pnpm 12.6.0
 - OpenAI Secure MCP Tunnel `tunnel-client`
 - `playwright-cli` / `@playwright/cli` for browser capability
-- Windows desktop capability: the project `.venv` with Python plus `pywinauto`, `PyAutoGUI`, Pillow, and Windows bindings
+- Windows desktop capability: a Python interpreter on `PATH` with `pywinauto`, `PyAutoGUI`, Pillow, and Windows bindings
 
 ## Run
 
@@ -40,10 +40,7 @@ Optional environment variables:
 - `JUNIUS_WORKSPACE_ROOT`
 - `JUNIUS_WORKSPACE_STATE_PATH`
 - `JUNIUS_MACHINE_CAPABILITY_STATE_PATH`
-- `JUNIUS_PLAYWRIGHT_CLI_PATH`
 - `JUNIUS_BROWSER_STATE_PATH`
-- `JUNIUS_GIT_PATH`
-- `JUNIUS_PYTHON_PATH`
 - `JUNIUS_DESKTOP_HELPER_PATH`
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
@@ -157,7 +154,7 @@ JavaScript-based pnpm and Playwright launchers use the same PATH-resolved Node e
 
 ### pnpm
 
-Junius registers a `pnpm` capability when it can resolve a usable pnpm launcher.
+Junius registers a `pnpm` capability when it can resolve a usable pnpm command from the inherited `PATH`. On Windows, a PATH-resolved `pnpm.cmd` shim is inspected only to reach the target it itself declares; Junius does not scan `PNPM_HOME`, `npm_execpath`, Corepack directories, or neighboring install trees.
 
 Machine-level pnpm policy permits:
 
@@ -208,8 +205,6 @@ git commit -m "..."
 git remote add origin <url>
 git push --force --set-upstream origin main
 ```
-
-`JUNIUS_GIT_PATH` can override Git executable discovery when needed.
 
 ## Workspace discovery
 
@@ -468,7 +463,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm typecheck && pnpm test
 ```
 
-The current full check completes with 85 tests passed, 0 failed, 0 cancelled, and 0 skipped, including real Host/Worker proxying, hot-swap affinity, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows Python desktop-helper integration tests.
+The current full check covers 89 tests across Host/Worker proxying, hot-swap affinity, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration test is environment-gated and skips when the first Python resolved from PATH does not provide Junius's required desktop modules.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -487,7 +482,7 @@ The tool accepts a named browser session, one whitelisted `playwright-cli` comma
 
 The current allowlist covers ordinary browser navigation and interaction, including navigation, snapshots, ref-based element actions, keyboard/mouse input, dialogs, tabs, and close. It intentionally does not expose arbitrary evaluation, CDP attachment, storage mutation, request interception, or arbitrary CLI commands.
 
-Browser sessions are named, headed, and persistent by default. Runtime browser state lives in Junius's own state directory rather than a project Workspace or the user's normal browser profile.
+Browser sessions are named, headed, and persistent by default. Runtime browser state lives in Junius's own state directory rather than a project Workspace or the user's normal browser profile. The `playwright-cli` command itself is discovered from inherited `PATH`; Junius does not use a separate executable override or scan package-manager installation trees.
 
 For compatible `@playwright/cli` JavaScript installations, each Worker lazily starts a persistent Node broker. The broker loads the installed CLI's own `program` client once and reuses it for later commands while the Playwright-managed browser daemon/session remains authoritative. Junius discovers the local CLI's actual program-module specifier from its installed entry file and resolves pnpm links through the entry's real path, so it follows the locally installed CLI version rather than hard-coding one Playwright internal path. If the broker cannot initialize or its protocol fails, Browser automatically falls back to the existing one-process-per-command CLI transport.
 
@@ -511,7 +506,7 @@ Desktop element refs are scoped to a named desktop session and are rebuilt by `i
 
 Text input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, so non-ASCII input is supported without relying on clipboard mutation.
 
-The Python helper now runs as a persistent JSONL server inside each Worker. Python, `pywinauto`, and PyAutoGUI are loaded once on the first desktop action and reused for later actions instead of spawning a fresh Python process per mouse/key/screenshot/UIA request. If the helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
+The Python helper now runs as a persistent JSONL server inside each Worker. The Python interpreter is resolved from inherited `PATH`; the helper script itself remains a Junius-owned internal file. Python, `pywinauto`, and PyAutoGUI are loaded once on the first desktop action and reused for later actions instead of spawning a fresh Python process per mouse/key/screenshot/UIA request. If the helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
 
 Desktop UIA refs remain Worker-local. The Host therefore binds a named desktop session to the Worker that performed `inspect`; a later `inspect` is the explicit migration boundary to the current active Worker.
 

@@ -337,6 +337,52 @@ test("desktop reuses one persistent helper process across actions", async () => 
   }
 });
 
+test("desktop resolves Python from PATH", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-desktop-python-path-"),
+  );
+  const helper = join(root, "desktop_helper.py");
+  const bin = join(root, "bin");
+
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(bin, { recursive: true });
+    await writeFile(helper, "# helper\n", "utf8");
+
+    const pythonName =
+      process.platform === "win32"
+        ? "python.exe"
+        : "python3";
+    const pythonExecutable = join(bin, pythonName);
+    await writeFile(pythonExecutable, "fake", "utf8");
+
+    const service = new DesktopComputerUseService({
+      environment: {
+        PATH: bin,
+        JUNIUS_PYTHON_PATH: join(
+          root,
+          "ignored-python.exe",
+        ),
+      },
+      helperPath: helper,
+      platform: "win32",
+    });
+
+    try {
+      assert.equal(
+        service.state().pythonExecutable,
+        pythonExecutable,
+      );
+      assert.equal(service.state().pythonReady, false);
+      assert.equal(service.available, false);
+    } finally {
+      await service.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("desktop real Python helper can enumerate Windows repeatedly when installed", async (t) => {
   const service = new DesktopComputerUseService();
 

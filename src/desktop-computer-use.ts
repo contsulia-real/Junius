@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   DesktopHelperClient,
@@ -5,7 +6,12 @@ import {
   type DesktopHelperResponse,
 } from "./desktop-helper-client.js";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import {
+  delimiter,
+  dirname,
+  join,
+  resolve,
+} from "node:path";
 
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const REF_PATTERN = /^d\d+$/u;
@@ -101,34 +107,71 @@ export interface DesktopComputerUseOptions {
   readonly platform?: NodeJS.Platform;
 }
 
-function localPythonCandidate(helperPath: string): string {
-  const root = dirname(dirname(helperPath));
-
-  if (process.platform === "win32") {
-    return join(root, ".venv", "Scripts", "python.exe");
-  }
-
-  return join(root, ".venv", "bin", "python");
+function environmentPath(
+  environment: NodeJS.ProcessEnv,
+): string {
+  return (
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    ""
+  );
 }
 
 function resolvePythonExecutable(
   environment: NodeJS.ProcessEnv,
-  helperPath: string,
   explicit?: string,
 ): string | undefined {
-  const candidates = [
-    explicit,
-    environment.JUNIUS_PYTHON_PATH,
-    localPythonCandidate(helperPath),
-  ];
+  if (explicit !== undefined) {
+    return existsSync(explicit)
+      ? resolve(explicit)
+      : undefined;
+  }
 
-  for (const candidate of candidates) {
-    if (candidate && existsSync(candidate)) {
-      return resolve(candidate);
+  const names =
+    process.platform === "win32"
+      ? ["python.exe", "python3.exe"]
+      : ["python3", "python"];
+
+  for (const rawEntry of environmentPath(environment).split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
+    if (!entry) continue;
+
+    for (const name of names) {
+      const candidate = join(entry, name);
+      if (existsSync(candidate)) {
+        return resolve(candidate);
+      }
     }
   }
 
   return undefined;
+}
+
+function hasDesktopPythonDependencies(
+  pythonExecutable: string,
+  environment: NodeJS.ProcessEnv,
+): boolean {
+  try {
+    const result = spawnSync(
+      pythonExecutable,
+      [
+        "-c",
+        "import importlib.util,sys;sys.exit(0 if all(importlib.util.find_spec(x) for x in ('pyautogui','pywinauto','PIL')) else 1)",
+      ],
+      {
+        env: environment,
+        shell: false,
+        windowsHide: true,
+        stdio: "ignore",
+        timeout: 5_000,
+      },
+    );
+
+    return result.status === 0;
+  } catch {
+    return false;
+  }
 }
 
 function isFiniteInteger(value: number | undefined): value is number {
@@ -244,6 +287,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 export class DesktopComputerUseService {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #pythonExecutable: string | undefined;
+  readonly #pythonReady: boolean;
   readonly #helperPath: string;
   readonly #platform: NodeJS.Platform;
   readonly #sessions = new Map<string, DesktopSessionState>();
@@ -263,11 +307,19 @@ export class DesktopComputerUseService {
     );
     this.#pythonExecutable = resolvePythonExecutable(
       this.#environment,
-      this.#helperPath,
       options.pythonExecutable,
     );
+    this.#pythonReady =
+      this.#pythonExecutable !== undefined &&
+      (
+        options.pythonExecutable !== undefined ||
+        hasDesktopPythonDependencies(
+          this.#pythonExecutable,
+          this.#environment,
+        )
+      );
     this.#helperClient =
-      this.#pythonExecutable === undefined
+      !this.#pythonReady || this.#pythonExecutable === undefined
         ? undefined
         : new DesktopHelperClient({
             pythonExecutable: this.#pythonExecutable,
@@ -284,6 +336,7 @@ export class DesktopComputerUseService {
     return (
       this.#platform === "win32" &&
       this.#pythonExecutable !== undefined &&
+      this.#pythonReady &&
       existsSync(this.#helperPath)
     );
   }
@@ -302,6 +355,7 @@ export class DesktopComputerUseService {
     readonly active: boolean;
     readonly helperPath: string;
     readonly pythonExecutable?: string;
+    readonly pythonReady: boolean;
     readonly helperRunning: boolean;
   } {
     return {
@@ -309,6 +363,7 @@ export class DesktopComputerUseService {
       available: this.available,
       active: this.active,
       helperPath: this.#helperPath,
+      pythonReady: this.#pythonReady,
       helperRunning: this.#helperClient?.running ?? false,
       ...(this.#pythonExecutable === undefined
         ? {}
@@ -348,7 +403,7 @@ export class DesktopComputerUseService {
     if (!this.available || this.#pythonExecutable === undefined) {
       throw new DesktopComputerUseError(
         "desktop_not_available",
-        "Desktop computer use requires Windows, the Junius .venv Python interpreter, and python/desktop_helper.py. Set JUNIUS_PYTHON_PATH if Python lives elsewhere.",
+        "Desktop computer use requires Windows, a Python interpreter on PATH, and python/desktop_helper.py.",
       );
     }
 

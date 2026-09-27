@@ -206,36 +206,25 @@ function defaultBrowserStatePath(
   return join(stateRoot, "Junius", "browser");
 }
 
+function environmentPath(
+  environment: NodeJS.ProcessEnv,
+): string {
+  return (
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    ""
+  );
+}
+
 function candidatePaths(
   environment: NodeJS.ProcessEnv,
 ): readonly string[] {
   const candidates: string[] = [];
 
-  if (environment.JUNIUS_PLAYWRIGHT_CLI_PATH) {
-    candidates.push(environment.JUNIUS_PLAYWRIGHT_CLI_PATH);
-  }
-
-  const playwrightCliHome = environment.PLAYWRIGHT_CLI_HOME;
-  if (playwrightCliHome) {
-    candidates.push(
-      join(playwrightCliHome, "playwright-cli.exe"),
-      join(playwrightCliHome, "playwright-cli"),
-      join(playwrightCliHome, "playwright-cli.js"),
-      join(
-        playwrightCliHome,
-        "node_modules",
-        "@playwright",
-        "cli",
-        "playwright-cli.js",
-      ),
-    );
-  }
-
-  for (const rawEntry of (environment.PATH ?? "").split(delimiter)) {
-    const entry = rawEntry.trim();
-    if (!entry) {
-      continue;
-    }
+  for (const rawEntry of environmentPath(environment).split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
+    if (!entry) continue;
 
     candidates.push(
       join(entry, "playwright-cli.exe"),
@@ -244,17 +233,10 @@ function candidatePaths(
       join(entry, "playwright-cli.cjs"),
       join(entry, "playwright-cli.mjs"),
       join(entry, "playwright-cli.cmd"),
-      join(
-        entry,
-        "node_modules",
-        "@playwright",
-        "cli",
-        "playwright-cli.js",
-      ),
     );
   }
 
-  return [...new Set(candidates)];
+  return candidates;
 }
 
 export function resolvePlaywrightCliLauncher(
@@ -590,7 +572,7 @@ export class PlaywrightCliService {
     if (this.#launcher === undefined) {
       throw new PlaywrightCliError(
         "playwright_cli_not_available",
-        "playwright-cli was not found. Install @playwright/cli globally or set JUNIUS_PLAYWRIGHT_CLI_PATH to its executable or playwright-cli.js entry.",
+        "playwright-cli was not found on PATH.",
       );
     }
 
