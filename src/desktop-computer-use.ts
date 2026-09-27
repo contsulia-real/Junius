@@ -23,20 +23,12 @@ import {
   type DesktopHelperImage,
   type DesktopRunRequest,
 } from "./desktop-computer-use-types.js";
+import {
+  DesktopSessionRegistry,
+} from "./desktop-session-registry.js";
 
 const DEFAULT_SESSION_IDLE_MS = 5 * 60_000;
 const DEFAULT_MAX_SESSIONS = 64;
-
-interface DesktopElementRef {
-  readonly handle: number;
-  readonly path: readonly number[];
-}
-
-interface DesktopSessionState {
-  readonly refs: Map<string, DesktopElementRef>;
-  nextRef: number;
-  lastUsedAt: number;
-}
 
 function isHelperImage(
   value: unknown,
@@ -66,10 +58,8 @@ export class DesktopComputerUseService {
   readonly #pythonExecutable: string | undefined;
   readonly #helperPath: string;
   readonly #platform: NodeJS.Platform;
-  readonly #sessions = new Map<string, DesktopSessionState>();
+  readonly #sessions: DesktopSessionRegistry;
   #helperClient: DesktopHelperClient | undefined;
-  readonly #sessionIdleMs: number;
-  readonly #maxSessions: number;
   #enabled = true;
 
   constructor(options: DesktopComputerUseOptions = {}) {
@@ -88,18 +78,23 @@ export class DesktopComputerUseService {
       },
     );
     this.#platform = options.platform ?? process.platform;
-    this.#sessionIdleMs = Math.max(
+    const sessionIdleMs = Math.max(
       1,
       Math.floor(
         options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS,
       ),
     );
-    this.#maxSessions = Math.max(
+    const maxSessions = Math.max(
       1,
       Math.floor(
         options.maxSessions ?? DEFAULT_MAX_SESSIONS,
       ),
     );
+    this.#sessions =
+      new DesktopSessionRegistry(
+        sessionIdleMs,
+        maxSessions,
+      );
     this.#helperPath = resolve(
       options.helperPath ??
         this.#environment.JUNIUS_DESKTOP_HELPER_PATH ??
@@ -157,7 +152,6 @@ export class DesktopComputerUseService {
     readonly helperReady: boolean;
     readonly sessionCount: number;
   } {
-    this.#pruneExpiredSessions();
     return {
       enabled: this.enabled,
       available: this.available,
@@ -165,7 +159,7 @@ export class DesktopComputerUseService {
       helperPath: this.#helperPath,
       helperRunning: this.#helperClient?.running ?? false,
       helperReady: this.#helperClient?.ready ?? false,
-      sessionCount: this.#sessions.size,
+      sessionCount: this.#sessions.count,
       ...(this.#pythonExecutable === undefined
         ? {}
         : { pythonExecutable: this.#pythonExecutable }),
@@ -250,54 +244,6 @@ export class DesktopComputerUseService {
     };
   }
 
-  #session(name: string): DesktopSessionState {
-    const now = Date.now();
-    this.#pruneExpiredSessions(now);
-
-    let state = this.#sessions.get(name);
-
-    if (state === undefined) {
-      while (this.#sessions.size >= this.#maxSessions) {
-        let oldestName: string | undefined;
-        let oldestUsedAt = Number.POSITIVE_INFINITY;
-
-        for (const [candidateName, candidate] of
-          this.#sessions
-        ) {
-          if (candidate.lastUsedAt < oldestUsedAt) {
-            oldestUsedAt = candidate.lastUsedAt;
-            oldestName = candidateName;
-          }
-        }
-
-        if (oldestName === undefined) break;
-        this.#sessions.delete(oldestName);
-      }
-
-      state = {
-        refs: new Map(),
-        nextRef: 1,
-        lastUsedAt: now,
-      };
-      this.#sessions.set(name, state);
-    } else {
-      state.lastUsedAt = now;
-    }
-
-    return state;
-  }
-
-  #pruneExpiredSessions(now = Date.now()): void {
-    for (const [name, session] of this.#sessions) {
-      if (
-        now - session.lastUsedAt >=
-        this.#sessionIdleMs
-      ) {
-        this.#sessions.delete(name);
-      }
-    }
-  }
-
   #toHelperRequest(
     request: DesktopRunRequest,
   ): Record<string, unknown> {
@@ -307,7 +253,7 @@ export class DesktopComputerUseService {
       request.command === "focus"
     ) {
       const ref = request.ref!;
-      const resolved = this.#session(request.session).refs.get(ref);
+      const resolved = this.#sessions.session(request.session).refs.get(ref);
 
       if (resolved === undefined) {
         throw new DesktopComputerUseError(
@@ -361,7 +307,7 @@ export class DesktopComputerUseService {
         );
       }
 
-      const session = this.#session(sessionName);
+      const session = this.#sessions.session(sessionName);
       session.refs.clear();
       session.nextRef = 1;
 
