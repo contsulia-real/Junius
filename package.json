@@ -4,13 +4,13 @@
   "description": "Junius Local Agent",
   "main": "index.js",
   "scripts": {
-    "dev": "node scripts/host-bootstrap.mjs",
-    "start": "node scripts/host-bootstrap.mjs",
+    "dev": "node scripts/host-launcher.mjs",
+    "start": "node scripts/host-launcher.mjs",
     "start:host-source": "tsx src/host.ts",
     "start:direct": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "check:bootstrap": "node --check scripts/host-bootstrap.mjs",
+    "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs",
     "check": "pnpm check:bootstrap && pnpm typecheck && pnpm test"
   },
   "keywords": [],

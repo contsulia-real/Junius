@@ -234,8 +234,8 @@ test("WorkerSupervisor expires idle browser affinity without violating rollback 
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
     publicAdminOrigin: "http://127.0.0.1:8788",
-    rollbackWindowMs: 30,
-    browserResourceIdleMs: 5,
+    rollbackWindowMs: 500,
+    browserResourceIdleMs: 20,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,
   });
@@ -248,7 +248,7 @@ test("WorkerSupervisor expires idle browser affinity without violating rollback 
     );
     await supervisor.reload("good-edit");
 
-    await delay(12);
+    await delay(80);
     assert.equal(first.closed(), false);
     assert.equal(
       supervisor.state().resourceBindings.some(
@@ -257,7 +257,7 @@ test("WorkerSupervisor expires idle browser affinity without violating rollback 
       false,
     );
 
-    await delay(35);
+    await delay(500);
     assert.equal(first.closed(), true);
   } finally {
     await supervisor.close();

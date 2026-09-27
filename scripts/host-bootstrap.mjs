@@ -34,6 +34,19 @@ const runtimeRoot = resolve(
 const releasesRoot = join(runtimeRoot, "releases");
 const stagingRoot = join(runtimeRoot, "staging");
 const currentPath = join(runtimeRoot, "current.json");
+const stableBootstrapRoot = join(
+  runtimeRoot,
+  "bootstrap",
+);
+const stableBootstrapPath = join(
+  stableBootstrapRoot,
+  "host-bootstrap.mjs",
+);
+const liveBootstrapPath = join(
+  projectRoot,
+  "scripts",
+  "host-bootstrap.mjs",
+);
 
 let activeHost;
 
@@ -95,6 +108,8 @@ async function fingerprintSource(root) {
     "package.json",
     "pnpm-lock.yaml",
     "tsconfig.json",
+    join("scripts", "host-bootstrap.mjs"),
+    join("scripts", "host-launcher.mjs"),
   ]) {
     if (await exists(join(root, file))) {
       sources.push(file);
@@ -133,10 +148,16 @@ async function copySnapshot(destination) {
     "package.json",
     "pnpm-lock.yaml",
     "tsconfig.json",
+    join("scripts", "host-bootstrap.mjs"),
+    join("scripts", "host-launcher.mjs"),
   ]) {
     const source = join(projectRoot, file);
     if (await exists(source)) {
-      await cp(source, join(destination, file), {
+      const target = join(destination, file);
+      await mkdir(dirname(target), {
+        recursive: true,
+      });
+      await cp(source, target, {
         force: true,
       });
     }
@@ -409,6 +430,28 @@ async function readCurrentRelease() {
   } catch {
     return undefined;
   }
+}
+
+async function promoteValidatedBootstrap() {
+  await mkdir(stableBootstrapRoot, {
+    recursive: true,
+  });
+
+  const temporaryPath =
+    stableBootstrapPath +
+    "." +
+    randomUUID() +
+    ".tmp";
+
+  await cp(
+    liveBootstrapPath,
+    temporaryPath,
+    { force: true },
+  );
+  await rename(
+    temporaryPath,
+    stableBootstrapPath,
+  );
 }
 
 async function writeCurrentRelease(release) {
@@ -768,6 +811,7 @@ async function main() {
 
     try {
       child = await startRelease(prepared.release);
+      await promoteValidatedBootstrap();
       await writeCurrentRelease(prepared.release);
       await pruneReleases(prepared.release.releaseId);
 

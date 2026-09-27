@@ -170,6 +170,26 @@ test("manual bootstrap promotes a validated release and falls back to last-known
     assert.equal(current.releaseId.length > 0, true);
     assert.equal(typeof current.fingerprint, "string");
 
+    const stableBootstrapPath = join(
+      root,
+      "runtime",
+      "bootstrap",
+      "host-bootstrap.mjs",
+    );
+    const promotedBootstrap = await readFile(
+      stableBootstrapPath,
+      "utf8",
+    );
+    const liveBootstrap = await readFile(
+      join(
+        process.cwd(),
+        "scripts",
+        "host-bootstrap.mjs",
+      ),
+      "utf8",
+    );
+    assert.equal(promotedBootstrap, liveBootstrap);
+
     const unchanged = await runBootstrap(
       root,
       "fail",
@@ -191,6 +211,14 @@ test("manual bootstrap promotes a validated release and falls back to last-known
     assert.doesNotMatch(
       unchanged.stderr,
       /candidate rejected/u,
+    );
+
+    const sentinelBootstrap =
+      "// retained validated bootstrap\n";
+    await writeFile(
+      stableBootstrapPath,
+      sentinelBootstrap,
+      "utf8",
     );
 
     const second = await runBootstrap(
@@ -224,6 +252,10 @@ test("manual bootstrap promotes a validated release and falls back to last-known
     };
 
     assert.deepEqual(afterFallback, current);
+    assert.equal(
+      await readFile(stableBootstrapPath, "utf8"),
+      sentinelBootstrap,
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

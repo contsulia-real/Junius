@@ -1,0 +1,101 @@
+import { spawn } from "node:child_process";
+import {
+  access,
+  mkdir,
+} from "node:fs/promises";
+import { join, resolve } from "node:path";
+
+const projectRoot = process.cwd();
+const runtimeRoot = resolve(
+  process.env.JUNIUS_RUNTIME_ROOT ??
+    join(projectRoot, ".junius", "runtime"),
+);
+const stableBootstrapPath = join(
+  runtimeRoot,
+  "bootstrap",
+  "host-bootstrap.mjs",
+);
+const liveBootstrapPath = join(
+  projectRoot,
+  "scripts",
+  "host-bootstrap.mjs",
+);
+
+let activeBootstrap;
+
+async function exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function main() {
+  await mkdir(runtimeRoot, { recursive: true });
+
+  const bootstrapPath =
+    await exists(stableBootstrapPath)
+      ? stableBootstrapPath
+      : liveBootstrapPath;
+
+  console.error(
+    bootstrapPath === stableBootstrapPath
+      ? "[launcher] using validated bootstrap."
+      : "[launcher] no validated bootstrap yet; using live bootstrap.",
+  );
+
+  const child = spawn(
+    process.execPath,
+    [bootstrapPath],
+    {
+      cwd: projectRoot,
+      env: process.env,
+      stdio: "inherit",
+      windowsHide: false,
+    },
+  );
+
+  activeBootstrap = child;
+
+  const exit = await new Promise((resolvePromise) => {
+    child.once("error", (error) => {
+      console.error(
+        "[launcher] bootstrap spawn failed: " +
+          String(error),
+      );
+      resolvePromise({
+        code: 1,
+        signal: null,
+      });
+    });
+
+    child.once("exit", (code, signal) => {
+      resolvePromise({ code, signal });
+    });
+  });
+
+  process.exitCode = exit.code ?? 0;
+}
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    if (
+      activeBootstrap !== undefined &&
+      activeBootstrap.exitCode === null &&
+      activeBootstrap.signalCode === null
+    ) {
+      try {
+        activeBootstrap.kill(signal);
+      } catch {
+        activeBootstrap.kill();
+      }
+    }
+  });
+}
+
+main().catch((error) => {
+  console.error("[launcher] fatal: " + String(error));
+  process.exitCode = 1;
+});
