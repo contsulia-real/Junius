@@ -132,6 +132,79 @@ process.exit(result === "pass" ? 0 : 1);
   };
 }
 
+async function markCurrentSourceValidated(
+  root: string,
+): Promise<void> {
+  const script = join(
+    process.cwd(),
+    "scripts",
+    "source-validation.mjs",
+  );
+  const runtimeRoot = join(root, "runtime");
+
+  for (const command of ["begin", "commit"]) {
+    const child = spawn(
+      process.execPath,
+      [script, command],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          JUNIUS_RUNTIME_ROOT: runtimeRoot,
+        },
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    const [exitCode] = await once(child, "exit");
+    assert.equal(
+      exitCode,
+      0,
+      `source validation ${command} failed`,
+    );
+  }
+}
+
+test("manual bootstrap reuses a matching full source validation", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-bootstrap-cache-"),
+  );
+
+  try {
+    await markCurrentSourceValidated(root);
+
+    const result = await runBootstrap(
+      root,
+      "fail",
+      false,
+    );
+
+    assert.equal(
+      result.exitCode,
+      0,
+      result.stderr || result.stdout,
+    );
+    assert.match(
+      result.stderr,
+      /reusing full source validation/u,
+    );
+    assert.match(
+      result.stderr,
+      /after 0 ms cached check/u,
+    );
+    assert.doesNotMatch(
+      result.stderr,
+      /candidate rejected/u,
+    );
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("manual bootstrap promotes a validated release and falls back to last-known-good on failed validation", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-bootstrap-"),

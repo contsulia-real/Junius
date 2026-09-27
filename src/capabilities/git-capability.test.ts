@@ -336,6 +336,132 @@ test("git preflight does not borrow a parent repository", async () => {
   }
 });
 
+test("git capability inherits only global identity while local identity wins", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-git-identity-"),
+  );
+  const fakeGit = join(root, "fake-git.cjs");
+
+  try {
+    await writeFile(
+      fakeGit,
+      [
+        "const args = process.argv.slice(2);",
+        "if (args.join(' ') === 'config --global --get user.name') { process.stdout.write('Global User\\n'); process.exit(0); }",
+        "if (args.join(' ') === 'config --global --get user.email') { process.stdout.write('global@example.com\\n'); process.exit(0); }",
+        "process.exit(1);",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await writeGitConfig(
+      root,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "",
+      ].join("\n"),
+    );
+
+    const capability = createGitCapability(
+      {
+        executable: process.execPath,
+        fixedArgs: [fakeGit],
+      },
+      {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: "attacker-config",
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_VALUE_0:
+          "!powershell -Command calc",
+      },
+    )!;
+
+    const inherited =
+      capability.prepareProcess(
+        ["status", "--short"],
+        { cwd: root },
+      );
+    assert.equal(inherited.ok, true);
+    if (inherited.ok) {
+      assert.equal(
+        inherited.process.args.includes(
+          "user.name=Global User",
+        ),
+        true,
+      );
+      assert.equal(
+        inherited.process.args.includes(
+          "user.email=global@example.com",
+        ),
+        true,
+      );
+      assert.equal(
+        inherited.process.env.GIT_CONFIG_GLOBAL,
+        process.platform === "win32"
+          ? "NUL"
+          : "/dev/null",
+      );
+      assert.equal(
+        inherited.process.env.GIT_CONFIG_COUNT,
+        undefined,
+      );
+    }
+
+    await writeGitConfig(
+      root,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "[user]",
+        "\tname = Local User",
+        "\temail = local@example.com",
+        "",
+      ].join("\n"),
+    );
+
+    const local =
+      capability.prepareProcess(
+        ["status", "--short"],
+        { cwd: root },
+      );
+    assert.equal(local.ok, true);
+    if (local.ok) {
+      assert.equal(
+        local.process.args.includes(
+          "user.name=Local User",
+        ),
+        true,
+      );
+      assert.equal(
+        local.process.args.includes(
+          "user.email=local@example.com",
+        ),
+        true,
+      );
+      assert.equal(
+        local.process.args.includes(
+          "user.name=Global User",
+        ),
+        false,
+      );
+      assert.equal(
+        local.process.args.includes(
+          "user.email=global@example.com",
+        ),
+        false,
+      );
+    }
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("git capability isolates system and global executable config", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-git-config-env-"),

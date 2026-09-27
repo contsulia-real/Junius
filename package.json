@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs",
-    "check": "pnpm check:bootstrap && pnpm typecheck && pnpm test"
+    "check": "node scripts/source-validation.mjs begin && pnpm check:bootstrap && pnpm typecheck && pnpm test && node scripts/source-validation.mjs commit"
   },
   "keywords": [],
   "author": "",

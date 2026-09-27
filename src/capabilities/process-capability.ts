@@ -27,6 +27,10 @@ export interface ProcessCapabilityOptions {
         readonly message: string;
       };
   readonly fixedArgs?: readonly string[];
+  readonly fixedArgsForExecution?: (
+    args: readonly string[],
+    context: CapabilityExecutionContext,
+  ) => readonly string[];
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
   readonly environment?: NodeJS.ProcessEnv;
@@ -57,6 +61,8 @@ export class ProcessCapability implements Capability {
   readonly #argumentPolicy?: (args: readonly string[]) => boolean;
   readonly #preflight?: ProcessCapabilityOptions["preflight"];
   readonly #fixedArgs: readonly string[];
+  readonly #fixedArgsForExecution?:
+    ProcessCapabilityOptions["fixedArgsForExecution"];
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
   readonly #environment: NodeJS.ProcessEnv;
@@ -72,6 +78,8 @@ export class ProcessCapability implements Capability {
     this.#argumentPolicy = options.argumentPolicy;
     this.#preflight = options.preflight;
     this.#fixedArgs = options.fixedArgs ?? [];
+    this.#fixedArgsForExecution =
+      options.fixedArgsForExecution;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#maxOutputBytes =
       options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
@@ -144,11 +152,18 @@ export class ProcessCapability implements Capability {
       inheritedEnvironment[name] = value;
     }
 
+    const executionFixedArgs =
+      this.#fixedArgsForExecution?.(args, context) ?? [];
+
     return {
       ok: true,
       process: {
         executable: this.#executable,
-        args: [...this.#fixedArgs, ...args],
+        args: [
+          ...this.#fixedArgs,
+          ...executionFixedArgs,
+          ...args,
+        ],
         cwd: context.cwd,
         env: {
           ...inheritedEnvironment,

@@ -34,6 +34,10 @@ const runtimeRoot = resolve(
 const releasesRoot = join(runtimeRoot, "releases");
 const stagingRoot = join(runtimeRoot, "staging");
 const currentPath = join(runtimeRoot, "current.json");
+const sourceValidationPath = join(
+  runtimeRoot,
+  "source-validation.json",
+);
 const stableBootstrapRoot = join(
   runtimeRoot,
   "bootstrap",
@@ -110,6 +114,7 @@ async function fingerprintSource(root) {
     "tsconfig.json",
     join("scripts", "host-bootstrap.mjs"),
     join("scripts", "host-launcher.mjs"),
+    join("scripts", "source-validation.mjs"),
   ]) {
     if (await exists(join(root, file))) {
       sources.push(file);
@@ -150,6 +155,7 @@ async function copySnapshot(destination) {
     "tsconfig.json",
     join("scripts", "host-bootstrap.mjs"),
     join("scripts", "host-launcher.mjs"),
+    join("scripts", "source-validation.mjs"),
   ]) {
     const source = join(projectRoot, file);
     if (await exists(source)) {
@@ -432,6 +438,33 @@ async function readCurrentRelease() {
   }
 }
 
+async function readReusableSourceValidation(
+  fingerprint,
+) {
+  try {
+    const parsed = JSON.parse(
+      await readFile(sourceValidationPath, "utf8"),
+    );
+
+    if (
+      parsed?.version !== 1 ||
+      parsed.fingerprint !== fingerprint ||
+      parsed.nodeVersion !== process.version ||
+      parsed.platform !== process.platform ||
+      parsed.arch !== process.arch ||
+      typeof parsed.validatedAt !== "string"
+    ) {
+      return undefined;
+    }
+
+    return {
+      validatedAt: parsed.validatedAt,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function promoteValidatedBootstrap() {
   await mkdir(stableBootstrapRoot, {
     recursive: true,
@@ -530,7 +563,9 @@ async function pruneReleases(currentReleaseId) {
   );
 }
 
-async function prepareValidatedRelease() {
+async function prepareValidatedRelease(
+  allowCachedValidation = true,
+) {
   await mkdir(releasesRoot, { recursive: true });
   await mkdir(stagingRoot, { recursive: true });
 
@@ -559,7 +594,31 @@ async function prepareValidatedRelease() {
         continue;
       }
 
-      const check = await runCheck();
+      const cachedValidation =
+        allowCachedValidation
+          ? await readReusableSourceValidation(
+              fingerprintBefore,
+            )
+          : undefined;
+      const check =
+        cachedValidation === undefined
+          ? await runCheck()
+          : {
+              ok: true,
+              exitCode: 0,
+              signal: null,
+              stdout: "",
+              stderr: "",
+              durationMs: 0,
+              cached: true,
+            };
+
+      if (cachedValidation !== undefined) {
+        console.error(
+          "[bootstrap] reusing full source validation " +
+          `from ${cachedValidation.validatedAt}.`,
+        );
+      }
 
       if (!check.ok) {
         return {
@@ -598,6 +657,7 @@ async function prepareValidatedRelease() {
             fingerprint: fingerprintBefore,
             createdAt,
             checkDurationMs: check.durationMs,
+            checkCached: check.cached === true,
           },
           null,
           2,
@@ -804,7 +864,9 @@ async function main() {
     "[bootstrap] source changed; creating validated release candidate.",
   );
 
-  const prepared = await prepareValidatedRelease();
+  const prepared = await prepareValidatedRelease(
+    !forceValidation,
+  );
 
   if (prepared.ok) {
     let child;
@@ -816,7 +878,7 @@ async function main() {
       await pruneReleases(prepared.release.releaseId);
 
       console.error(
-        `[bootstrap] promoted validated release ${prepared.release.releaseId} after ${prepared.check.durationMs} ms check.`,
+        `[bootstrap] promoted validated release ${prepared.release.releaseId} after ${prepared.check.durationMs} ms ${prepared.check.cached === true ? "cached " : ""}check.`,
       );
 
       await finishStartedHost(child);

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   lstatSync,
   readFileSync,
@@ -13,6 +14,7 @@ import {
   resolve,
   sep,
 } from "node:path";
+import { withoutEnvironmentVariables } from "../execution-environment.js";
 import { ProcessCapability } from "./process-capability.js";
 
 export interface GitLauncher {
@@ -388,6 +390,13 @@ interface ParsedLocalGitConfig {
       readonly pushUrls: string[];
     }
   >;
+  readonly userName?: string;
+  readonly userEmail?: string;
+}
+
+interface GitIdentity {
+  readonly name?: string;
+  readonly email?: string;
 }
 
 function pathInside(
@@ -464,6 +473,8 @@ function parseLocalGitConfig(
     string,
     { urls: string[]; pushUrls: string[] }
   >();
+  let userName: string | undefined;
+  let userEmail: string | undefined;
   let section:
     | {
         readonly name: string;
@@ -554,6 +565,11 @@ function parseLocalGitConfig(
       section.subsection === undefined &&
       allowedUser.has(key)
     ) {
+      if (key === "name") {
+        userName = value;
+      } else if (key === "email") {
+        userEmail = value;
+      }
       continue;
     }
 
@@ -591,7 +607,110 @@ function parseLocalGitConfig(
     return undefined;
   }
 
-  return { remotes };
+  return {
+    remotes,
+    ...(userName === undefined
+      ? {}
+      : { userName }),
+    ...(userEmail === undefined
+      ? {}
+      : { userEmail }),
+  };
+}
+
+function readGlobalGitIdentityValue(
+  launcher: GitLauncher,
+  environment: NodeJS.ProcessEnv,
+  key: "user.name" | "user.email",
+): string | undefined {
+  const sanitized = withoutEnvironmentVariables(
+    environment,
+    {
+      prefixes: ["GIT_"],
+      names: [
+        "SSH_ASKPASS",
+        "SSH_ASKPASS_REQUIRE",
+      ],
+    },
+  );
+
+  try {
+    const stdout = execFileSync(
+      launcher.executable,
+      [
+        ...launcher.fixedArgs,
+        "config",
+        "--global",
+        "--get",
+        key,
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...sanitized,
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_ATTR_NOSYSTEM: "1",
+          GIT_TERMINAL_PROMPT: "0",
+          GCM_INTERACTIVE: "Never",
+        },
+        windowsHide: true,
+        timeout: 5_000,
+        maxBuffer: 64 * 1024,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).replace(/\r?\n$/u, "");
+
+    return isSafeValue(stdout)
+      ? stdout
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readGlobalGitIdentity(
+  launcher: GitLauncher,
+  environment: NodeJS.ProcessEnv,
+): GitIdentity {
+  const name = readGlobalGitIdentityValue(
+    launcher,
+    environment,
+    "user.name",
+  );
+  const email = readGlobalGitIdentityValue(
+    launcher,
+    environment,
+    "user.email",
+  );
+
+  return {
+    ...(name === undefined ? {} : { name }),
+    ...(email === undefined ? {} : { email }),
+  };
+}
+
+function gitIdentityArgs(
+  cwd: string,
+  globalIdentity: GitIdentity,
+): readonly string[] {
+  const local = localGitConfig(cwd);
+  if (local === undefined) {
+    return [];
+  }
+
+  const name = local.userName ?? globalIdentity.name;
+  const email =
+    local.userEmail ?? globalIdentity.email;
+  const args: string[] = [];
+
+  if (name !== undefined) {
+    args.push("-c", `user.name=${name}`);
+  }
+  if (email !== undefined) {
+    args.push("-c", `user.email=${email}`);
+  }
+
+  return args;
 }
 
 function gitMetadataRoot(
@@ -777,6 +896,10 @@ export function createGitCapability(
   }
 
   const hooksPath = disabledHooksPath(environment);
+  const globalIdentity = readGlobalGitIdentity(
+    launcher,
+    environment,
+  );
 
   return new ProcessCapability({
     key: "git",
@@ -793,6 +916,11 @@ export function createGitCapability(
       "-c",
       "core.pager=",
     ],
+    fixedArgsForExecution: (_args, context) =>
+      gitIdentityArgs(
+        context.cwd,
+        globalIdentity,
+      ),
     argumentPolicy: isAllowedGitArgs,
     preflight: (_args, context) =>
       gitRepositoryPreflight(

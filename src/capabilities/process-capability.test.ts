@@ -191,6 +191,37 @@ test("ProcessCapability output limit terminates descendant processes on Windows"
   }
 });
 
+test("ProcessCapability supports context-dependent fixed args", () => {
+  const capability = new ProcessCapability({
+    key: "context-fixed-args",
+    description: "test context fixed args",
+    executable: process.execPath,
+    fixedArgs: ["--no-warnings"],
+    fixedArgsForExecution: (_args, context) => [
+      "-e",
+      `process.stdout.write(${JSON.stringify(
+        context.cwd,
+      )})`,
+    ],
+    allowedArgVectors: [[]],
+  });
+
+  const prepared = capability.prepareProcess([], {
+    cwd: process.cwd(),
+  });
+
+  assert.equal(prepared.ok, true);
+  if (prepared.ok) {
+    assert.deepEqual(prepared.process.args, [
+      "--no-warnings",
+      "-e",
+      `process.stdout.write(${JSON.stringify(
+        process.cwd(),
+      )})`,
+    ]);
+  }
+});
+
 test("ProcessCapability supports fixed launcher args and predicate policy", async () => {
   const capability = new ProcessCapability({
     key: "node-expression",

@@ -124,6 +124,7 @@ test("host source boundary treats startup control files as restart-only", async 
     for (const file of [
       "host-bootstrap.mjs",
       "host-launcher.mjs",
+      "source-validation.mjs",
     ]) {
       assert.equal(
         sourceChangeDisposition(

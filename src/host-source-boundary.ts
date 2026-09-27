@@ -31,6 +31,7 @@ const ROOT_CONTROL_FILES = new Set([
 const SCRIPT_CONTROL_FILES = new Set([
   "host-bootstrap.mjs",
   "host-launcher.mjs",
+  "source-validation.mjs",
 ]);
 
 function pathInside(
