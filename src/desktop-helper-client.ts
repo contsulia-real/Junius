@@ -3,35 +3,24 @@ import {
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
 import { once } from "node:events";
-import { StringDecoder } from "node:string_decoder";
 import { terminateProcessTree } from "./process-termination.js";
+import {
+  DesktopHelperClientError,
+  DesktopHelperProtocolDecoder,
+  desktopHelperResponse,
+  isDesktopHelperReady,
+  type DesktopHelperClientErrorCode,
+  type DesktopHelperResponse,
+} from "./desktop-helper-protocol.js";
+
+export {
+  DesktopHelperClientError,
+  type DesktopHelperClientErrorCode,
+  type DesktopHelperResponse,
+} from "./desktop-helper-protocol.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
-
-export type DesktopHelperClientErrorCode =
-  | "spawn_failed"
-  | "process_timeout"
-  | "output_limit"
-  | "helper_failed"
-  | "invalid_helper_response";
-
-export class DesktopHelperClientError extends Error {
-  constructor(
-    readonly code: DesktopHelperClientErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface DesktopHelperResponse {
-  readonly ok: boolean;
-  readonly result?: unknown;
-  readonly code?: string;
-  readonly message?: string;
-}
 
 interface PendingRequest {
   readonly resolve: (response: DesktopHelperResponse) => void;
@@ -63,8 +52,7 @@ export class DesktopHelperClient {
   readonly #timeoutMs: number;
 
   #child: ChildProcessWithoutNullStreams | undefined;
-  #stdoutDecoder = new StringDecoder("utf8");
-  #stdoutBuffer = "";
+  readonly #protocol = new DesktopHelperProtocolDecoder();
   #stderr = "";
   #nextId = 1;
   #pending = new Map<number, PendingRequest>();
@@ -204,8 +192,7 @@ export class DesktopHelperClient {
       return this.#child!;
     }
 
-    this.#stdoutDecoder = new StringDecoder("utf8");
-    this.#stdoutBuffer = "";
+    this.#protocol.reset();
     this.#stderr = "";
     this.#ready = false;
     this.#readyPromise = new Promise<void>(
@@ -259,10 +246,7 @@ export class DesktopHelperClient {
       if (this.#child !== child) return;
 
       this.#child = undefined;
-      const tail = this.#stdoutDecoder.end();
-      if (tail) {
-        this.#stdoutBuffer += tail;
-      }
+      this.#protocol.finish();
 
       if (
         this.#pending.size === 0 &&
@@ -284,104 +268,37 @@ export class DesktopHelperClient {
   }
 
   #handleStdout(chunk: Buffer | string): void {
-    const buffer = Buffer.isBuffer(chunk)
-      ? chunk
-      : Buffer.from(chunk);
-    this.#stdoutBuffer += this.#stdoutDecoder.write(buffer);
-
-    if (
-      Buffer.byteLength(this.#stdoutBuffer, "utf8") >
-      MAX_OUTPUT_BYTES
-    ) {
-      this.#terminateWithError(
-        new DesktopHelperClientError(
-          "output_limit",
-          `Desktop helper response exceeded ${MAX_OUTPUT_BYTES} bytes.`,
-        ),
-      );
-      return;
-    }
-
-    for (;;) {
-      const newline = this.#stdoutBuffer.indexOf("\n");
-      if (newline < 0) break;
-
-      const line = this.#stdoutBuffer.slice(0, newline);
-      this.#stdoutBuffer = this.#stdoutBuffer.slice(newline + 1);
-
-      if (!line.trim()) continue;
-      this.#handleLine(line);
-    }
-  }
-
-  #handleLine(line: string): void {
-    let parsed: unknown;
-
+    let records;
     try {
-      parsed = JSON.parse(line) as unknown;
-    } catch {
+      records = this.#protocol.push(chunk);
+    } catch (error) {
       this.#terminateWithError(
-        new DesktopHelperClientError(
-          "invalid_helper_response",
-          "Desktop helper server returned invalid JSON.",
-        ),
+        error instanceof DesktopHelperClientError
+          ? error
+          : new DesktopHelperClientError(
+              "invalid_helper_response",
+              error instanceof Error
+                ? error.message
+                : String(error),
+            ),
       );
       return;
     }
 
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      !("id" in parsed) ||
-      typeof (parsed as { id?: unknown }).id !== "number" ||
-      !("ok" in parsed) ||
-      typeof (parsed as { ok?: unknown }).ok !== "boolean"
-    ) {
-      this.#terminateWithError(
-        new DesktopHelperClientError(
-          "invalid_helper_response",
-          "Desktop helper server returned an invalid response object.",
-        ),
-      );
-      return;
-    }
+    for (const record of records) {
+      const pending = this.#pending.get(record.id);
 
-    const record = parsed as {
-      id: number;
-      ok: boolean;
-      result?: unknown;
-      code?: string;
-      message?: string;
-    };
-    const pending = this.#pending.get(record.id);
-
-    if (pending === undefined) {
-      if (
-        record.id === 0 &&
-        record.ok === true &&
-        typeof record.result === "object" &&
-        record.result !== null &&
-        (record.result as { ready?: unknown }).ready === true
-      ) {
-        this.#markReady();
+      if (pending === undefined) {
+        if (isDesktopHelperReady(record)) {
+          this.#markReady();
+        }
+        continue;
       }
-      return;
-    }
 
-    this.#pending.delete(record.id);
-    clearTimeout(pending.timer);
-    pending.resolve({
-      ok: record.ok,
-      ...(record.result === undefined
-        ? {}
-        : { result: record.result }),
-      ...(record.code === undefined
-        ? {}
-        : { code: record.code }),
-      ...(record.message === undefined
-        ? {}
-        : { message: record.message }),
-    });
+      this.#pending.delete(record.id);
+      clearTimeout(pending.timer);
+      pending.resolve(desktopHelperResponse(record));
+    }
   }
 
   #markReady(): void {
