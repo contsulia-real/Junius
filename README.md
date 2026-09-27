@@ -173,7 +173,7 @@ pnpm runs directly in the selected Workspace. Junius does not add `--dir` indire
 
 ### git
 
-Junius registers a `git` machine capability when it can resolve a usable Git executable. Git is exposed through the existing `run_command(workspace, key, args)` path, not through a separate MCP tool.
+Junius registers a `git` machine capability when it can resolve a usable Git executable from the inherited `PATH`, using normal command-search order and the first matching `git.exe`/`git`. It does not scan Program Files or use a separate Git-path fallback. Git is exposed through the existing `run_command(workspace, key, args)` path, not through a separate MCP tool.
 
 The machine policy covers normal repository-development and synchronization operations:
 

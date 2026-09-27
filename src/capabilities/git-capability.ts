@@ -308,17 +308,24 @@ export function isAllowedGitArgs(args: readonly string[]): boolean {
   }
 }
 
+function environmentPath(
+  environment: NodeJS.ProcessEnv,
+): string {
+  return (
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    ""
+  );
+}
+
 function candidatePaths(
   environment: NodeJS.ProcessEnv,
 ): readonly string[] {
   const candidates: string[] = [];
 
-  if (environment.JUNIUS_GIT_PATH) {
-    candidates.push(environment.JUNIUS_GIT_PATH);
-  }
-
-  for (const rawEntry of (environment.PATH ?? "").split(delimiter)) {
-    const entry = rawEntry.trim();
+  for (const rawEntry of environmentPath(environment).split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
     if (!entry) continue;
 
     candidates.push(
@@ -327,26 +334,7 @@ function candidatePaths(
     );
   }
 
-  if (process.platform === "win32") {
-    const programFiles = environment.ProgramFiles;
-    const programFilesX86 = environment["ProgramFiles(x86)"];
-    const localAppData = environment.LOCALAPPDATA;
-
-    for (const root of [
-      programFiles,
-      programFilesX86,
-      localAppData ? join(localAppData, "Programs") : undefined,
-    ]) {
-      if (!root) continue;
-
-      candidates.push(
-        join(root, "Git", "cmd", "git.exe"),
-        join(root, "Git", "bin", "git.exe"),
-      );
-    }
-  }
-
-  return [...new Set(candidates)];
+  return candidates;
 }
 
 export function resolveGitLauncher(

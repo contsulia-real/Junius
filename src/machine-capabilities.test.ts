@@ -60,10 +60,9 @@ test("MachineCapabilityManager registers available built-ins by default", async 
       services(root),
       {
         ...process.env,
-        PATH: "",
+        PATH: root,
         npm_execpath: undefined,
         PNPM_HOME: pnpmHome,
-        JUNIUS_GIT_PATH: gitExecutable,
       },
       process.execPath,
     );

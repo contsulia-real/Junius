@@ -72,27 +72,56 @@ test("git capability rejects destructive and arbitrary command shapes", () => {
   }
 });
 
-test("git launcher resolves an explicit local executable", async () => {
+test("git launcher follows PATH order", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-git-"));
+  const first = join(root, "first");
+  const second = join(root, "second");
+
   try {
-    const executable = join(root, "git.exe");
-    await writeFile(executable, "fake", "utf8");
+    const { mkdir } = await import("node:fs/promises");
+    await Promise.all([
+      mkdir(first, { recursive: true }),
+      mkdir(second, { recursive: true }),
+    ]);
+
+    const fileName =
+      process.platform === "win32"
+        ? "git.exe"
+        : "git";
+
+    const firstExecutable = join(first, fileName);
+    const secondExecutable = join(second, fileName);
+
+    await writeFile(firstExecutable, "first", "utf8");
+    await writeFile(secondExecutable, "second", "utf8");
 
     assert.deepEqual(
       resolveGitLauncher({
-        ...process.env,
-        PATH: "",
-        JUNIUS_GIT_PATH: executable,
+        PATH: [first, second].join(
+          process.platform === "win32" ? ";" : ":",
+        ),
       }),
       {
-        executable,
+        executable: firstExecutable,
+        fixedArgs: [],
+      },
+    );
+
+    assert.deepEqual(
+      resolveGitLauncher({
+        PATH: [second, first].join(
+          process.platform === "win32" ? ";" : ":",
+        ),
+      }),
+      {
+        executable: secondExecutable,
         fixedArgs: [],
       },
     );
 
     assert.equal(
       createGitCapability({
-        executable,
+        executable: firstExecutable,
         fixedArgs: [],
       })?.key,
       "git",

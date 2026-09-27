@@ -225,7 +225,7 @@ Git is a machine-level `ProcessCapability` and is invoked through the same exist
 run_command(workspace, "git", args)
 ```
 
-The Git adapter resolves a local Git executable and owns a bounded machine-level argument policy. It supports repository initialization, status, staging, commits, local identity configuration, branch/remote inspection and updates, fetch/push, rev-parse, diff/log, and ls-files.
+The Git adapter resolves the first matching local Git executable directly from the inherited `PATH` and owns a bounded machine-level argument policy. It does not scan fixed installation directories or use a separate executable override. It supports repository initialization, status, staging, commits, local identity configuration, branch/remote inspection and updates, fetch/push, rev-parse, diff/log, and ls-files.
 
 The policy permits explicit force pushes because local-source-of-truth synchronization can require replacing the remote branch. It does not expose `clean`, `reset --hard`, arbitrary aliases, mirror pushes, or remote branch deletion.
 
