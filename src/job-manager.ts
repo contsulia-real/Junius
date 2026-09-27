@@ -2,14 +2,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { isProcessPreparableCapability } from "./capabilities/types.js";
-import {
-  JobHistoryStore,
-  type PersistedJobMetadata,
-  type PersistedJobRecord,
-} from "./job-history-store.js";
+import type { JobHistoryStore } from "./job-history-store.js";
 import {
   appendCaptured,
-  persistedRecord,
   persistedSnapshot,
   snapshot,
   terminal,
@@ -22,6 +17,7 @@ import {
   type JobStatus,
 } from "./job-manager-types.js";
 import { terminateProcessTree } from "./process-termination.js";
+import { JobPersistenceCoordinator } from "./job-persistence.js";
 import { RunCommandService } from "./run-command.js";
 
 const DEFAULT_READ_CHARS = 64 * 1024;
@@ -31,14 +27,30 @@ const MAX_WAIT_MS = 60_000;
 
 export class JobManager {
   readonly #jobs = new Map<string, JobRecord>();
-  readonly #pendingPersistence = new Set<Promise<void>>();
+  readonly #persistence: JobPersistenceCoordinator;
 
   constructor(
     private readonly commands: RunCommandService,
     private readonly onTerminal?: (job: JobSnapshot) => void,
-    private readonly history?: JobHistoryStore,
-    private readonly onPersisted?: (job: JobSnapshot) => void,
-  ) {}
+    history?: JobHistoryStore,
+    onPersisted?: (job: JobSnapshot) => void,
+  ) {
+    this.#persistence =
+      new JobPersistenceCoordinator(
+        history,
+        {
+          onPersisted,
+          afterPersisted: (record) => {
+            if (
+              this.#jobs.get(record.id) === record &&
+              terminal(record.status)
+            ) {
+              this.#jobs.delete(record.id);
+            }
+          },
+        },
+      );
+  }
 
   start(
     workspace: string,
@@ -168,7 +180,7 @@ export class JobManager {
       record.signal = signal;
       record.message = message;
       record.resolveCompletion();
-      this.#persistTerminal(record);
+      this.#persistence.persist(record);
 
       try {
         this.onTerminal?.(snapshot(record));
@@ -209,7 +221,7 @@ export class JobManager {
   }
 
   async historyStats() {
-    return this.history?.stats();
+    return this.#persistence.stats();
   }
 
   async list(
@@ -239,21 +251,19 @@ export class JobManager {
 
     const merged = new Map<string, JobSnapshot>();
 
-    if (this.history !== undefined) {
-      const historyRecords =
-        await this.history.listMetadata(
-          boundedLimit === undefined
-            ? undefined
-            : boundedLimit +
-                liveTerminal.length,
-        );
+    const historyRecords =
+      await this.#persistence.listMetadata(
+        boundedLimit === undefined
+          ? undefined
+          : boundedLimit +
+              liveTerminal.length,
+      );
 
-      for (const record of historyRecords) {
-        merged.set(
-          record.id,
-          persistedSnapshot(record),
-        );
-      }
+    for (const record of historyRecords) {
+      merged.set(
+        record.id,
+        persistedSnapshot(record),
+      );
     }
 
     for (const job of liveTerminal) {
@@ -280,7 +290,7 @@ export class JobManager {
     }
 
     return persistedSnapshot(
-      await this.#loadPersistedMetadata(id),
+      await this.#persistence.loadMetadata(id),
     );
   }
 
@@ -291,7 +301,7 @@ export class JobManager {
     const record = this.#jobs.get(id);
     if (record === undefined) {
       return persistedSnapshot(
-        await this.#loadPersistedMetadata(id),
+        await this.#persistence.loadMetadata(id),
       );
     }
 
@@ -339,7 +349,7 @@ export class JobManager {
           : live.stderrTruncated;
       isTerminal = terminal(live.status);
     } else {
-      const persisted = await this.#loadPersistedRecord(id);
+      const persisted = await this.#persistence.loadRecord(id);
       job = persistedSnapshot(persisted);
       text =
         stream === "stdout"
@@ -380,7 +390,7 @@ export class JobManager {
     const record = this.#jobs.get(id);
     if (record === undefined) {
       return persistedSnapshot(
-        await this.#loadPersistedMetadata(id),
+        await this.#persistence.loadMetadata(id),
       );
     }
 
@@ -405,79 +415,9 @@ export class JobManager {
       running.map((record) => this.cancel(record.id)),
     );
 
-    await Promise.allSettled([
-      ...this.#pendingPersistence,
-    ]);
+    await this.#persistence.waitPending();
   }
 
-  #persistTerminal(record: JobRecord): void {
-    if (this.history === undefined) {
-      return;
-    }
-
-    const persisted = persistedRecord(record);
-    if (persisted === undefined) {
-      return;
-    }
-
-    const task = this.history
-      .save(persisted)
-      .then(() => {
-        const persistedSnapshotValue = snapshot(record);
-
-        try {
-          this.onPersisted?.(persistedSnapshotValue);
-        } catch {
-          // Persistence success must not be changed by observer failures.
-        }
-
-        if (
-          this.#jobs.get(record.id) === record &&
-          terminal(record.status)
-        ) {
-          this.#jobs.delete(record.id);
-        }
-      })
-      .catch((error: unknown) => {
-        console.error(
-          `[job-history ${record.id}]`,
-          error,
-        );
-      });
-
-    this.#pendingPersistence.add(task);
-    void task.finally(() => {
-      this.#pendingPersistence.delete(task);
-    });
-  }
-
-  async #loadPersistedMetadata(
-    id: string,
-  ): Promise<PersistedJobMetadata> {
-    const record = await this.history?.loadMetadata(id);
-    if (record !== undefined) {
-      return record;
-    }
-
-    throw new JobManagerError(
-      "job_not_found",
-      `Job is not registered in this Junius process or terminal history: ${id}`,
-    );
-  }
-
-  async #loadPersistedRecord(
-    id: string,
-  ): Promise<PersistedJobRecord> {
-    const record = await this.history?.load(id);
-    if (record !== undefined) {
-      return record;
-    }
-
-    throw new JobManagerError(
-      "job_not_found",
-      `Job is not registered in this Junius process or terminal history: ${id}`,
-    );
-  }
 }
 
 
