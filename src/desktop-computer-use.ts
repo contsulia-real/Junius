@@ -101,8 +101,13 @@ export interface DesktopComputerUseOptions {
   readonly platform?: NodeJS.Platform;
 }
 
-function localPythonCandidate(helperPath: string): string {
-  const root = dirname(dirname(helperPath));
+function localPythonCandidate(
+  helperPath: string,
+  environment: NodeJS.ProcessEnv,
+): string {
+  const root =
+    environment.JUNIUS_PROJECT_ROOT ??
+    dirname(dirname(helperPath));
 
   if (process.platform === "win32") {
     return join(root, ".venv", "Scripts", "python.exe");
@@ -113,10 +118,12 @@ function localPythonCandidate(helperPath: string): string {
 
 function resolvePythonExecutable(
   helperPath: string,
+  environment: NodeJS.ProcessEnv,
   explicit?: string,
 ): string | undefined {
   const candidate =
-    explicit ?? localPythonCandidate(helperPath);
+    explicit ??
+    localPythonCandidate(helperPath, environment);
 
   return existsSync(candidate)
     ? resolve(candidate)
@@ -255,6 +262,7 @@ export class DesktopComputerUseService {
     );
     this.#pythonExecutable = resolvePythonExecutable(
       this.#helperPath,
+      this.#environment,
       options.pythonExecutable,
     );
     this.#helperClient =

@@ -148,6 +148,7 @@ export async function spawnManagedWorker(
       ...process.env,
       ...options.environment,
       JUNIUS_WORKER_ID: id,
+      JUNIUS_PROJECT_ROOT: options.cwd,
       JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
       JUNIUS_PUBLIC_ADMIN_ORIGIN: options.publicAdminOrigin,
     },

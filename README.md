@@ -45,7 +45,7 @@ Optional environment variables:
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
-`pnpm dev` and `pnpm start` launch the stable Junius Host. The Host owns the public MCP/admin ports and runs the mutable Local Agent implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap protection.
+`pnpm dev` and `pnpm start` are manual lifecycle commands. They enter a stable bootstrap that selects which validated Host release to launch; Junius does not autonomously start or restart its own MCP service. The Host owns the public MCP/admin ports and runs the mutable Local Agent implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap or last-known-good startup protection.
 
 ## Host / Worker runtime
 
@@ -72,7 +72,7 @@ source change
 
 If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their original retiring Worker. For modern sessionless MCP calls, the Host also keeps resource affinity for Job IDs, named browser sessions, and Desktop UIA refs so hot swaps do not move process-local state to the wrong Worker. Resource affinity is bounded: browser bindings expire after 10 minutes of inactivity, Desktop UIA-ref bindings expire after 5 minutes of inactivity, and Jobs remain pinned indefinitely while running. When a Worker reports that a Job reached a terminal state, its result/output affinity enters a 30-minute retention window that is extended by subsequent Job reads or queries. Retiring Workers are never reaped before the rollback window ends.
 
-Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. Supervisor state is available locally at `/__junius/supervisor`.
+Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. A restart is performed only when the operator explicitly stops/starts Junius. On the next manual `pnpm dev` / `pnpm start`, the bootstrap compares the live source fingerprint with the persisted validated release. Unchanged source starts the validated release directly. Changed source is snapshotted, validated with `pnpm run check`, started on the real Host path, and promoted only after `/__junius/host-health` succeeds. If validation or candidate startup fails, the previous last-known-good release is started instead. The newest three releases are retained under `.junius/runtime/releases`, while `.junius/runtime/current.json` is updated atomically only after a candidate is healthy. Supervisor state is available locally at `/__junius/supervisor`, and health/supervisor responses expose the active `releaseId`.
 
 ## Execution model
 
@@ -460,10 +460,10 @@ natural-language request
 The verified job completed with status `succeeded` and exit code `0`. The background command executed the Junius full check:
 
 ```text
-pnpm typecheck && pnpm test
+pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 96 tests across Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 99 tests across manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

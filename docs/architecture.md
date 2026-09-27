@@ -75,7 +75,9 @@ The proxy records MCP session IDs returned by Workers. Requests carrying an exis
 
 Host-only files are a separate stability boundary. Changes to the Host/Supervisor/proxy/check implementation set a restart-required state rather than hot-restarting the Host. The local supervisor state endpoint is `/__junius/supervisor`.
 
-This first Host/Worker implementation protects a running service. Persisted last-known-good release snapshots for recovery after a full machine/Host restart are a separate follow-up layer.
+Full restart safety is handled by a persisted last-known-good release bootstrap, but service lifecycle remains manual. `pnpm dev` / `pnpm start` start `scripts/host-bootstrap.mjs`; Junius never invokes those lifecycle commands on its own. The bootstrap fingerprints `src`, `python`, `package.json`, `pnpm-lock.yaml`, and `tsconfig.json`. If live source matches the current validated release, it starts that release without rerunning validation. Otherwise it snapshots the source, resolves pnpm from inherited `PATH`, runs `pnpm run check`, verifies that the source fingerprint did not drift during validation, and then starts the candidate release. `current.json` is atomically advanced only after the candidate Host reports healthy with the expected `releaseId`. Failed validation or failed candidate startup leaves the pointer unchanged and starts the previous last-known-good release. The newest three release snapshots are retained under `.junius/runtime/releases`.
+
+A release Host starts its initial Worker from the same release snapshot, while later hot-reload candidates still come from the live project source. Release snapshots link back to the project's `node_modules` rather than copying dependencies. Desktop helper code follows the release snapshot, but Desktop Python deliberately remains the project-owned `.venv` through `JUNIUS_PROJECT_ROOT`.
 
 ## Fixed MCP surface
 

@@ -43,6 +43,7 @@ export interface WorkerSupervisorOptions {
   readonly publicMcpOrigin: string;
   readonly publicAdminOrigin: string;
   readonly workerEntryPath?: string;
+  readonly initialWorkerEntryPath?: string;
   readonly rollbackWindowMs?: number;
   readonly environment?: NodeJS.ProcessEnv;
   readonly browserResourceIdleMs?: number;
@@ -50,6 +51,7 @@ export interface WorkerSupervisorOptions {
   readonly jobResultRetentionMs?: number;
   readonly validate?: () => Promise<SourceCheckResult>;
   readonly spawnWorker?: () => Promise<ManagedWorker>;
+  readonly spawnInitialWorker?: () => Promise<ManagedWorker>;
 }
 
 export interface WorkerLease {
@@ -100,6 +102,7 @@ export class WorkerSupervisor {
   readonly #jobResultRetentionMs: number;
   readonly #validate: () => Promise<SourceCheckResult>;
   readonly #spawnWorker: () => Promise<ManagedWorker>;
+  readonly #spawnInitialWorker: () => Promise<ManagedWorker>;
 
   #activeWorkerId: string | undefined;
   #reloading = false;
@@ -133,12 +136,27 @@ export class WorkerSupervisor {
     const workerEntryPath =
       options.workerEntryPath ??
       fileURLToPath(new URL("./worker-entry.ts", import.meta.url));
+    const initialWorkerEntryPath =
+      options.initialWorkerEntryPath ??
+      workerEntryPath;
 
     this.#spawnWorker =
       options.spawnWorker ??
       (() =>
         spawnManagedWorker({
           workerEntryPath,
+          cwd: options.cwd,
+          environment: options.environment,
+          publicMcpOrigin: options.publicMcpOrigin,
+          publicAdminOrigin: options.publicAdminOrigin,
+        }));
+
+    this.#spawnInitialWorker =
+      options.spawnInitialWorker ??
+      options.spawnWorker ??
+      (() =>
+        spawnManagedWorker({
+          workerEntryPath: initialWorkerEntryPath,
           cwd: options.cwd,
           environment: options.environment,
           publicMcpOrigin: options.publicMcpOrigin,
@@ -155,7 +173,7 @@ export class WorkerSupervisor {
       return this.#record(this.#activeWorkerId).worker;
     }
 
-    const worker = await this.#spawnWorker();
+    const worker = await this.#spawnInitialWorker();
     this.#register(worker, "active");
     this.#activeWorkerId = worker.id;
     return worker;

@@ -4,6 +4,7 @@ import {
   type Server,
 } from "node:http";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadHostConfig } from "./host-config.js";
 import { sendHostJson } from "./host-http.js";
 import {
@@ -80,6 +81,10 @@ const supervisor = new WorkerSupervisor({
     process.env.JUNIUS_WORKER_ROLLBACK_MS,
     60_000,
   ),
+  initialWorkerEntryPath: fileURLToPath(
+    new URL("./worker-entry.ts", import.meta.url),
+  ),
+  workerEntryPath: resolve(cwd, "src", "worker-entry.ts"),
 });
 
 await supervisor.startInitial();
@@ -180,6 +185,8 @@ const adminHttpServer = createHttpServer((req, res) => {
         pid: process.pid,
         uptimeSeconds: Math.floor(process.uptime()),
         restartRequired: hostRestartRequired,
+        releaseId:
+          process.env.JUNIUS_RELEASE_ID ?? null,
       },
       supervisor: supervisor.state(),
       latencyTraces: latencyTraces.list(),
@@ -195,6 +202,8 @@ const adminHttpServer = createHttpServer((req, res) => {
       ok: true,
       pid: process.pid,
       activeWorkerId: supervisor.state().activeWorkerId,
+      releaseId:
+        process.env.JUNIUS_RELEASE_ID ?? null,
     });
     return;
   }

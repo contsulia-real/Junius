@@ -5,7 +5,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   DesktopComputerUseError,
@@ -371,8 +371,60 @@ test("desktop resolves the project-local virtualenv Python", async () => {
     const service = new DesktopComputerUseService({
       environment: {
         PATH: "",
+        JUNIUS_PROJECT_ROOT: root,
       },
       helperPath: helper,
+      platform: "win32",
+    });
+
+    try {
+      assert.equal(
+        service.state().pythonExecutable,
+        pythonExecutable,
+      );
+      assert.equal(service.available, true);
+    } finally {
+      await service.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("desktop release helper still uses project-root virtualenv Python", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-desktop-release-"),
+  );
+  const releaseHelper = join(
+    root,
+    ".junius",
+    "runtime",
+    "releases",
+    "release-a",
+    "python",
+    "desktop_helper.py",
+  );
+  const pythonExecutable =
+    process.platform === "win32"
+      ? join(root, ".venv", "Scripts", "python.exe")
+      : join(root, ".venv", "bin", "python");
+
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(dirname(releaseHelper), { recursive: true });
+    await mkdir(
+      dirname(pythonExecutable),
+      { recursive: true },
+    );
+    await writeFile(releaseHelper, "# helper\n", "utf8");
+    await writeFile(pythonExecutable, "fake", "utf8");
+
+    const service = new DesktopComputerUseService({
+      environment: {
+        PATH: "",
+        JUNIUS_PROJECT_ROOT: root,
+      },
+      helperPath: releaseHelper,
       platform: "win32",
     });
 

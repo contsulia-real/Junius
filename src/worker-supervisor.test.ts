@@ -93,6 +93,44 @@ test("WorkerSupervisor keeps active worker when source validation fails", async 
   }
 });
 
+test("WorkerSupervisor can boot from a release worker then reload from live source", async () => {
+  const releaseWorker = fakeWorker("worker-1");
+  const liveWorker = fakeWorker("worker-2");
+  let initialSpawns = 0;
+  let liveSpawns = 0;
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => check(true),
+    spawnInitialWorker: async () => {
+      initialSpawns += 1;
+      return releaseWorker.worker;
+    },
+    spawnWorker: async () => {
+      liveSpawns += 1;
+      return liveWorker.worker;
+    },
+  });
+
+  try {
+    const initial = await supervisor.startInitial();
+    assert.equal(initial.id, releaseWorker.worker.id);
+    assert.equal(initialSpawns, 1);
+    assert.equal(liveSpawns, 0);
+
+    const result = await supervisor.reload("live-edit");
+    assert.equal(result.promoted, true);
+    assert.equal(result.workerId, liveWorker.worker.id);
+    assert.equal(initialSpawns, 1);
+    assert.equal(liveSpawns, 1);
+  } finally {
+    await supervisor.close();
+  }
+});
+
 test("WorkerSupervisor promotes healthy candidate while existing session stays on old worker", async () => {
   const first = fakeWorker("worker-1");
   const second = fakeWorker("worker-2");
@@ -236,7 +274,7 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
     publicMcpOrigin: "http://127.0.0.1:8787",
     publicAdminOrigin: "http://127.0.0.1:8788",
     rollbackWindowMs: 5,
-    jobResultRetentionMs: 20,
+    jobResultRetentionMs: 100,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,
   });
@@ -268,17 +306,17 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
       "string",
     );
 
-    await delay(10);
+    await delay(20);
     const lease = supervisor.acquire(
       undefined,
       "job:abc",
     );
     lease.release();
 
-    await delay(12);
+    await delay(40);
     assert.equal(first.closed(), false);
 
-    await delay(20);
+    await delay(80);
     assert.equal(first.closed(), true);
   } finally {
     await supervisor.close();
