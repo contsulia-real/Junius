@@ -239,15 +239,37 @@ test("MachineCapabilityManager validates Workspace grants against machine policy
         mode: "prefix",
         args: ["run"],
       }),
-      {
-        valid: false,
-        reason: "arguments_outside_machine_policy",
-      },
+      { valid: true },
     );
     assert.deepEqual(
       manager.workspaceGrantCompatibility("pnpm", {
+        mode: "prefix",
+        args: ["add"],
+      }),
+      { valid: true },
+    );
+    for (const args of [
+      ["typecheck"],
+      ["lint"],
+      ["test"],
+      ["build"],
+      ["install"],
+      ["update"],
+      ["self-update"],
+      ["add", "react"],
+    ]) {
+      assert.deepEqual(
+        manager.workspaceGrantCompatibility("pnpm", {
+          mode: "exact",
+          args,
+        }),
+        { valid: true },
+      );
+    }
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("pnpm", {
         mode: "exact",
-        args: ["install"],
+        args: ["add"],
       }),
       {
         valid: false,
@@ -270,6 +292,48 @@ test("MachineCapabilityManager validates Workspace grants against machine policy
         valid: false,
         reason: "capability_not_workspace_scoped",
       },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("MachineCapabilityManager reloads persisted machine capability state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
+  const statePath = join(root, "state.json");
+
+  try {
+    const registry = new CapabilityRegistry();
+    const store = new MachineCapabilityStateStore(statePath);
+    const machineServices = services(root);
+    const manager = await MachineCapabilityManager.create(
+      registry,
+      store,
+      machineServices,
+      {
+        ...process.env,
+        PATH: "",
+      },
+      process.execPath,
+    );
+
+    await store.save({
+      node: { enabled: false },
+      pnpm: { enabled: false },
+      git: { enabled: false },
+      browser: { enabled: false },
+      desktop: { enabled: false },
+    });
+    await manager.reload();
+
+    assert.equal(registry.has("node"), false);
+    assert.equal(registry.has("pnpm"), false);
+    assert.equal(registry.has("git"), false);
+    assert.equal(machineServices.browser.enabled, false);
+    assert.equal(machineServices.desktop.enabled, false);
+    assert.equal(
+      manager.list().every((capability) => !capability.enabled),
+      true,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

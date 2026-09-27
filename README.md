@@ -74,6 +74,8 @@ source change
 
 If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their owning Worker while their Host route is active; those routes have a 30-minute idle TTL, refreshed by requests, so abandoned MCP sessions cannot pin routing state forever. For modern sessionless MCP calls, the Host also keeps resource affinity for Job IDs, named browser sessions, and Desktop UIA refs so hot swaps do not move process-local state to the wrong Worker. Resource affinity is bounded: browser bindings expire after 10 minutes of inactivity, Desktop UIA-ref bindings expire after 5 minutes of inactivity, and Jobs remain pinned indefinitely while running. When a Worker reports that a Job reached a terminal state, its result/output affinity first enters a 30-minute fallback retention window. After that Worker confirms the terminal history was persisted successfully, the Host releases the Job affinity immediately so later reads can route to any active Worker and lazy-load the shared history. Unbound terminal/persisted Job race hints also expire after the same 30-minute fallback window. Retiring Workers are never reaped before the rollback window ends, and only the newest 16 exited Worker records are retained for diagnostics.
 
+Admin configuration mutations are synchronized across every live Worker before the public admin response is allowed to succeed. The Worker that handled the mutation persists the new Workspace or machine-capability state first; the Host then asks every other active/retiring Worker to reload that shared state through a private authenticated endpoint. A Worker that cannot reload is quarantined and removed from routing instead of continuing with stale authorization. Configuration changes racing with candidate startup advance a Host-side epoch; a candidate that may have loaded an older snapshot is refreshed to the latest epoch before promotion. This keeps old MCP sessions and Browser/Desktop affinity routes subject to current grants and machine-level enablement.
+
 Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. A restart is performed only when the operator explicitly stops/starts Junius. On the next manual `pnpm dev` / `pnpm start`, the launcher first selects the validated bootstrap copy when available. The bootstrap fingerprints the Host/Worker source plus both launcher/bootstrap scripts, compares that fingerprint with the persisted validated release, and starts an unchanged validated release directly. Changed source is snapshotted, validated with `pnpm run check`, started on the real Host path, and promoted only after `/__junius/host-health` succeeds. A successful promotion atomically refreshes the validated bootstrap copy before advancing `.junius/runtime/current.json`; failed validation or candidate startup leaves both the previous bootstrap and previous last-known-good Host release intact. The newest three Host releases are retained under `.junius/runtime/releases`. Supervisor state is available locally at `/__junius/supervisor`, and health/supervisor responses expose the active `releaseId`. `package.json` and the tiny launcher remain the unavoidable manual-entry boundary for a `pnpm dev` command itself.
 
 ## Execution model
@@ -170,11 +172,19 @@ Machine-level pnpm policy permits:
 
 ```text
 ["--version"]
+["typecheck"]
+["lint"]
+["test"]
+["build"]
+["install", ...allowedArgs]
+["update", ...packagesAndOptions]
+["self-update", optionalVersion]
+["add", packageOrOption, ...packagesAndOptions]
 ["run", "<script>"]
 ["run", "<script>", "--", ...scriptArgs]
 ```
 
-It does not expose `install`, `add`, `exec`, or `dlx`.
+`install`, `update`, and `add` reject explicit global-package, working-directory, external state/configuration path, and broader-workspace selector forms such as `--global`, `--dir`, `--lockfile-dir`, `--store-dir`, `--state-dir`, `--userconfig`, `--filter`, and recursive/workspace-root selectors. `add` requires at least one following package/option token. `self-update` accepts either no version or one explicit version/tag. Arbitrary execution commands such as `exec` and `dlx` remain unavailable.
 
 pnpm runs directly in the selected Workspace. Junius does not add `--dir` indirection or a sandbox portal. The package-script body remains trusted Workspace code; the argument policy does not claim to sandbox what that script itself executes.
 

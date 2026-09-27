@@ -252,6 +252,11 @@ const adminHttpServer = createHttpServer((req, res) => {
     return;
   }
 
+  if (req.url === "/__junius/config-reload") {
+    sendHostJson(res, 404, { error: "not_found" });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     req.url === "/__junius/supervisor"

@@ -767,6 +767,142 @@ test("WorkerSupervisor bounds retained exited worker diagnostics", async () => {
   }
 });
 
+test("WorkerSupervisor synchronizes configuration to retiring affinity workers", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+  const reloaded: string[] = [];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+    reloadWorkerConfiguration: async (worker) => {
+      reloaded.push(worker.id);
+    },
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindSession("session-a", first.worker.id);
+    await supervisor.reload("promote-worker-2");
+
+    const result = await supervisor.synchronizeConfiguration(
+      second.worker.id,
+    );
+
+    assert.deepEqual(result, {
+      synchronizedWorkerIds: [first.worker.id],
+      quarantinedWorkerIds: [],
+    });
+    assert.deepEqual(reloaded, [first.worker.id]);
+
+    const oldLease = supervisor.acquire("session-a");
+    try {
+      assert.equal(oldLease.worker.id, first.worker.id);
+    } finally {
+      oldLease.release();
+    }
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor quarantines a retiring worker that cannot reload configuration", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+    reloadWorkerConfiguration: async (worker) => {
+      if (worker.id === first.worker.id) {
+        throw new Error("reload failed");
+      }
+    },
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindSession("session-a", first.worker.id);
+    await supervisor.reload("promote-worker-2");
+
+    const result = await supervisor.synchronizeConfiguration(
+      second.worker.id,
+    );
+
+    assert.deepEqual(result, {
+      synchronizedWorkerIds: [],
+      quarantinedWorkerIds: [first.worker.id],
+    });
+    assert.equal(first.closed(), true);
+
+    const lease = supervisor.acquire("session-a");
+    try {
+      assert.equal(lease.worker.id, second.worker.id);
+    } finally {
+      lease.release();
+    }
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor refreshes a candidate when configuration changes during startup", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  let releaseSpawn!: () => void;
+  let reportSpawnStarted!: () => void;
+  const spawnGate = new Promise<void>((resolve) => {
+    releaseSpawn = resolve;
+  });
+  const spawnStarted = new Promise<void>((resolve) => {
+    reportSpawnStarted = resolve;
+  });
+  const reloaded: string[] = [];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => check(true),
+    spawnInitialWorker: async () => first.worker,
+    spawnWorker: async () => {
+      reportSpawnStarted();
+      await spawnGate;
+      return second.worker;
+    },
+    reloadWorkerConfiguration: async (worker) => {
+      reloaded.push(worker.id);
+    },
+  });
+
+  try {
+    await supervisor.startInitial();
+    const reload = supervisor.reload("concurrent-config-change");
+    await spawnStarted;
+
+    await supervisor.synchronizeConfiguration(first.worker.id);
+    releaseSpawn();
+
+    const result = await reload;
+    assert.equal(result.promoted, true);
+    assert.deepEqual(reloaded, [second.worker.id]);
+  } finally {
+    releaseSpawn();
+    await supervisor.close();
+  }
+});
+
 test("WorkerSupervisor rolls back when newly active worker exits inside rollback window", async () => {
   const first = fakeWorker("worker-1");
   const second = fakeWorker("worker-2");

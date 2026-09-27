@@ -54,8 +54,26 @@ test("pnpm capability strips inherited Node preload environment", () => {
   }
 });
 
-test("pnpm capability allows version and package scripts", () => {
-  assert.equal(isAllowedPnpmArgs(["--version"]), true);
+test("pnpm capability allows selected scripts and package-management commands", () => {
+  for (const args of [
+    ["--version"],
+    ["typecheck"],
+    ["lint"],
+    ["test"],
+    ["build"],
+    ["install"],
+    ["install", "--frozen-lockfile"],
+    ["update"],
+    ["update", "typescript@latest"],
+    ["self-update"],
+    ["self-update", "12"],
+    ["self-update", "next-12"],
+    ["add", "react"],
+    ["add", "-D", "typescript@latest"],
+  ]) {
+    assert.equal(isAllowedPnpmArgs(args), true, args.join(" "));
+  }
+
   assert.equal(isAllowedPnpmArgs(["run", "check"]), true);
   assert.equal(isAllowedPnpmArgs(["run", "test:unit"]), true);
   assert.equal(
@@ -70,10 +88,30 @@ test("pnpm capability allows version and package scripts", () => {
   );
 });
 
-test("pnpm capability does not expose package-management or arbitrary execution commands", () => {
+test("pnpm capability blocks Workspace escape, global package management, and arbitrary execution", () => {
   for (const args of [
-    ["install"],
-    ["add", "left-pad"],
+    ["install", "--dir", ".."],
+    ["install", "--dir=.."],
+    ["update", "-C", ".."],
+    ["update", "--global"],
+    ["add"],
+    ["add", "-g", "left-pad"],
+    ["add", "left-pad", "--global-dir=C:\\\\tmp"],
+    ["add", "left-pad", "--lockfile-dir", ".."],
+    ["add", "left-pad", "--store-dir=..\\\\store"],
+    ["install", "--state-dir", "C:\\\\tmp"],
+    ["install", "--userconfig=C:\\\\tmp\\\\npmrc"],
+    ["update", "--workspace-packages=../*"],
+    ["update", "--filter", "{..}"],
+    ["update", "-F../sibling"],
+    ["install", "--recursive"],
+    ["install", "--workspace-root"],
+    ["self-update", "--force"],
+    ["self-update", "12", "extra"],
+    ["typecheck", "--watch"],
+    ["lint", "--fix"],
+    ["test", "--watch"],
+    ["build", "--production"],
     ["exec", "powershell"],
     ["dlx", "some-package"],
     ["run"],

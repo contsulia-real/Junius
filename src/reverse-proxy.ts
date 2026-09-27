@@ -202,6 +202,58 @@ function argumentString(
   return typeof value === "string" ? value : fallback;
 }
 
+function isConfigurationMutationRequest(
+  req: IncomingMessage,
+): boolean {
+  const method = req.method ?? "";
+  if (method !== "POST" && method !== "DELETE") {
+    return false;
+  }
+
+  const pathname = new URL(
+    req.url ?? "/",
+    "http://127.0.0.1",
+  ).pathname;
+  const rawSegments = pathname
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  const segments =
+    rawSegments[0] === "api"
+      ? rawSegments.slice(1)
+      : rawSegments;
+
+  if (
+    method === "POST" &&
+    segments.length === 2 &&
+    segments[0] === "capabilities"
+  ) {
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    segments.length === 1 &&
+    segments[0] === "workspaces"
+  ) {
+    return true;
+  }
+
+  if (
+    method === "DELETE" &&
+    segments.length === 2 &&
+    segments[0] === "workspaces"
+  ) {
+    return true;
+  }
+
+  return (
+    (method === "POST" || method === "DELETE") &&
+    segments.length === 4 &&
+    segments[0] === "workspaces" &&
+    segments[2] === "grants"
+  );
+}
+
 function routeKeyForTool(
   call: McpToolCall | undefined,
 ): string | undefined {
@@ -384,6 +436,9 @@ function proxyStreaming(
   const worker = lease.worker;
   const port =
     kind === "mcp" ? worker.mcpPort : worker.adminPort;
+  const configurationMutation =
+    kind === "admin" &&
+    isConfigurationMutationRequest(req);
 
   let released = false;
   const release = () => {
@@ -407,7 +462,65 @@ function proxyStreaming(
       },
     },
     (upstreamResponse) => {
-      res.statusCode = upstreamResponse.statusCode ?? 502;
+      const statusCode = upstreamResponse.statusCode ?? 502;
+      const shouldSynchronizeConfiguration =
+        configurationMutation &&
+        statusCode >= 200 &&
+        statusCode < 300;
+
+      if (shouldSynchronizeConfiguration) {
+        const chunks: Buffer[] = [];
+        let settled = false;
+
+        const finish = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+
+          void supervisor
+            .synchronizeConfiguration(worker.id)
+            .then(() => {
+              if (error !== undefined) {
+                if (!res.headersSent) {
+                  sendHostJson(res, 502, {
+                    error: "worker_proxy_failed",
+                    message: error.message,
+                  });
+                } else {
+                  res.destroy(error);
+                }
+                return;
+              }
+
+              if (res.destroyed) return;
+              res.statusCode = statusCode;
+              copyResponseHeaders(upstreamResponse.headers, res);
+              res.end(Buffer.concat(chunks));
+            })
+            .catch((syncError: unknown) => {
+              if (res.destroyed) return;
+              sendHostJson(res, 503, {
+                error: "configuration_sync_failed",
+                message:
+                  syncError instanceof Error
+                    ? syncError.message
+                    : String(syncError),
+              });
+            })
+            .finally(release);
+        };
+
+        upstreamResponse.on("data", (chunk: Buffer | string) => {
+          chunks.push(
+            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+          );
+        });
+        upstreamResponse.once("end", () => finish());
+        upstreamResponse.once("error", (error) => finish(error));
+        res.once("close", release);
+        return;
+      }
+
+      res.statusCode = statusCode;
       copyResponseHeaders(upstreamResponse.headers, res);
 
       const responseSessionId =

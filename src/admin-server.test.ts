@@ -595,7 +595,7 @@ test("Workspace grant API rejects rules outside machine policy", async () => {
         headers: f.mutationHeaders(),
         body: JSON.stringify({
           arguments: [
-            { mode: "exact", args: ["install"] },
+            { mode: "exact", args: ["exec", "powershell"] },
           ],
         }),
       },
@@ -625,7 +625,7 @@ test("admin state preserves and marks historical invalid Workspace grants", asyn
     profile.setGrant({
       key: "pnpm",
       arguments: [
-        { mode: "exact", args: ["install"] },
+        { mode: "exact", args: ["exec", "powershell"] },
       ],
     });
 
@@ -654,7 +654,7 @@ test("admin state preserves and marks historical invalid Workspace grants", asyn
         arguments: [
           {
             mode: "exact",
-            args: ["install"],
+            args: ["exec", "powershell"],
             valid: false,
             reason: "arguments_outside_machine_policy",
           },
@@ -669,7 +669,7 @@ test("admin state preserves and marks historical invalid Workspace grants", asyn
         headers: f.mutationHeaders(),
         body: JSON.stringify({
           arguments: [
-            { mode: "exact", args: ["install"] },
+            { mode: "exact", args: ["exec", "powershell"] },
             { mode: "exact", args: ["run", "check"] },
           ],
         }),

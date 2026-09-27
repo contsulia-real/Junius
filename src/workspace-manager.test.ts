@@ -69,6 +69,67 @@ test("WorkspaceManager keeps independent profiles addressable in parallel", asyn
   }
 });
 
+test("WorkspaceManager atomically replaces persisted Workspace state", async () => {
+  const firstRaw = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
+  const secondRaw = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
+  const first = await realpath(firstRaw);
+  const second = await realpath(secondRaw);
+
+  try {
+    const manager = new WorkspaceManager([
+      {
+        id: "alpha",
+        profile: new WorkspaceProfile(first, [
+          {
+            key: "pnpm",
+            arguments: [
+              { mode: "exact", args: ["run", "check"] },
+            ],
+          },
+        ]),
+      },
+    ]);
+
+    manager.replace([
+      {
+        id: "beta",
+        rootPath: second,
+        grants: [
+          {
+            key: "pnpm",
+            arguments: [
+              { mode: "exact", args: ["run", "build"] },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    assert.equal(manager.has("alpha"), false);
+    assert.equal(
+      manager.get("beta")?.isInvocationAllowed(
+        "pnpm",
+        ["run", "build"],
+      ),
+      true,
+    );
+
+    assert.throws(
+      () =>
+        manager.replace([
+          { id: "first", rootPath: first, grants: [] },
+          { id: "second", rootPath: first, grants: [] },
+        ]),
+      /workspace_root_already_registered/u,
+    );
+    assert.equal(manager.has("beta"), true);
+    assert.equal(manager.has("first"), false);
+  } finally {
+    await rm(first, { recursive: true, force: true });
+    await rm(second, { recursive: true, force: true });
+  }
+});
+
 test("WorkspaceManager rejects duplicate IDs and duplicate roots", async () => {
   const rootRaw = await mkdtemp(join(tmpdir(), "junius-workspaces-"));
   const root = await realpath(rootRaw);

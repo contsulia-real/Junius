@@ -79,6 +79,10 @@ function pnpmGrantCompatible(grant: WorkspaceArgumentGrant): boolean {
   if (args.length === 0) return false;
   if (isAllowedPnpmArgs(args)) return true;
 
+  if (args.length === 1 && (args[0] === "run" || args[0] === "add")) {
+    return true;
+  }
+
   if (args[0] !== "run") return false;
   if (args.length < 2) return false;
 
@@ -213,6 +217,22 @@ export class MachineCapabilityManager {
     return KNOWN_KEYS.map((key) => this.#status(key));
   }
 
+  async reload(): Promise<void> {
+    const persisted = await this.store.load();
+    if (persisted === undefined) {
+      throw new Error("machine_capability_state_missing");
+    }
+
+    for (const key of KNOWN_KEYS) {
+      this.#preferences.set(
+        key,
+        persisted[key]?.enabled ?? true,
+      );
+    }
+
+    await this.#reconcileAll();
+  }
+
   workspaceGrantCompatibility(
     key: string,
     grant: WorkspaceArgumentGrant,
@@ -298,13 +318,21 @@ export class MachineCapabilityManager {
         key,
         scope: "workspace",
         description:
-          "pnpm package-script runner. Allows --version and pnpm run <script>; install/exec/dlx/add are not exposed.",
+          "pnpm Workspace package manager and script runner. Allows selected script shortcuts, install/update/self-update/add, and pnpm run <script>; exec/dlx remain blocked.",
         enabled,
         available: launcher !== undefined,
         active: this.registry.has(key),
         ...(launcher === undefined ? {} : { launcher }),
         policy: [
           "--version",
+          "typecheck",
+          "lint",
+          "test",
+          "build",
+          "install [...args]",
+          "update [...packages/options]",
+          "self-update [version]",
+          "add <pkg...> [...options]",
           "run <script>",
           "run <script> -- ...scriptArgs",
         ],

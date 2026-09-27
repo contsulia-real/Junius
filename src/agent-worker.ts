@@ -58,6 +58,7 @@ export interface AgentWorkerHandle {
   readonly adminPort: number;
   readonly publicMcpOrigin: string;
   readonly publicAdminOrigin: string;
+  reloadConfiguration(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -158,6 +159,23 @@ export async function startAgentWorker(
       })),
     );
   }
+
+  let configurationReloadQueue: Promise<void> = Promise.resolve();
+
+  const reloadConfiguration = (): Promise<void> => {
+    const operation = configurationReloadQueue.then(async () => {
+      const persisted = await workspaceStateStore.load();
+      if (persisted === undefined) {
+        throw new Error("workspace_state_missing");
+      }
+
+      workspaces.replace(persisted);
+      await machineCapabilities.reload();
+    });
+
+    configurationReloadQueue = operation.catch(() => undefined);
+    return operation;
+  };
 
   const commands = new RunCommandService(registry, workspaces);
   const files = new WorkspaceFilesService(
@@ -262,6 +280,29 @@ export async function startAgentWorker(
       return;
     }
 
+    if (
+      req.method === "POST" &&
+      req.url === "/__junius/config-reload"
+    ) {
+      void reloadConfiguration()
+        .then(() => {
+          sendJson(res, 200, {
+            ok: true,
+            workerId,
+          });
+        })
+        .catch((error: unknown) => {
+          sendJson(res, 500, {
+            error: "configuration_reload_failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : String(error),
+          });
+        });
+      return;
+    }
+
     void handleAdminRequest(
       req,
       res,
@@ -328,6 +369,7 @@ export async function startAgentWorker(
     adminPort,
     publicMcpOrigin,
     publicAdminOrigin,
+    reloadConfiguration,
     async close() {
       if (closed) return;
       closed = true;

@@ -44,6 +44,23 @@ export class WorkspaceManager {
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
+  replace(states: readonly WorkspaceState[]): void {
+    const replacement = new WorkspaceManager(
+      states.map((workspace) => ({
+        id: workspace.id,
+        profile: new WorkspaceProfile(
+          workspace.rootPath,
+          workspace.grants,
+        ),
+      })),
+    );
+
+    this.#profiles.clear();
+    for (const [id, profile] of replacement.#profiles) {
+      this.#profiles.set(id, profile);
+    }
+  }
+
   async register(
     id: string,
     rootPath: string,

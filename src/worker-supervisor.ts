@@ -4,6 +4,7 @@ import {
   spawnManagedWorker,
   type ManagedWorker,
 } from "./worker-process.js";
+import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 
 type WorkerStatus = "active" | "retiring" | "exited";
 
@@ -45,6 +46,46 @@ const DEFAULT_DESKTOP_RESOURCE_IDLE_MS = 5 * 60_000;
 const DEFAULT_JOB_RESULT_RETENTION_MS = 30 * 60_000;
 const DEFAULT_MCP_SESSION_IDLE_MS = 30 * 60_000;
 const DEFAULT_MAX_EXITED_RECORDS = 16;
+const DEFAULT_CONFIGURATION_RELOAD_TIMEOUT_MS = 5_000;
+
+async function reloadWorkerConfiguration(
+  worker: ManagedWorker,
+): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    DEFAULT_CONFIGURATION_RELOAD_TIMEOUT_MS,
+  );
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${worker.adminPort}/__junius/config-reload`,
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          [WORKER_AUTH_HEADER]: worker.internalToken,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `configuration_reload_http_error: ${response.status}`,
+      );
+    }
+
+    const body = await response.json() as {
+      ok?: unknown;
+      workerId?: unknown;
+    };
+    if (body.ok !== true || body.workerId !== worker.id) {
+      throw new Error("configuration_reload_invalid_response");
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface WorkerSupervisorOptions {
   readonly cwd: string;
@@ -63,6 +104,9 @@ export interface WorkerSupervisorOptions {
   readonly validate?: () => Promise<SourceCheckResult>;
   readonly spawnWorker?: () => Promise<ManagedWorker>;
   readonly spawnInitialWorker?: () => Promise<ManagedWorker>;
+  readonly reloadWorkerConfiguration?: (
+    worker: ManagedWorker,
+  ) => Promise<void>;
 }
 
 export interface WorkerLease {
@@ -74,6 +118,11 @@ export interface ReloadResult {
   readonly promoted: boolean;
   readonly workerId?: string;
   readonly reason?: string;
+}
+
+export interface ConfigurationSyncResult {
+  readonly synchronizedWorkerIds: readonly string[];
+  readonly quarantinedWorkerIds: readonly string[];
 }
 
 export interface WorkerSupervisorState {
@@ -120,6 +169,9 @@ export class WorkerSupervisor {
   readonly #validate: () => Promise<SourceCheckResult>;
   readonly #spawnWorker: () => Promise<ManagedWorker>;
   readonly #spawnInitialWorker: () => Promise<ManagedWorker>;
+  readonly #reloadWorkerConfiguration: (
+    worker: ManagedWorker,
+  ) => Promise<void>;
 
   #activeWorkerId: string | undefined;
   #reloading = false;
@@ -128,6 +180,7 @@ export class WorkerSupervisor {
   #lastReloadReason: string | undefined;
   #lastFailure: string | undefined;
   #lastCheck: SourceCheckResult | undefined;
+  #configurationEpoch = 0;
   #closed = false;
 
   constructor(options: WorkerSupervisorOptions) {
@@ -191,6 +244,9 @@ export class WorkerSupervisor {
           publicMcpOrigin: options.publicMcpOrigin,
           publicAdminOrigin: options.publicAdminOrigin,
         }));
+    this.#reloadWorkerConfiguration =
+      options.reloadWorkerConfiguration ??
+      reloadWorkerConfiguration;
   }
 
   async startInitial(): Promise<ManagedWorker> {
@@ -225,6 +281,49 @@ export class WorkerSupervisor {
     });
 
     return this.#reloadPromise;
+  }
+
+  async synchronizeConfiguration(
+    sourceWorkerId: string,
+  ): Promise<ConfigurationSyncResult> {
+    if (this.#closed) {
+      throw new Error("supervisor_closed");
+    }
+
+    this.#configurationEpoch += 1;
+    const targets = [...this.#records.values()].filter(
+      (record) =>
+        record.worker.id !== sourceWorkerId &&
+        record.status !== "exited" &&
+        !record.worker.exited(),
+    );
+    const synchronizedWorkerIds: string[] = [];
+    const quarantinedWorkerIds: string[] = [];
+
+    await Promise.all(
+      targets.map(async (record) => {
+        try {
+          await this.#reloadWorkerConfiguration(record.worker);
+          synchronizedWorkerIds.push(record.worker.id);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.#lastFailure =
+            `configuration_sync_failed: ${record.worker.id}: ${message}`;
+
+          await record.worker.close().catch(() => undefined);
+          if (record.status !== "exited") {
+            this.#onWorkerExit(record.worker.id);
+          }
+          quarantinedWorkerIds.push(record.worker.id);
+        }
+      }),
+    );
+
+    return {
+      synchronizedWorkerIds: synchronizedWorkerIds.sort(),
+      quarantinedWorkerIds: quarantinedWorkerIds.sort(),
+    };
   }
 
   acquire(
@@ -639,6 +738,9 @@ export class WorkerSupervisor {
       };
     }
 
+    const configurationEpochBeforeSpawn =
+      this.#configurationEpoch;
+
     let candidate: ManagedWorker;
     try {
       candidate = await this.#spawnWorker();
@@ -660,6 +762,29 @@ export class WorkerSupervisor {
         promoted: false,
         reason: this.#lastFailure,
       };
+    }
+
+    if (
+      configurationEpochBeforeSpawn !==
+      this.#configurationEpoch
+    ) {
+      try {
+        let observedEpoch: number;
+        do {
+          observedEpoch = this.#configurationEpoch;
+          await this.#reloadWorkerConfiguration(candidate);
+        } while (observedEpoch !== this.#configurationEpoch);
+      } catch (error) {
+        await candidate.close().catch(() => {});
+        const message =
+          error instanceof Error ? error.message : String(error);
+        this.#lastFailure =
+          `candidate_configuration_sync_failed: ${message}`;
+        return {
+          promoted: false,
+          reason: this.#lastFailure,
+        };
+      }
     }
 
     const previousId = this.#activeWorkerId;
