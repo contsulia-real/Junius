@@ -48,6 +48,35 @@ Optional environment variables:
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
+`pnpm dev` and `pnpm start` launch the stable Junius Host. The Host owns the public MCP/admin ports and runs the mutable Local Agent implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap protection.
+
+## Host / Worker runtime
+
+The public service no longer runs directly inside the mutable Agent process:
+
+```text
+ChatGPT / WebUI
+  -> Junius Host (:8787 / :8788)
+  -> active Worker (random localhost ports)
+  -> MCP/admin implementation
+```
+
+The Host itself is not run under `tsx watch`. It watches Worker-side source changes and performs a guarded reload sequence:
+
+```text
+source change
+-> pnpm run check
+-> spawn candidate Worker
+-> wait for ready IPC message
+-> HTTP health check
+-> atomically promote candidate
+-> keep previous Worker during rollback/drain window
+```
+
+If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their original retiring Worker while new sessions use the new active Worker.
+
+Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. Supervisor state is available locally at `/__junius/supervisor`.
+
 ## Execution model
 
 Junius exposes stable MCP tools:

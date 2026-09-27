@@ -40,6 +40,43 @@ What ChatGPT may ask Junius to execute
 
 That policy controls which registered executable may run, which argument shapes are permitted, and which Workspace is used as the working directory. It does not redefine Junius as a command runner and does not isolate the resulting process from the rest of the operating system.
 
+## Stable Host / replaceable Worker
+
+Junius separates the stable public service from the mutable Agent implementation.
+
+```text
+public 127.0.0.1:8787 / :8788
+            |
+            v
+      Junius Host
+            |
+      reverse proxy
+            |
+            v
+      active Worker
+      random local ports
+```
+
+The Host owns the public listeners and is not run with `tsx watch`. Worker processes own the MCP runtime, authorization/runtime services, browser/desktop adapters, Workspace services, Job Manager, and admin implementation.
+
+Worker replacement is guarded rather than automatic process restart:
+
+1. debounce a Worker-side source change;
+2. run the full `pnpm run check` source validation;
+3. spawn a candidate Worker from the current source tree;
+4. require the candidate ready IPC message;
+5. require its private HTTP health endpoint to respond correctly;
+6. promote it atomically only after those checks pass;
+7. keep the previous Worker alive through a rollback window and until routed MCP sessions/in-flight requests drain.
+
+A failed source check or failed candidate startup never changes the active Worker. If the newly active Worker exits while the previous Worker is still retained, the Host promotes the previous Worker again.
+
+The proxy records MCP session IDs returned by Workers. Requests carrying an existing session ID continue to route to that same retiring Worker after a promotion; requests without an existing routed session go to the active Worker. This prevents a hot swap from silently moving stateful MCP sessions between Worker runtimes.
+
+Host-only files are a separate stability boundary. Changes to the Host/Supervisor/proxy/check implementation set a restart-required state rather than hot-restarting the Host. The local supervisor state endpoint is `/__junius/supervisor`.
+
+This first Host/Worker implementation protects a running service. Persisted last-known-good release snapshots for recovery after a full machine/Host restart are a separate follow-up layer.
+
 ## Fixed MCP surface
 
 The current stable MCP tools are:

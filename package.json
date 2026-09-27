@@ -4,8 +4,9 @@
   "description": "Junius Local Agent",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx src/host.ts",
+    "start": "tsx src/host.ts",
+    "start:direct": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "check": "pnpm typecheck && pnpm test"
