@@ -464,7 +464,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm typecheck && pnpm test
 ```
 
-The current full check completes with 84 tests passed, 0 failed, 0 cancelled, and 0 skipped, including real Host/Worker proxying, hot-swap affinity, read batching, transactional Workspace writes, and Windows Python desktop-helper integration tests.
+The current full check completes with 85 tests passed, 0 failed, 0 cancelled, and 0 skipped, including real Host/Worker proxying, hot-swap affinity, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows Python desktop-helper integration tests.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -484,6 +484,10 @@ The tool accepts a named browser session, one whitelisted `playwright-cli` comma
 The current allowlist covers ordinary browser navigation and interaction, including navigation, snapshots, ref-based element actions, keyboard/mouse input, dialogs, tabs, and close. It intentionally does not expose arbitrary evaluation, CDP attachment, storage mutation, request interception, or arbitrary CLI commands.
 
 Browser sessions are named, headed, and persistent by default. Runtime browser state lives in Junius's own state directory rather than a project Workspace or the user's normal browser profile.
+
+For compatible `@playwright/cli` JavaScript installations, each Worker lazily starts a persistent Node broker. The broker loads the installed CLI's own `program` client once and reuses it for later commands while the Playwright-managed browser daemon/session remains authoritative. Junius discovers the local CLI's actual program-module specifier from its installed entry file and resolves pnpm links through the entry's real path, so it follows the locally installed CLI version rather than hard-coding one Playwright internal path. If the broker cannot initialize or its protocol fails, Browser automatically falls back to the existing one-process-per-command CLI transport.
+
+On the current Windows development machine, the verified broker path reduced repeated `snapshot` calls from roughly 0.36–0.60 s of local execution to 13–15 ms, and `tab-list` from roughly 0.40–0.65 s to 17 ms. Browser `open` still includes the cost of starting/navigating the headed browser and therefore remains much heavier than later commands.
 
 Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants. The Host keeps a named browser session on the Worker that owns it across hot swaps and releases that affinity when the session is closed.
 

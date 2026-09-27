@@ -9,6 +9,10 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 import {
+  PlaywrightCliBrokerClient,
+  PlaywrightCliBrokerError,
+} from "./playwright-cli-broker-client.js";
+import {
   delimiter,
   dirname,
   extname,
@@ -82,6 +86,7 @@ export class PlaywrightCliError extends Error {
 interface PlaywrightCliLauncher {
   readonly executable: string;
   readonly fixedArgs: readonly string[];
+  readonly entryPath?: string;
 }
 
 export interface PlaywrightCliExecution {
@@ -91,6 +96,7 @@ export interface PlaywrightCliExecution {
   readonly stdout: string;
   readonly stderr: string;
   readonly durationMs: number;
+  readonly transport: "broker" | "spawn";
 }
 
 function isFile(path: string): boolean {
@@ -139,6 +145,7 @@ function launcherFromCandidate(
     return {
       executable: nodeExecutable,
       fixedArgs: [candidate],
+      entryPath: candidate,
     };
   }
 
@@ -267,6 +274,21 @@ export function resolvePlaywrightCliLauncher(
   }
 
   return undefined;
+}
+
+function supportsPersistentBroker(
+  entryPath: string | undefined,
+): entryPath is string {
+  if (entryPath === undefined) return false;
+
+  try {
+    const source = readFileSync(entryPath, "utf8");
+    return /\{\s*program\s*\}\s*=\s*require\(["'][^"']+["']\)/u.test(
+      source,
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isInteger(value: string): boolean {
@@ -447,6 +469,8 @@ export class PlaywrightCliService {
   readonly #launcher: PlaywrightCliLauncher | undefined;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #statePath: string;
+  readonly #broker: PlaywrightCliBrokerClient | undefined;
+  #brokerError: string | undefined;
   #enabled = true;
 
   constructor(
@@ -459,6 +483,14 @@ export class PlaywrightCliService {
       environment,
       nodeExecutable,
     );
+    this.#broker =
+      supportsPersistentBroker(this.#launcher?.entryPath)
+        ? new PlaywrightCliBrokerClient({
+            cliEntryPath: this.#launcher.entryPath,
+            environment: this.#environment,
+            nodeExecutable,
+          })
+        : undefined;
   }
 
   get enabled(): boolean {
@@ -482,12 +514,39 @@ export class PlaywrightCliService {
     readonly available: boolean;
     readonly active: boolean;
     readonly statePath: string;
+    readonly transport: "broker" | "spawn";
+    readonly brokerRunning: boolean;
+    readonly brokerError?: string;
+    readonly launcher?: {
+      readonly executable: string;
+      readonly fixedArgs: readonly string[];
+      readonly entryPath?: string;
+    };
   } {
     return {
       enabled: this.enabled,
       available: this.available,
       active: this.active,
       statePath: this.#statePath,
+      transport:
+        this.#broker?.available === true
+          ? "broker"
+          : "spawn",
+      brokerRunning: this.#broker?.running ?? false,
+      ...(this.#brokerError === undefined
+        ? {}
+        : { brokerError: this.#brokerError }),
+      ...(this.#launcher === undefined
+        ? {}
+        : {
+            launcher: {
+              executable: this.#launcher.executable,
+              fixedArgs: this.#launcher.fixedArgs,
+              ...(this.#launcher.entryPath === undefined
+                ? {}
+                : { entryPath: this.#launcher.entryPath }),
+            },
+          }),
     };
   }
 
@@ -536,6 +595,41 @@ export class PlaywrightCliService {
     await mkdir(this.#statePath, { recursive: true });
 
     const startedAt = performance.now();
+    const cliArgs = commandArgs(session, command, args);
+
+    if (this.#broker?.available === true) {
+      try {
+        const response = await this.#broker.run(
+          cliArgs,
+          this.#statePath,
+        );
+
+        if (response.exitCode !== 0) {
+          throw new PlaywrightCliError(
+            "nonzero_exit",
+            response.stderr ||
+              response.stdout ||
+              response.message ||
+              `playwright-cli exited with code ${String(response.exitCode)}.`,
+          );
+        }
+
+        return {
+          session,
+          command,
+          exitCode: 0,
+          stdout: response.stdout,
+          stderr: response.stderr,
+          durationMs: Math.round(performance.now() - startedAt),
+          transport: "broker",
+        };
+      } catch (error) {
+        if (!(error instanceof PlaywrightCliBrokerError)) {
+          throw error;
+        }
+        this.#brokerError = `${error.code}: ${error.message}`;
+      }
+    }
 
     return new Promise<PlaywrightCliExecution>((resolvePromise, reject) => {
       const stdout: Buffer[] = [];
@@ -549,7 +643,7 @@ export class PlaywrightCliService {
         launcher.executable,
         [
           ...launcher.fixedArgs,
-          ...commandArgs(session, command, args),
+          ...cliArgs,
         ],
         {
           cwd: this.#statePath,
@@ -642,6 +736,7 @@ export class PlaywrightCliService {
           stdout: stdoutText,
           stderr: stderrText,
           durationMs: Math.round(performance.now() - startedAt),
+          transport: "spawn",
         });
       });
 
@@ -650,5 +745,9 @@ export class PlaywrightCliService {
         child.kill();
       }, DEFAULT_TIMEOUT_MS);
     });
+  }
+
+  async close(): Promise<void> {
+    await this.#broker?.close();
   }
 }

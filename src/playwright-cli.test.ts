@@ -141,6 +141,8 @@ test("playwright-cli exposes local WebUI status", async () => {
     assert.equal(state.available, true);
     assert.equal(state.active, true);
     assert.equal(state.statePath, f.root);
+    assert.equal(state.transport, "spawn");
+    assert.equal(state.brokerRunning, false);
   } finally {
     await f.dispose();
   }

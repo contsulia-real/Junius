@@ -246,6 +246,7 @@ export async function startAgentWorker(
         closeServer(adminHttpServer),
         mcpRuntime.close(),
         jobs.close(),
+        browser.close(),
         desktop.close(),
       ]);
     },

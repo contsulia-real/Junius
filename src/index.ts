@@ -167,6 +167,7 @@ async function shutdown(signal: string): Promise<void> {
   adminHttpServer.close();
   await mcpRuntime.close();
   await jobManager.close();
+  await playwrightCliService.close();
   await desktopComputerUseService.close();
 }
 

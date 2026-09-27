@@ -604,6 +604,10 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       (data.browser.enabled ? "已启用" : "已禁用") + '</div></div>' +
       '<div class="detail"><div class="key">运行状态目录</div><div class="value">' +
       esc(data.browser.statePath) + '</div></div>' +
+      '<div class="detail"><div class="key">命令传输</div><div class="value">' +
+      (data.browser.transport === "broker" ? "常驻 Broker" : "单次进程 fallback") + '</div></div>' +
+      '<div class="detail"><div class="key">Broker 进程</div><div class="value">' +
+      (data.browser.brokerRunning ? "常驻运行中" : (data.browser.transport === "broker" ? "待首次调用" : "未启用")) + '</div></div>' +
       '<div class="detail"><div class="key">默认窗口模式</div><div class="value">可见窗口（headed）</div></div>' +
       '<div class="detail"><div class="key">默认 Profile 模式</div><div class="value">持久化（persistent）</div></div>';
   }

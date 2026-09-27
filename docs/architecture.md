@@ -405,11 +405,18 @@ Browser automation is a first-class Local Agent capability and is not attached t
 ChatGPT
 -> playwright_cli MCP tool
 -> PlaywrightCliService
--> locally installed playwright-cli
+-> persistent CLI broker when compatible
+   -> installed CLI's own program client
+   -> Playwright CLI daemon
+-> spawn fallback when broker is unavailable
 -> CLI-managed browser session/profile
 ```
 
 Junius deliberately keeps this adapter thin. It does not reimplement Playwright's browser/session/page model.
+
+The preferred transport is a persistent Worker-local broker. The broker runs under plain Node, loads the installed `playwright-cli.js` entry's own `program` module once, and serializes repeated command invocations through that client. The browser/session daemon remains Playwright-owned. This removes repeated Node/CLI client startup from ordinary browser actions without creating a second browser-control protocol.
+
+Because Playwright's CLI client module location is version-dependent, the broker reads the installed CLI entry to discover its actual `program` require specifier and canonicalizes the pnpm-linked entry with `realpath` before module resolution. Broker failure is non-fatal: `PlaywrightCliService` disables the failed broker instance for that Worker and falls back to the original `shell: false` CLI spawn path.
 
 ### MCP surface
 
