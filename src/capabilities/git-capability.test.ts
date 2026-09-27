@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   createGitCapability,
@@ -250,6 +250,89 @@ test("git preflight rejects repository metadata outside Workspace root", async (
       force: true,
     });
     await rm(outside, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("git capability uses bounded Windows HTTPS transport settings", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-git-https-"),
+  );
+  const installRoot = join(root, "Git");
+  const gitExecutable = join(
+    installRoot,
+    "cmd",
+    "git.exe",
+  );
+  const credentialHelper = join(
+    installRoot,
+    "mingw64",
+    "bin",
+    "git-credential-manager.exe",
+  );
+  const repository = join(root, "repo");
+
+  try {
+    await mkdir(dirname(gitExecutable), {
+      recursive: true,
+    });
+    await mkdir(dirname(credentialHelper), {
+      recursive: true,
+    });
+    await Promise.all([
+      writeFile(gitExecutable, "fake", "utf8"),
+      writeFile(
+        credentialHelper,
+        "fake",
+        "utf8",
+      ),
+    ]);
+    await writeGitConfig(
+      repository,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "[remote \"origin\"]",
+        "\turl = https://github.com/example/repo.git",
+        "",
+      ].join("\n"),
+    );
+
+    const capability = createGitCapability(
+      {
+        executable: gitExecutable,
+        fixedArgs: [],
+      },
+      {},
+    )!;
+    const prepared = capability.prepareProcess(
+      ["push", "origin", "main"],
+      { cwd: repository },
+    );
+
+    assert.equal(prepared.ok, true);
+    if (prepared.ok && process.platform === "win32") {
+      assert.equal(
+        prepared.process.args.includes(
+          "http.sslBackend=openssl",
+        ),
+        true,
+      );
+      assert.equal(
+        prepared.process.args.includes(
+          "credential.helper=" +
+            credentialHelper.replaceAll(
+              "\\",
+              "/",
+            ),
+        ),
+        true,
+      );
+    }
+  } finally {
+    await rm(root, {
       recursive: true,
       force: true,
     });

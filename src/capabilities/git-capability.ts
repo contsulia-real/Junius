@@ -8,6 +8,7 @@ import {
 import { homedir } from "node:os";
 import {
   delimiter,
+  dirname,
   isAbsolute,
   join,
   relative,
@@ -399,6 +400,10 @@ interface GitIdentity {
   readonly email?: string;
 }
 
+interface GitNetworkSupport {
+  readonly credentialHelper?: string;
+}
+
 function pathInside(
   root: string,
   candidate: string,
@@ -713,6 +718,121 @@ function gitIdentityArgs(
   return args;
 }
 
+function resolveGitNetworkSupport(
+  launcher: GitLauncher,
+): GitNetworkSupport {
+  if (process.platform !== "win32") {
+    return {};
+  }
+
+  const installRoot = resolve(
+    dirname(launcher.executable),
+    "..",
+  );
+  const candidates = [
+    join(
+      installRoot,
+      "mingw64",
+      "bin",
+      "git-credential-manager.exe",
+    ),
+    join(
+      installRoot,
+      "mingw32",
+      "bin",
+      "git-credential-manager.exe",
+    ),
+    join(
+      installRoot,
+      "cmd",
+      "git-credential-manager.exe",
+    ),
+    join(
+      installRoot,
+      "bin",
+      "git-credential-manager.exe",
+    ),
+  ];
+  const credentialHelper =
+    candidates.find((candidate) => isFile(candidate));
+
+  return credentialHelper === undefined
+    ? {}
+    : {
+        credentialHelper:
+          credentialHelper.replaceAll("\\", "/"),
+      };
+}
+
+function gitNetworkArgs(
+  args: readonly string[],
+  cwd: string,
+  support: GitNetworkSupport,
+): readonly string[] {
+  if (process.platform !== "win32") {
+    return [];
+  }
+
+  const target = invocationRemote(args);
+  if (target === undefined) {
+    return [];
+  }
+
+  const config = localGitConfig(cwd);
+  if (config === undefined) {
+    return [];
+  }
+
+  const remote = config.remotes.get(target.remote);
+  const urls =
+    target.push &&
+    (remote?.pushUrls.length ?? 0) > 0
+      ? remote!.pushUrls
+      : remote?.urls ?? [];
+  const usesHttp = urls.some((value) => {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "http:" ||
+        url.protocol === "https:"
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  if (!usesHttp) {
+    return [];
+  }
+
+  return [
+    "-c",
+    "http.sslBackend=openssl",
+    ...(support.credentialHelper === undefined
+      ? []
+      : [
+          "-c",
+          `credential.helper=${support.credentialHelper}`,
+        ]),
+  ];
+}
+
+function gitExecutionArgs(
+  args: readonly string[],
+  cwd: string,
+  globalIdentity: GitIdentity,
+  networkSupport: GitNetworkSupport,
+): readonly string[] {
+  return [
+    ...gitIdentityArgs(cwd, globalIdentity),
+    ...gitNetworkArgs(
+      args,
+      cwd,
+      networkSupport,
+    ),
+  ];
+}
+
 function gitMetadataRoot(
   cwd: string,
 ): string | undefined {
@@ -900,6 +1020,8 @@ export function createGitCapability(
     launcher,
     environment,
   );
+  const networkSupport =
+    resolveGitNetworkSupport(launcher);
 
   return new ProcessCapability({
     key: "git",
@@ -916,10 +1038,12 @@ export function createGitCapability(
       "-c",
       "core.pager=",
     ],
-    fixedArgsForExecution: (_args, context) =>
-      gitIdentityArgs(
+    fixedArgsForExecution: (args, context) =>
+      gitExecutionArgs(
+        args,
         context.cwd,
         globalIdentity,
+        networkSupport,
       ),
     argumentPolicy: isAllowedGitArgs,
     preflight: (_args, context) =>
