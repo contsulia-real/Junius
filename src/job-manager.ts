@@ -7,227 +7,27 @@ import {
   type PersistedJobMetadata,
   type PersistedJobRecord,
 } from "./job-history-store.js";
+import {
+  appendCaptured,
+  persistedRecord,
+  persistedSnapshot,
+  snapshot,
+  terminal,
+  waitForCompletion,
+  type JobRecord,
+} from "./job-manager-runtime.js";
+import {
+  JobManagerError,
+  type JobSnapshot,
+  type JobStatus,
+} from "./job-manager-types.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { RunCommandService } from "./run-command.js";
 
-const MAX_CAPTURE_CHARS = 4 * 1024 * 1024;
 const DEFAULT_READ_CHARS = 64 * 1024;
 const MAX_READ_CHARS = 256 * 1024;
 const DEFAULT_WAIT_MS = 30_000;
 const MAX_WAIT_MS = 60_000;
-
-export type JobStatus =
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
-
-export type JobManagerErrorCode =
-  | "job_not_found"
-  | "capability_not_job_startable"
-  | "workspace_not_registered"
-  | "capability_not_registered"
-  | "capability_not_allowed"
-  | "arguments_not_allowed_by_workspace"
-  | "arguments_not_allowed"
-  | "unsafe_repository_config"
-  | "spawn_failed";
-
-export class JobManagerError extends Error {
-  constructor(
-    readonly code: JobManagerErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface JobSnapshot {
-  readonly id: string;
-  readonly workspace: string;
-  readonly key: string;
-  readonly status: JobStatus;
-  readonly pid: number | null;
-  readonly startedAt: string;
-  readonly endedAt?: string;
-  readonly exitCode?: number | null;
-  readonly signal?: NodeJS.Signals | null;
-  readonly message?: string;
-  readonly stdoutChars: number;
-  readonly stderrChars: number;
-  readonly stdoutTruncated: boolean;
-  readonly stderrTruncated: boolean;
-}
-
-interface JobRecord {
-  readonly id: string;
-  readonly workspace: string;
-  readonly key: string;
-  readonly child: ChildProcess;
-  readonly startedAt: string;
-  readonly stdoutDecoder: StringDecoder;
-  readonly stderrDecoder: StringDecoder;
-  readonly completion: Promise<void>;
-  resolveCompletion(): void;
-
-  status: JobStatus;
-  endedAt?: string;
-  exitCode?: number | null;
-  signal?: NodeJS.Signals | null;
-  message?: string;
-  stdout: string;
-  stderr: string;
-  stdoutTruncated: boolean;
-  stderrTruncated: boolean;
-  cancelRequested: boolean;
-  settled: boolean;
-}
-
-function terminal(status: JobStatus): boolean {
-  return status !== "running";
-}
-
-function appendCaptured(
-  current: string,
-  addition: string,
-): { value: string; truncated: boolean } {
-  if (addition.length === 0) {
-    return {
-      value: current,
-      truncated: false,
-    };
-  }
-
-  const remaining = MAX_CAPTURE_CHARS - current.length;
-  if (remaining <= 0) {
-    return {
-      value: current,
-      truncated: true,
-    };
-  }
-
-  if (addition.length <= remaining) {
-    return {
-      value: current + addition,
-      truncated: false,
-    };
-  }
-
-  return {
-    value: current + addition.slice(0, remaining),
-    truncated: true,
-  };
-}
-
-async function waitForCompletion(
-  record: JobRecord,
-  timeoutMs: number,
-): Promise<void> {
-  if (terminal(record.status)) {
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    let settled = false;
-
-    const finish = () => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timer);
-      resolve();
-    };
-
-    const timer = setTimeout(finish, timeoutMs);
-    void record.completion.then(finish);
-  });
-}
-
-function snapshot(record: JobRecord): JobSnapshot {
-  return {
-    id: record.id,
-    workspace: record.workspace,
-    key: record.key,
-    status: record.status,
-    pid: record.child.pid ?? null,
-    startedAt: record.startedAt,
-    ...(record.endedAt === undefined ? {} : { endedAt: record.endedAt }),
-    ...(record.exitCode === undefined ? {} : { exitCode: record.exitCode }),
-    ...(record.signal === undefined ? {} : { signal: record.signal }),
-    ...(record.message === undefined ? {} : { message: record.message }),
-    stdoutChars: record.stdout.length,
-    stderrChars: record.stderr.length,
-    stdoutTruncated: record.stdoutTruncated,
-    stderrTruncated: record.stderrTruncated,
-  };
-}
-
-function persistedSnapshot(
-  record: PersistedJobMetadata,
-): JobSnapshot {
-  return {
-    id: record.id,
-    workspace: record.workspace,
-    key: record.key,
-    status: record.status,
-    pid: record.pid,
-    startedAt: record.startedAt,
-    endedAt: record.endedAt,
-    ...(record.exitCode === undefined
-      ? {}
-      : { exitCode: record.exitCode }),
-    ...(record.signal === undefined
-      ? {}
-      : { signal: record.signal }),
-    ...(record.message === undefined
-      ? {}
-      : { message: record.message }),
-    stdoutChars: record.stdoutChars,
-    stderrChars: record.stderrChars,
-    stdoutTruncated: record.stdoutTruncated,
-    stderrTruncated: record.stderrTruncated,
-  };
-}
-
-function persistedRecord(
-  record: JobRecord,
-): PersistedJobRecord | undefined {
-  if (
-    record.status === "running" ||
-    record.endedAt === undefined
-  ) {
-    return undefined;
-  }
-
-  return {
-    version: 1,
-    id: record.id,
-    workspace: record.workspace,
-    key: record.key,
-    status: record.status,
-    pid: record.child.pid ?? null,
-    startedAt: record.startedAt,
-    endedAt: record.endedAt,
-    ...(record.exitCode === undefined
-      ? {}
-      : { exitCode: record.exitCode }),
-    ...(record.signal === undefined
-      ? {}
-      : { signal: record.signal }),
-    ...(record.message === undefined
-      ? {}
-      : { message: record.message }),
-    stdoutChars: record.stdout.length,
-    stderrChars: record.stderr.length,
-    stdout: record.stdout,
-    stderr: record.stderr,
-    stdoutTruncated: record.stdoutTruncated,
-    stderrTruncated: record.stderrTruncated,
-  };
-}
-
 
 export class JobManager {
   readonly #jobs = new Map<string, JobRecord>();
@@ -679,3 +479,13 @@ export class JobManager {
     );
   }
 }
+
+
+export {
+  JobManagerError,
+} from "./job-manager-types.js";
+export type {
+  JobManagerErrorCode,
+  JobSnapshot,
+  JobStatus,
+} from "./job-manager-types.js";
