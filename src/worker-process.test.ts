@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import { spawnManagedWorker } from "./worker-process.js";
 
 test("spawnManagedWorker ignores startup IPC for another worker id", async () => {
@@ -160,8 +161,30 @@ test("spawnManagedWorker starts an isolated healthy Junius worker", async () => 
       assert.equal(worker.mcpPort > 0, true);
       assert.equal(worker.adminPort > 0, true);
 
+      const privateHealthUrl =
+        `http://127.0.0.1:${worker.adminPort}/__junius/worker-health`;
+
+      const unauthenticatedHealth =
+        await fetch(privateHealthUrl);
+      assert.equal(
+        unauthenticatedHealth.status,
+        403,
+      );
+      assert.deepEqual(
+        await unauthenticatedHealth.json(),
+        {
+          error: "worker_auth_required",
+        },
+      );
+
       const health = await fetch(
-        `http://127.0.0.1:${worker.adminPort}/__junius/worker-health`,
+        privateHealthUrl,
+        {
+          headers: {
+            [WORKER_AUTH_HEADER]:
+              worker.internalToken,
+          },
+        },
       );
       assert.equal(health.status, 200);
       assert.deepEqual(
@@ -172,6 +195,25 @@ test("spawnManagedWorker starts an isolated healthy Junius worker", async () => 
           pid: worker.pid,
         },
       );
+
+      const unauthenticatedMcp = await fetch(
+        `http://127.0.0.1:${worker.mcpPort}/not-mcp`,
+      );
+      assert.equal(
+        unauthenticatedMcp.status,
+        403,
+      );
+
+      const authenticatedMcp = await fetch(
+        `http://127.0.0.1:${worker.mcpPort}/not-mcp`,
+        {
+          headers: {
+            [WORKER_AUTH_HEADER]:
+              worker.internalToken,
+          },
+        },
+      );
+      assert.equal(authenticatedMcp.status, 404);
     } finally {
       await worker.close();
     }

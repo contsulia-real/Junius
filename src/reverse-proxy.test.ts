@@ -12,6 +12,7 @@ import {
   proxyToActiveWorker,
 } from "./reverse-proxy.js";
 import type { SourceCheckResult } from "./source-check.js";
+import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import type { ManagedWorker } from "./worker-process.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
 
@@ -71,6 +72,7 @@ async function targetWorker(
       pid: id === "worker-a" ? 101 : 202,
       mcpPort: port,
       adminPort: port,
+      internalToken: `token-${id}-012345678901234567890123456789`,
       startedAt: new Date().toISOString(),
       stdout: () => "",
       stderr: () => "",
@@ -120,11 +122,18 @@ async function statelessToolWorker(
 ): Promise<{
   worker: ManagedWorker;
   server: Server;
+  receivedWorkerTokens: string[];
 }> {
   const child = new EventEmitter() as unknown as ChildProcess;
   let exited = false;
+  const receivedWorkerTokens: string[] = [];
 
   const server = createServer(async (req, res) => {
+    const workerToken =
+      req.headers[WORKER_AUTH_HEADER];
+    if (typeof workerToken === "string") {
+      receivedWorkerTokens.push(workerToken);
+    }
     if (req.url !== "/mcp" || req.method !== "POST") {
       res.statusCode = 404;
       res.end();
@@ -190,12 +199,14 @@ async function statelessToolWorker(
 
   return {
     server,
+    receivedWorkerTokens,
     worker: {
       id,
       child,
       pid: id === "worker-a" ? 101 : 202,
       mcpPort: port,
       adminPort: port,
+      internalToken: `token-${id}-012345678901234567890123456789`,
       startedAt: new Date().toISOString(),
       stdout: () => "",
       stderr: () => "",
@@ -285,6 +296,8 @@ test("reverse proxy records layered modern MCP latency", async () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
+          [WORKER_AUTH_HEADER]:
+            "forged-client-token",
         },
         body: toolCall("list_workspaces", {}),
       },
@@ -296,6 +309,11 @@ test("reverse proxy records layered modern MCP latency", async () => {
       "string",
     );
     await response.text();
+
+    assert.deepEqual(
+      target.receivedWorkerTokens,
+      [target.worker.internalToken],
+    );
 
     const [trace] = traces.list();
     assert.equal(trace?.tool, "list_workspaces");
@@ -314,6 +332,100 @@ test("reverse proxy records layered modern MCP latency", async () => {
     await closeServer(proxy);
     await supervisor.close();
     await closeServer(target.server);
+  }
+});
+
+test("reverse proxy rejects oversized sessionful MCP request bodies", async () => {
+  const child = new EventEmitter() as unknown as ChildProcess;
+  let exited = false;
+  let receivedBytes = 0;
+
+  const server = createServer((req, res) => {
+    req.on("data", (chunk: Buffer | string) => {
+      receivedBytes += Buffer.byteLength(chunk);
+    });
+    req.on("end", () => {
+      res.statusCode = 200;
+      res.end("ok");
+    });
+    req.on("aborted", () => {
+      // Expected when the Host enforces the request limit.
+    });
+  });
+  const port = await listen(server);
+
+  const worker: ManagedWorker = {
+    id: "worker-a",
+    child,
+    pid: 101,
+    mcpPort: port,
+    adminPort: port,
+    internalToken:
+      "token-worker-a-012345678901234567890123456789",
+    startedAt: new Date().toISOString(),
+    stdout: () => "",
+    stderr: () => "",
+    exited: () => exited,
+    async close() {
+      if (exited) return;
+      exited = true;
+      await closeServer(server);
+      child.emit("exit", 0, null);
+    },
+  };
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => successfulCheck(),
+    spawnWorker: async () => worker,
+  });
+
+  const proxy = createServer((req, res) => {
+    proxyToActiveWorker(
+      req,
+      res,
+      supervisor,
+      "mcp",
+    );
+  });
+
+  try {
+    await supervisor.startInitial();
+    const proxyPort = await listen(proxy);
+
+    const response = await fetch(
+      `http://127.0.0.1:${proxyPort}/mcp`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "mcp-session-id": "session-a",
+        },
+        body: Buffer.alloc(
+          16 * 1024 * 1024 + 1,
+          0x61,
+        ),
+      },
+    );
+
+    assert.equal(response.status, 413);
+    assert.deepEqual(
+      await response.json(),
+      {
+        error: "mcp_request_too_large",
+      },
+    );
+    assert.equal(
+      receivedBytes < 16 * 1024 * 1024 + 1,
+      true,
+    );
+  } finally {
+    await closeServer(proxy);
+    await supervisor.close();
+    await closeServer(server);
   }
 });
 

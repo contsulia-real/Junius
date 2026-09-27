@@ -31,6 +31,9 @@ import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
+import {
+  workerRequestAuthorized,
+} from "./worker-auth.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
 
 export interface AgentWorkerOptions {
@@ -40,6 +43,7 @@ export interface AgentWorkerOptions {
   readonly adminListenPort?: number;
   readonly publicMcpOrigin?: string;
   readonly publicAdminOrigin?: string;
+  readonly internalToken: string;
   readonly onJobTerminal?: (job: JobSnapshot) => void;
   readonly onJobHistoryPersisted?: (job: JobSnapshot) => void;
 }
@@ -79,7 +83,17 @@ async function closeServer(server: Server): Promise<void> {
 export async function startAgentWorker(
   options: AgentWorkerOptions,
 ): Promise<AgentWorkerHandle> {
-  const { config, workerId } = options;
+  const {
+    config,
+    workerId,
+    internalToken,
+  } = options;
+  if (internalToken.length < 32) {
+    throw new Error(
+      "worker_internal_token_invalid",
+    );
+  }
+
   const publicMcpOrigin =
     options.publicMcpOrigin ??
     `http://${config.mcpHost}:${config.mcpPort}`;
@@ -162,6 +176,18 @@ export async function startAgentWorker(
   const adminToken = randomBytes(32).toString("base64url");
 
   const mcpHttpServer = createHttpServer((req, res) => {
+    if (
+      !workerRequestAuthorized(
+        req,
+        internalToken,
+      )
+    ) {
+      sendJson(res, 403, {
+        error: "worker_auth_required",
+      });
+      return;
+    }
+
     void (async () => {
       const request = toWebRequest(req, publicMcpOrigin);
       const url = new URL(request.url);
@@ -203,6 +229,18 @@ export async function startAgentWorker(
   });
 
   const adminHttpServer = createHttpServer((req, res) => {
+    if (
+      !workerRequestAuthorized(
+        req,
+        internalToken,
+      )
+    ) {
+      sendJson(res, 403, {
+        error: "worker_auth_required",
+      });
+      return;
+    }
+
     if (req.url === "/__junius/worker-health") {
       sendJson(res, 200, {
         ok: true,

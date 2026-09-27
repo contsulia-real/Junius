@@ -8,6 +8,17 @@ interface ShutdownMessage {
 const workerId =
   process.env.JUNIUS_WORKER_ID ??
   `worker-${process.pid}`;
+const internalToken =
+  process.env.JUNIUS_WORKER_TOKEN;
+
+if (
+  internalToken === undefined ||
+  internalToken.length < 32
+) {
+  throw new Error(
+    "worker_internal_token_missing",
+  );
+}
 
 let worker:
   | Awaited<ReturnType<typeof startAgentWorker>>
@@ -37,6 +48,7 @@ try {
     adminListenPort: 0,
     publicMcpOrigin,
     publicAdminOrigin,
+    internalToken,
     onJobTerminal: (job) => {
       process.send?.({
         type: "junius-job-terminal",

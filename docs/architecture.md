@@ -57,7 +57,7 @@ public 127.0.0.1:8787 / :8788
       random local ports
 ```
 
-The Host owns the public listeners and is not run with `tsx watch`. Worker processes own the MCP runtime, authorization/runtime services, browser/desktop adapters, Workspace services, Job Manager, and admin implementation.
+The Host owns the public listeners and is not run with `tsx watch`. Worker processes own the MCP runtime, authorization/runtime services, browser/desktop adapters, Workspace services, Job Manager, and admin implementation. Each Worker receives a fresh 256-bit internal token when spawned. The Host removes any client-supplied internal-token header and injects the correct token on every private Worker request; Worker MCP, admin, and health endpoints reject missing/incorrect tokens. The token is not included in Supervisor state or logs.
 
 Worker replacement is guarded rather than automatic process restart:
 
@@ -539,7 +539,7 @@ Desktop machine state uses the same persisted `enabled` / runtime `available` / 
 
 The admin WebUI binds to the configured localhost address and is not routed through the Secure MCP Tunnel.
 
-The public Host binds both MCP and Admin to `127.0.0.1`. Before either public port is processed, the Host requires the exact configured local `Host` value and rejects any present browser `Origin` that is not the corresponding local origin. This blocks DNS-rebinding/host-header and hostile browser-origin access at the public ingress while still allowing non-browser MCP/local clients that omit `Origin`.
+The public Host binds both MCP and Admin to `127.0.0.1`. Before either public port is processed, the Host requires the exact configured local `Host` value and rejects any present browser `Origin` that is not the corresponding local origin. This blocks DNS-rebinding/host-header and hostile browser-origin access at the public ingress while still allowing non-browser MCP/local clients that omit `Origin`. That omission is deliberate: same-account local processes are inside the OS-local trust boundary unless a future application-level MCP credential layer is added. Both modern buffered MCP POSTs and sessionful streaming MCP requests have a 16 MiB Host-side request-body limit.
 
 The admin HTTP layer additionally enforces:
 
@@ -551,4 +551,6 @@ The admin HTTP layer additionally enforces:
 `GET /state` returns the current admin token to same-origin WebUI code. `/api/state` deliberately omits it. Browser same-origin policy plus CSP/Host/Origin enforcement prevents an unrelated website from reading or replaying that token, while the custom mutation header also forces cross-origin script requests through preflight. Direct local clients may read `/state` and explicitly supply the token.
 
 Workspace grant mutation validates new rules against the machine policy even when the capability is currently disabled or unavailable. Historical rules that no longer intersect the machine policy are preserved and marked invalid in admin state rather than silently deleted; they may be retained while editing so users can remove them incrementally.
+
+Git adds a repository-local safety preflight shared by `run_command` and Job Manager. The selected Workspace must own its `.git` metadata directly; parent-repository borrowing and `.git` symlink/junction/worktree indirection are rejected. Local Git config is parsed against an allowlist of non-executable repository metadata, and fetch/push refuse configured remotes outside the accepted HTTP(S)/SSH forms. Workspace transactional writes similarly reject symbolic/junction parent aliases and revalidate write parents again immediately before commit.
 

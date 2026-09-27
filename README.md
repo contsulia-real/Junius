@@ -54,9 +54,11 @@ The public service no longer runs directly inside the mutable Agent process:
 ```text
 ChatGPT / WebUI
   -> Junius Host (:8787 / :8788)
-  -> active Worker (random localhost ports)
+  -> active Worker (random localhost ports, per-Worker private token)
   -> MCP/admin implementation
 ```
+
+Each Worker gets a fresh 256-bit internal token at spawn time. The Host strips any client-supplied internal-token header and injects the correct token when proxying to the Worker. Private Worker MCP, admin, and health endpoints reject requests without that token, so random Worker ports cannot be used to bypass the Host boundary.
 
 The Host itself is not run under `tsx watch`. It watches Worker-side source changes and performs a guarded reload sequence:
 
@@ -131,6 +133,10 @@ The current process adapter:
 - enforces per-Workspace argument grants before launch;
 - applies timeout and captured-output limits.
 
+Git receives an additional repository preflight before both synchronous execution and background Job startup. Junius requires repository metadata to be self-contained under the selected Workspace root, rejects `.git` symlink/junction/worktree indirection outside that root, rejects repository-local executable/config-extension settings such as credential helpers, SSH command overrides, filters, and includes, and validates configured fetch/push remote URLs before network operations.
+
+Workspace reads reject links that resolve outside the Workspace. Workspace writes also reject symbolic/junction parent aliases even when they ultimately resolve back inside the Workspace, and transactional commits revalidate the write parent immediately before installation to narrow path-replacement races.
+
 It also inherits the Junius host environment. Therefore an authorized project script can observe environment variables available to Junius.
 
 `pnpm run <script>` is explicitly an authorization to execute the Workspace's own package-script code. Junius constrains the pnpm command shape and script name, but it does not sandbox or freeze the contents of that script. A Workspace whose package scripts can be modified should therefore be treated as executable code, not as passive data.
@@ -138,6 +144,8 @@ It also inherits the Junius host environment. Therefore an authorized project sc
 Synchronous ProcessCapability timeout and output-limit termination share the same process-termination primitive as Job Manager. On Windows, Junius invokes `%SystemRoot%\\System32\\taskkill.exe /PID <pid> /T /F` directly with `shell: false`, so the spawned process tree is terminated before the synchronous call returns. Other platforms currently use direct-child SIGTERM followed by SIGKILL fallback.
 
 The `Workspace` concept is therefore an authorization/routing boundary, not an OS access-control boundary.
+
+The public MCP listener is intentionally loopback-only and rejects hostile `Host` values and any present non-local browser `Origin`. Non-browser local clients may omit `Origin`; therefore processes already running on the same operating-system account are part of Junius's local trust boundary. Secure MCP Tunnel supplies the OpenAI-side private transport/authentication boundary, but Junius does not currently require an additional application-level bearer token on the loopback MCP endpoint. Sessionless and sessionful MCP request bodies are both capped at 16 MiB at the Host; the sessionful path enforces this while streaming rather than buffering the entire request.
 
 ## Capabilities
 
@@ -308,7 +316,7 @@ Invoke-RestMethod -Method Delete `
   http://127.0.0.1:8788/workspaces/weave
 ```
 
-The admin server validates its configured localhost Host header, rejects cross-origin mutation requests, requires the per-process admin token for mutations, and requires application/json for JSON request bodies. The WebUI remains local-only and is not exposed through the Secure MCP Tunnel.
+The admin server validates its configured localhost Host header, rejects cross-origin mutation requests, requires the per-process admin token for mutations, and requires application/json for JSON request bodies. Admin responses are `no-store`, `nosniff`, deny framing/referrers, and use a restrictive same-origin CSP. `/api/state` omits the mutation token; only same-origin WebUI state at `/state` carries it. The WebUI remains local-only and is not exposed through the Secure MCP Tunnel.
 
 ## Workspace state persistence
 
@@ -467,7 +475,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 138 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 139 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

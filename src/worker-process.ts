@@ -2,7 +2,11 @@ import {
   fork,
   type ChildProcess,
 } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import {
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
+import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import { terminateProcessTree } from "./process-termination.js";
 
 const MAX_LOG_CHARS = 128 * 1024;
@@ -27,6 +31,7 @@ export interface ManagedWorker {
   readonly pid: number;
   readonly mcpPort: number;
   readonly adminPort: number;
+  readonly internalToken: string;
   readonly startedAt: string;
   readonly stdout: () => string;
   readonly stderr: () => string;
@@ -96,6 +101,7 @@ function isStartupErrorMessage(
 async function assertHealthy(
   workerId: string,
   adminPort: number,
+  internalToken: string,
 ): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3_000);
@@ -103,7 +109,12 @@ async function assertHealthy(
   try {
     const response = await fetch(
       `http://127.0.0.1:${adminPort}/__junius/worker-health`,
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        headers: {
+          [WORKER_AUTH_HEADER]: internalToken,
+        },
+      },
     );
 
     if (!response.ok) {
@@ -155,6 +166,8 @@ export async function spawnManagedWorker(
   options: SpawnWorkerOptions,
 ): Promise<ManagedWorker> {
   const id = randomUUID();
+  const internalToken =
+    randomBytes(32).toString("base64url");
   let stdout = "";
   let stderr = "";
   let exited = false;
@@ -165,6 +178,7 @@ export async function spawnManagedWorker(
       ...process.env,
       ...options.environment,
       JUNIUS_WORKER_ID: id,
+      JUNIUS_WORKER_TOKEN: internalToken,
       JUNIUS_PROJECT_ROOT: options.cwd,
       JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
       JUNIUS_PUBLIC_ADMIN_ORIGIN: options.publicAdminOrigin,
@@ -264,7 +278,11 @@ export async function spawnManagedWorker(
       throw new Error("worker_ready_pid_mismatch");
     }
 
-    await assertHealthy(id, ready.adminPort);
+    await assertHealthy(
+      id,
+      ready.adminPort,
+      internalToken,
+    );
   } catch (error) {
     await terminateProcessTree(
       child,
@@ -282,6 +300,7 @@ export async function spawnManagedWorker(
     pid: ready.pid,
     mcpPort: ready.mcpPort,
     adminPort: ready.adminPort,
+    internalToken,
     startedAt,
     stdout: () => stdout,
     stderr: () => stderr,

@@ -38,6 +38,7 @@ function fakeWorker(id: string): {
       pid: Number(id.replace(/\D/gu, "")) || 1,
       mcpPort: 10_000 + Math.floor(Math.random() * 1_000),
       adminPort: 20_000 + Math.floor(Math.random() * 1_000),
+      internalToken: `token-${id}-012345678901234567890123456789`,
       startedAt: new Date().toISOString(),
       stdout: () => "",
       stderr: () => "",

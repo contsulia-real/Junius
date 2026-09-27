@@ -5,7 +5,9 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { Transform } from "node:stream";
 import { sendHostJson } from "./host-http.js";
+import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
 
 const MAX_MCP_REQUEST_BYTES = 16 * 1024 * 1024;
@@ -85,7 +87,8 @@ function forwardedRequestHeaders(
   for (const [name, value] of Object.entries(headers)) {
     if (
       value === undefined ||
-      HOP_BY_HOP_HEADERS.has(name.toLowerCase())
+      HOP_BY_HOP_HEADERS.has(name.toLowerCase()) ||
+      name.toLowerCase() === WORKER_AUTH_HEADER
     ) {
       continue;
     }
@@ -388,13 +391,19 @@ function proxyStreaming(
     lease.release();
   };
 
+  let requestTooLarge = false;
+
   const upstream = httpRequest(
     {
       host: "127.0.0.1",
       port,
       method: req.method,
       path: req.url,
-      headers: forwardedRequestHeaders(req.headers),
+      headers: {
+        ...forwardedRequestHeaders(req.headers),
+        [WORKER_AUTH_HEADER]:
+          worker.internalToken,
+      },
     },
     (upstreamResponse) => {
       res.statusCode = upstreamResponse.statusCode ?? 502;
@@ -435,6 +444,11 @@ function proxyStreaming(
   );
 
   upstream.once("error", (error) => {
+    if (requestTooLarge) {
+      release();
+      return;
+    }
+
     if (!res.headersSent) {
       sendHostJson(res, 502, {
         error: "worker_proxy_failed",
@@ -450,7 +464,44 @@ function proxyStreaming(
     upstream.destroy();
     release();
   });
-  req.pipe(upstream);
+
+  let requestBytes = 0;
+  const limiter = new Transform({
+    transform(chunk, _encoding, callback) {
+      const buffer = Buffer.isBuffer(chunk)
+        ? chunk
+        : Buffer.from(chunk);
+      requestBytes += buffer.length;
+
+      if (requestBytes > MAX_MCP_REQUEST_BYTES) {
+        callback(
+          new Error("mcp_request_too_large"),
+        );
+        return;
+      }
+
+      callback(null, buffer);
+    },
+  });
+
+  limiter.once("error", () => {
+    requestTooLarge = true;
+    req.unpipe(limiter);
+    upstream.destroy();
+
+    if (!res.headersSent) {
+      sendHostJson(res, 413, {
+        error: "mcp_request_too_large",
+      });
+    } else {
+      res.destroy();
+    }
+
+    req.resume();
+    release();
+  });
+
+  req.pipe(limiter).pipe(upstream);
 }
 
 async function proxyModernMcp(
@@ -553,6 +604,8 @@ async function proxyModernMcp(
           body.length,
         ),
         "x-junius-trace-id": traceId,
+        [WORKER_AUTH_HEADER]:
+          worker.internalToken,
       },
     },
     (upstreamResponse) => {
