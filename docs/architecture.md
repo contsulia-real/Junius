@@ -399,6 +399,12 @@ Current synchronous ProcessCapability timeout termination targets the directly s
 
 Long-running processes use the implemented Job Manager described below.
 
+## Latency tracing
+
+Modern MCP requests receive a Host-generated trace ID. The Worker measures time spent inside its MCP handler and reports that duration through an internal response header; the Host records total request duration after the upstream response completes. A bounded in-memory ring retains the newest 64 traces and `/__junius/supervisor` exposes `hostTotalMs`, `workerDurationMs`, and `proxyOverheadMs = max(0, hostTotalMs - workerDurationMs)` together with tool and Worker identity.
+
+This tracing path is deliberately outside tool result payloads and does not require Host-side response buffering, so measurement does not materially change the normal streaming/proxy behavior.
+
 ## Browser capability
 
 Browser automation is a first-class Local Agent capability and is not attached to a Workspace.

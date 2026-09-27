@@ -124,6 +124,31 @@ test("Junius Host owns public ports and proxies admin state to its active worker
     );
     assert.equal(state.workspaces?.[0]?.id, "host-test");
 
+    const mcpResponse = await fetch(
+      `http://127.0.0.1:${mcpPort}/mcp`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "list_workspaces",
+            arguments: {},
+          },
+        }),
+      },
+    );
+    await mcpResponse.text();
+    assert.equal(
+      typeof mcpResponse.headers.get("x-junius-trace-id"),
+      "string",
+    );
+
     const supervisorResponse = await fetch(
       adminOrigin + "/__junius/supervisor",
     );
@@ -132,6 +157,13 @@ test("Junius Host owns public ports and proxies admin state to its active worker
     const supervisorState = await supervisorResponse.json() as {
       host: { restartRequired: boolean };
       supervisor: { activeWorkerId?: string };
+      latencyTraces?: {
+        tool?: string;
+        statusCode: number;
+        workerDurationMs?: number;
+        hostTotalMs: number;
+        proxyOverheadMs?: number;
+      }[];
     };
 
     assert.equal(
@@ -141,6 +173,29 @@ test("Junius Host owns public ports and proxies admin state to its active worker
     assert.equal(
       typeof supervisorState.supervisor.activeWorkerId,
       "string",
+    );
+    assert.equal(
+      supervisorState.latencyTraces?.[0]?.tool,
+      "list_workspaces",
+    );
+    assert.equal(
+      supervisorState.latencyTraces?.[0]?.statusCode,
+      mcpResponse.status,
+    );
+    assert.equal(
+      typeof supervisorState.latencyTraces?.[0]
+        ?.workerDurationMs,
+      "number",
+    );
+    assert.equal(
+      typeof supervisorState.latencyTraces?.[0]
+        ?.hostTotalMs,
+      "number",
+    );
+    assert.equal(
+      typeof supervisorState.latencyTraces?.[0]
+        ?.proxyOverheadMs,
+      "number",
     );
   } finally {
     child.kill();

@@ -6,7 +6,10 @@ import {
 import { resolve } from "node:path";
 import { loadHostConfig } from "./host-config.js";
 import { sendHostJson } from "./host-http.js";
-import { proxyToActiveWorker } from "./reverse-proxy.js";
+import {
+  HostLatencyTraceStore,
+  proxyToActiveWorker,
+} from "./reverse-proxy.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
 
 const HOST_ONLY_FILES = new Set([
@@ -80,6 +83,8 @@ const supervisor = new WorkerSupervisor({
 });
 
 await supervisor.startInitial();
+
+const latencyTraces = new HostLatencyTraceStore(64);
 
 let hostRestartRequired = false;
 let reloadTimer: NodeJS.Timeout | undefined;
@@ -156,7 +161,13 @@ for (const area of ["src", "python"] as const) {
 }
 
 const mcpHttpServer = createHttpServer((req, res) => {
-  proxyToActiveWorker(req, res, supervisor, "mcp");
+  proxyToActiveWorker(
+    req,
+    res,
+    supervisor,
+    "mcp",
+    latencyTraces,
+  );
 });
 
 const adminHttpServer = createHttpServer((req, res) => {
@@ -171,6 +182,7 @@ const adminHttpServer = createHttpServer((req, res) => {
         restartRequired: hostRestartRequired,
       },
       supervisor: supervisor.state(),
+      latencyTraces: latencyTraces.list(),
     });
     return;
   }

@@ -7,7 +7,10 @@ import {
 import type { AddressInfo } from "node:net";
 import type { ChildProcess } from "node:child_process";
 import test from "node:test";
-import { proxyToActiveWorker } from "./reverse-proxy.js";
+import {
+  HostLatencyTraceStore,
+  proxyToActiveWorker,
+} from "./reverse-proxy.js";
 import type { SourceCheckResult } from "./source-check.js";
 import type { ManagedWorker } from "./worker-process.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
@@ -180,6 +183,7 @@ async function statelessToolWorker(
     }
 
     res.setHeader("content-type", "application/json");
+    res.setHeader("x-junius-worker-duration-ms", "7");
     res.end(toolResult(payload));
   });
   const port = await listen(server);
@@ -232,6 +236,86 @@ async function callTool(
   assert.equal(typeof text, "string");
   return JSON.parse(text!) as Record<string, unknown>;
 }
+
+test("HostLatencyTraceStore keeps the newest bounded traces", () => {
+  const traces = new HostLatencyTraceStore(2);
+
+  for (const traceId of ["a", "b", "c"]) {
+    traces.record({
+      traceId,
+      statusCode: 200,
+      hostTotalMs: 1,
+      completedAt: "2026-09-27T00:00:00.000Z",
+    });
+  }
+
+  assert.deepEqual(
+    traces.list().map((trace) => trace.traceId),
+    ["c", "b"],
+  );
+});
+
+test("reverse proxy records layered modern MCP latency", async () => {
+  const target = await statelessToolWorker("worker-a");
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => successfulCheck(),
+    spawnWorker: async () => target.worker,
+  });
+  const traces = new HostLatencyTraceStore(8);
+  const proxy = createServer((req, res) => {
+    proxyToActiveWorker(
+      req,
+      res,
+      supervisor,
+      "mcp",
+      traces,
+    );
+  });
+
+  try {
+    await supervisor.startInitial();
+    const proxyPort = await listen(proxy);
+    const response = await fetch(
+      `http://127.0.0.1:${proxyPort}/mcp`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: toolCall("list_workspaces", {}),
+      },
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      typeof response.headers.get("x-junius-trace-id"),
+      "string",
+    );
+    await response.text();
+
+    const [trace] = traces.list();
+    assert.equal(trace?.tool, "list_workspaces");
+    assert.equal(trace?.workerId, "worker-a");
+    assert.equal(trace?.statusCode, 200);
+    assert.equal(trace?.workerDurationMs, 7);
+    assert.equal(
+      typeof trace?.proxyOverheadMs,
+      "number",
+    );
+    assert.equal(
+      typeof trace?.hostTotalMs,
+      "number",
+    );
+  } finally {
+    await closeServer(proxy);
+    await supervisor.close();
+    await closeServer(target.server);
+  }
+});
 
 test("reverse proxy keeps existing MCP session on retiring worker after promotion", async () => {
   const first = await targetWorker("worker-a");

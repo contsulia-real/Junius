@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   request as httpRequest,
   type IncomingHttpHeaders,
@@ -23,6 +24,40 @@ const HOP_BY_HOP_HEADERS = new Set([
 interface McpToolCall {
   readonly name: string;
   readonly arguments: Record<string, unknown>;
+}
+
+export interface HostLatencyTrace {
+  readonly traceId: string;
+  readonly tool?: string;
+  readonly workerId?: string;
+  readonly statusCode: number;
+  readonly hostTotalMs: number;
+  readonly workerDurationMs?: number;
+  readonly proxyOverheadMs?: number;
+  readonly completedAt: string;
+}
+
+export class HostLatencyTraceStore {
+  readonly #limit: number;
+  #entries: HostLatencyTrace[] = [];
+
+  constructor(limit = 64) {
+    this.#limit = Math.max(1, Math.floor(limit));
+  }
+
+  record(trace: HostLatencyTrace): void {
+    this.#entries.push(trace);
+    if (this.#entries.length > this.#limit) {
+      this.#entries.splice(
+        0,
+        this.#entries.length - this.#limit,
+      );
+    }
+  }
+
+  list(): readonly HostLatencyTrace[] {
+    return [...this.#entries].reverse();
+  }
 }
 
 function copyResponseHeaders(
@@ -68,6 +103,18 @@ function headerString(
   value: string | string[] | undefined,
 ): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function headerDurationMs(
+  value: string | string[] | undefined,
+): number | undefined {
+  const text = headerString(value);
+  if (text === undefined) return undefined;
+
+  const parsed = Number(text);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : undefined;
 }
 
 async function readBody(
@@ -410,27 +457,69 @@ async function proxyModernMcp(
   req: IncomingMessage,
   res: ServerResponse,
   supervisor: WorkerSupervisor,
+  traces?: HostLatencyTraceStore,
 ): Promise<void> {
+  const startedAt = performance.now();
+  const traceId = randomUUID();
+  let toolName: string | undefined;
+  let traceWorkerId: string | undefined;
+  let workerDurationMs: number | undefined;
+  let traceRecorded = false;
+
+  const recordTrace = (statusCode: number) => {
+    if (traceRecorded) return;
+    traceRecorded = true;
+
+    const hostTotalMs = Math.round(
+      performance.now() - startedAt,
+    );
+
+    traces?.record({
+      traceId,
+      ...(toolName === undefined
+        ? {}
+        : { tool: toolName }),
+      ...(traceWorkerId === undefined
+        ? {}
+        : { workerId: traceWorkerId }),
+      statusCode,
+      hostTotalMs,
+      ...(workerDurationMs === undefined
+        ? {}
+        : {
+            workerDurationMs,
+            proxyOverheadMs: Math.max(
+              0,
+              hostTotalMs - workerDurationMs,
+            ),
+          }),
+      completedAt: new Date().toISOString(),
+    });
+  };
+
   let body: Buffer;
 
   try {
     body = await readBody(req);
   } catch (error) {
-    sendHostJson(
-      res,
+    const statusCode =
       error instanceof Error &&
-        error.message === "mcp_request_too_large"
+      error.message === "mcp_request_too_large"
         ? 413
-        : 400,
-      {
-        error:
-          error instanceof Error ? error.message : "invalid_mcp_request",
-      },
-    );
+        : 400;
+
+    sendHostJson(res, statusCode, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "invalid_mcp_request",
+    });
+    recordTrace(statusCode);
     return;
   }
 
   const call = parseToolCall(body);
+  toolName = call?.name;
   const routeKey = routeKeyForTool(call);
 
   let lease;
@@ -442,10 +531,12 @@ async function proxyModernMcp(
       message:
         error instanceof Error ? error.message : String(error),
     });
+    recordTrace(503);
     return;
   }
 
   const worker = lease.worker;
+  traceWorkerId = worker.id;
   bindBeforeForward(supervisor, call, worker.id);
 
   const captureStartJob = call?.name === "start_job";
@@ -456,22 +547,35 @@ async function proxyModernMcp(
       port: worker.mcpPort,
       method: req.method,
       path: req.url,
-      headers: forwardedRequestHeaders(
-        req.headers,
-        body.length,
-      ),
+      headers: {
+        ...forwardedRequestHeaders(
+          req.headers,
+          body.length,
+        ),
+        "x-junius-trace-id": traceId,
+      },
     },
     (upstreamResponse) => {
-      res.statusCode = upstreamResponse.statusCode ?? 502;
+      const statusCode =
+        upstreamResponse.statusCode ?? 502;
+      res.statusCode = statusCode;
+      workerDurationMs = headerDurationMs(
+        upstreamResponse.headers[
+          "x-junius-worker-duration-ms"
+        ],
+      );
       copyResponseHeaders(upstreamResponse.headers, res);
+      res.setHeader("x-junius-trace-id", traceId);
 
       if (!captureStartJob) {
         upstreamResponse.pipe(res);
         upstreamResponse.once("end", () => {
           releaseAfterForward(supervisor, call);
+          recordTrace(statusCode);
           lease.release();
         });
         upstreamResponse.once("error", (error) => {
+          recordTrace(502);
           res.destroy(error);
           lease.release();
         });
@@ -499,9 +603,11 @@ async function proxyModernMcp(
 
         releaseAfterForward(supervisor, call);
         res.end(responseBody);
+        recordTrace(statusCode);
         lease.release();
       });
       upstreamResponse.once("error", (error) => {
+        recordTrace(502);
         res.destroy(error);
         lease.release();
       });
@@ -517,6 +623,7 @@ async function proxyModernMcp(
     } else {
       res.destroy(error);
     }
+    recordTrace(502);
     lease.release();
   });
 
@@ -528,6 +635,7 @@ export function proxyToActiveWorker(
   res: ServerResponse,
   supervisor: WorkerSupervisor,
   kind: "mcp" | "admin",
+  traces?: HostLatencyTraceStore,
 ): void {
   const requestSessionId =
     kind === "mcp"
@@ -539,7 +647,12 @@ export function proxyToActiveWorker(
     req.method === "POST" &&
     requestSessionId === undefined
   ) {
-    void proxyModernMcp(req, res, supervisor);
+    void proxyModernMcp(
+      req,
+      res,
+      supervisor,
+      traces,
+    );
     return;
   }
 

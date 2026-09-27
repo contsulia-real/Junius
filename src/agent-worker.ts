@@ -153,7 +153,22 @@ export async function startAgentWorker(
         return;
       }
 
+      const startedAt = performance.now();
       const response = await mcpRuntime.handle(request);
+      res.setHeader(
+        "x-junius-worker-duration-ms",
+        String(
+          Math.round(
+            performance.now() - startedAt,
+          ),
+        ),
+      );
+
+      const traceId = req.headers["x-junius-trace-id"];
+      if (typeof traceId === "string" && traceId.length > 0) {
+        res.setHeader("x-junius-trace-id", traceId);
+      }
+
       await writeWebResponse(res, response);
     })().catch((error: unknown) => {
       console.error(`[worker ${workerId} mcp]`, error);
