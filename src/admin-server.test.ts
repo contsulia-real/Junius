@@ -9,6 +9,7 @@ import test from "node:test";
 import { handleAdminRequest } from "./admin-server.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
+import { JobHistoryStore } from "./job-history-store.js";
 import { JobManager } from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
@@ -50,7 +51,14 @@ async function fixture() {
   const workspaces = new WorkspaceManager();
   const store = new WorkspaceStateStore(statePath);
   const commands = new RunCommandService(registry, workspaces);
-  const jobs = new JobManager(commands);
+  const jobs = new JobManager(
+    commands,
+    undefined,
+    new JobHistoryStore(
+      join(root, "job-history"),
+      { maxEntries: 25 },
+    ),
+  );
 
   let origin = "";
   const adminToken = "test-admin-token";
@@ -120,6 +128,16 @@ test("admin server serves the local WebUI and runtime state", async () => {
       }[];
       workspaces: unknown[];
       jobs: unknown[];
+      jobHistory: {
+        entries: number;
+        capturedBytes: number;
+        metadataCacheEntries: number;
+        metadataCacheLimit: number;
+        retention: {
+          maxEntries?: number;
+          maxAgeMs?: number;
+        };
+      };
       adminToken: string;
       browser: {
         enabled: boolean;
@@ -182,6 +200,15 @@ test("admin server serves the local WebUI and runtime state", async () => {
     );
     assert.deepEqual(body.workspaces, []);
     assert.deepEqual(body.jobs, []);
+    assert.deepEqual(body.jobHistory, {
+      entries: 0,
+      capturedBytes: 0,
+      metadataCacheEntries: 0,
+      metadataCacheLimit: 256,
+      retention: {
+        maxEntries: 25,
+      },
+    });
     assert.equal(body.adminToken, "test-admin-token");
     assert.equal(body.browser.enabled, true);
     assert.equal(body.browser.available, false);

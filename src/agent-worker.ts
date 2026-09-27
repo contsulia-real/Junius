@@ -16,6 +16,7 @@ import {
 import {
   JobHistoryStore,
   resolveJobHistoryPath,
+  resolveJobHistoryRetention,
 } from "./job-history-store.js";
 import {
   JobManager,
@@ -147,6 +148,7 @@ export async function startAgentWorker(
     options.onJobTerminal,
     new JobHistoryStore(
       resolveJobHistoryPath(),
+      resolveJobHistoryRetention(),
     ),
     options.onJobHistoryPersisted,
   );

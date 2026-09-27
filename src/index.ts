@@ -13,6 +13,7 @@ import { RunCommandService } from "./run-command.js";
 import {
   JobHistoryStore,
   resolveJobHistoryPath,
+  resolveJobHistoryRetention,
 } from "./job-history-store.js";
 import { JobManager } from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
@@ -90,6 +91,7 @@ const jobManager = new JobManager(
   undefined,
   new JobHistoryStore(
     resolveJobHistoryPath(),
+    resolveJobHistoryRetention(),
   ),
 );
 const mcpRuntime = await createMcpRuntime(

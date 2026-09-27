@@ -454,6 +454,180 @@ test("WorkerSupervisor remembers terminal IPC that arrives before job binding", 
   }
 });
 
+test("WorkerSupervisor bounds idle MCP session routes and refreshes active affinity", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 5,
+    mcpSessionIdleMs: 30,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindSession(
+      "session-a",
+      first.worker.id,
+    );
+
+    await delay(40);
+    assert.equal(first.closed(), false);
+    assert.equal(
+      supervisor.state().workers.find(
+        (worker) => worker.id === first.worker.id,
+      )?.sessions,
+      0,
+    );
+
+    const activeLease = supervisor.acquire("session-a");
+    assert.equal(activeLease.worker.id, first.worker.id);
+    activeLease.release();
+
+    supervisor.bindSession(
+      "session-a",
+      first.worker.id,
+    );
+    await supervisor.reload("good-edit");
+
+    await delay(15);
+    const oldLease = supervisor.acquire("session-a");
+    assert.equal(oldLease.worker.id, first.worker.id);
+    oldLease.release();
+
+    await delay(20);
+    assert.equal(first.closed(), false);
+
+    await delay(25);
+    assert.equal(first.closed(), true);
+
+    const migrated = supervisor.acquire("session-a");
+    assert.equal(migrated.worker.id, second.worker.id);
+    migrated.release();
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor expires unbound Job race hints", async () => {
+  const first = fakeWorker("worker-1");
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    jobResultRetentionMs: 20,
+    validate: async () => check(true),
+    spawnWorker: async () => first.worker,
+  });
+
+  try {
+    await supervisor.startInitial();
+
+    supervisor.markJobHistoryPersisted(
+      first.worker.id,
+      "persisted-late",
+    );
+    await delay(35);
+    supervisor.bindResource(
+      "job:persisted-late",
+      first.worker.id,
+    );
+
+    const persistedBinding =
+      supervisor.state().resourceBindings.find(
+        (binding) =>
+          binding.key === "job:persisted-late",
+      );
+    assert.equal(
+      persistedBinding?.workerId,
+      first.worker.id,
+    );
+
+    supervisor.releaseResource(
+      "job:persisted-late",
+    );
+
+    supervisor.markJobTerminal(
+      first.worker.id,
+      "terminal-late",
+    );
+    await delay(35);
+    supervisor.bindResource(
+      "job:terminal-late",
+      first.worker.id,
+    );
+
+    const terminalBinding =
+      supervisor.state().resourceBindings.find(
+        (binding) =>
+          binding.key === "job:terminal-late",
+      );
+    assert.equal(
+      terminalBinding?.workerId,
+      first.worker.id,
+    );
+    assert.equal(
+      terminalBinding?.expiresAt,
+      undefined,
+    );
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor bounds retained exited worker diagnostics", async () => {
+  const workers = [
+    fakeWorker("worker-1"),
+    fakeWorker("worker-2"),
+    fakeWorker("worker-3"),
+    fakeWorker("worker-4"),
+  ];
+  const queue = workers.map((entry) => entry.worker);
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 1,
+    maxExitedRecords: 1,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  try {
+    await supervisor.startInitial();
+
+    for (let index = 0; index < 3; index += 1) {
+      const result = await supervisor.reload(
+        `edit-${index}`,
+      );
+      assert.equal(result.promoted, true);
+      await delay(20);
+    }
+
+    const state = supervisor.state();
+    assert.equal(
+      state.activeWorkerId,
+      workers[3]!.worker.id,
+    );
+    assert.equal(
+      state.workers.filter(
+        (worker) => worker.status === "exited",
+      ).length <= 1,
+      true,
+    );
+    assert.equal(state.workers.length <= 2, true);
+  } finally {
+    await supervisor.close();
+  }
+});
+
 test("WorkerSupervisor rolls back when newly active worker exits inside rollback window", async () => {
   const first = fakeWorker("worker-1");
   const second = fakeWorker("worker-2");

@@ -9,6 +9,10 @@ import {
 
 test("Dashboard assets contain the expected local WebUI shell", () => {
   assert.match(ADMIN_DASHBOARD_HTML, /Junius 控制台/u);
+  assert.match(
+    ADMIN_DASHBOARD_HTML,
+    /rel="icon" href="data:,"/u,
+  );
   assert.match(ADMIN_DASHBOARD_HTML, /C:\\Users\\\.\.\.\\Project/u);
   assert.match(ADMIN_DASHBOARD_CSS, /\.sidebar/u);
   assert.match(ADMIN_DASHBOARD_JS, /fetch\(path/u);
@@ -31,6 +35,14 @@ test("Dashboard assets contain the expected local WebUI shell", () => {
   assert.match(
     ADMIN_DASHBOARD_JS,
     /允许此前缀参数/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_HTML,
+    /job-history-summary/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_JS,
+    /无限保留（未启用自动清理）/u,
   );
 });
 

@@ -5,6 +5,7 @@ import {
   readdir,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -28,6 +29,8 @@ export interface PersistedJobMetadata {
   readonly message?: string;
   readonly stdoutChars: number;
   readonly stderrChars: number;
+  readonly stdoutBytes?: number;
+  readonly stderrBytes?: number;
   readonly stdoutTruncated: boolean;
   readonly stderrTruncated: boolean;
 }
@@ -38,10 +41,68 @@ export interface PersistedJobRecord
   readonly stderr: string;
 }
 
+export interface JobHistoryRetention {
+  readonly maxEntries?: number;
+  readonly maxAgeMs?: number;
+}
+
+export interface JobHistoryStats {
+  readonly entries: number;
+  readonly capturedBytes: number;
+  readonly metadataCacheEntries: number;
+  readonly metadataCacheLimit: number;
+  readonly oldestEndedAt?: string;
+  readonly newestEndedAt?: string;
+  readonly retention: JobHistoryRetention;
+}
+
 function validId(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
     id,
   );
+}
+
+function positiveInteger(
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed <= 0
+  ) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+export function resolveJobHistoryRetention(
+  environment: NodeJS.ProcessEnv = process.env,
+): JobHistoryRetention {
+  return {
+    ...(positiveInteger(
+      environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
+    ) === undefined
+      ? {}
+      : {
+          maxEntries: positiveInteger(
+            environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
+          ),
+        }),
+    ...(positiveInteger(
+      environment.JUNIUS_JOB_HISTORY_MAX_AGE_MS,
+    ) === undefined
+      ? {}
+      : {
+          maxAgeMs: positiveInteger(
+            environment.JUNIUS_JOB_HISTORY_MAX_AGE_MS,
+          ),
+        }),
+  };
 }
 
 export function resolveJobHistoryPath(
@@ -97,6 +158,22 @@ function parseMetadata(
     return undefined;
   }
 
+  for (const bytes of [
+    record.stdoutBytes,
+    record.stderrBytes,
+  ]) {
+    if (
+      bytes !== undefined &&
+      (
+        typeof bytes !== "number" ||
+        !Number.isSafeInteger(bytes) ||
+        bytes < 0
+      )
+    ) {
+      return undefined;
+    }
+  }
+
   if (
     record.exitCode !== undefined &&
     record.exitCode !== null &&
@@ -123,9 +200,16 @@ function parseMetadata(
   return record as PersistedJobMetadata;
 }
 
+const DEFAULT_METADATA_CACHE_LIMIT = 256;
+
 export class JobHistoryStore {
+  readonly #metadataCache =
+    new Map<string, PersistedJobMetadata>();
+
   constructor(
     readonly rootPath: string,
+    readonly retention: JobHistoryRetention = {},
+    readonly metadataCacheLimit = DEFAULT_METADATA_CACHE_LIMIT,
   ) {}
 
   #jobRoot(id: string): string {
@@ -172,6 +256,14 @@ export class JobHistoryStore {
         : { message: record.message }),
       stdoutChars: record.stdout.length,
       stderrChars: record.stderr.length,
+      stdoutBytes: Buffer.byteLength(
+        record.stdout,
+        "utf8",
+      ),
+      stderrBytes: Buffer.byteLength(
+        record.stderr,
+        "utf8",
+      ),
       stdoutTruncated: record.stdoutTruncated,
       stderrTruncated: record.stderrTruncated,
     };
@@ -198,8 +290,11 @@ export class JobHistoryStore {
         ),
       ]);
 
+      let created = false;
       try {
         await rename(temporary, target);
+        this.#cacheMetadata(metadata);
+        created = true;
       } catch (error) {
         if (
           error instanceof Error &&
@@ -213,6 +308,10 @@ export class JobHistoryStore {
         }
         throw error;
       }
+
+      if (created) {
+        await this.prune();
+      }
     } finally {
       await rm(temporary, {
         recursive: true,
@@ -221,7 +320,31 @@ export class JobHistoryStore {
     }
   }
 
-  async loadMetadata(
+  #cacheMetadata(
+    record: PersistedJobMetadata,
+  ): void {
+    const limit = Math.max(
+      0,
+      Math.floor(this.metadataCacheLimit),
+    );
+
+    if (limit === 0) {
+      this.#metadataCache.clear();
+      return;
+    }
+
+    this.#metadataCache.delete(record.id);
+    this.#metadataCache.set(record.id, record);
+
+    while (this.#metadataCache.size > limit) {
+      const oldest =
+        this.#metadataCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.#metadataCache.delete(oldest);
+    }
+  }
+
+  async #readMetadataFile(
     id: string,
   ): Promise<PersistedJobMetadata | undefined> {
     let text: string;
@@ -247,6 +370,35 @@ export class JobHistoryStore {
     } catch {
       return undefined;
     }
+  }
+
+  async loadMetadata(
+    id: string,
+  ): Promise<PersistedJobMetadata | undefined> {
+    const cached = this.#metadataCache.get(id);
+    if (cached !== undefined) {
+      try {
+        await stat(this.#metadataPath(id));
+        this.#cacheMetadata(cached);
+        return cached;
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          this.#metadataCache.delete(id);
+          return undefined;
+        }
+        throw error;
+      }
+    }
+
+    const record = await this.#readMetadataFile(id);
+    if (record !== undefined) {
+      this.#cacheMetadata(record);
+    }
+    return record;
   }
 
   async load(
@@ -296,9 +448,9 @@ export class JobHistoryStore {
     };
   }
 
-  async listMetadata(): Promise<
-    readonly PersistedJobMetadata[]
-  > {
+  async listMetadata(
+    limit?: number,
+  ): Promise<readonly PersistedJobMetadata[]> {
     let entries;
 
     try {
@@ -316,23 +468,151 @@ export class JobHistoryStore {
       throw error;
     }
 
-    const records = await Promise.all(
-      entries
-        .filter(
-          (entry) =>
-            entry.isDirectory() &&
-            validId(entry.name),
-        )
-        .map((entry) =>
-          this.loadMetadata(entry.name),
-        ),
+    const records = (
+      await Promise.all(
+        entries
+          .filter(
+            (entry) =>
+              entry.isDirectory() &&
+              validId(entry.name),
+          )
+          .map((entry) =>
+            this.#readMetadataFile(entry.name),
+          ),
+      )
+    )
+      .filter(
+        (
+          record,
+        ): record is PersistedJobMetadata =>
+          record !== undefined,
+      )
+      .sort((left, right) =>
+        right.startedAt.localeCompare(left.startedAt),
+      );
+
+    if (limit === undefined) {
+      return records;
+    }
+
+    return records.slice(
+      0,
+      Math.max(0, Math.floor(limit)),
+    );
+  }
+
+  async stats(): Promise<JobHistoryStats> {
+    const records = await this.listMetadata();
+
+    let capturedBytes = 0;
+
+    await Promise.all(
+      records.map(async (record) => {
+        if (
+          record.stdoutBytes !== undefined &&
+          record.stderrBytes !== undefined
+        ) {
+          capturedBytes +=
+            record.stdoutBytes +
+            record.stderrBytes;
+          return;
+        }
+
+        const root = this.#jobRoot(record.id);
+        const sizes = await Promise.all(
+          ["stdout.txt", "stderr.txt"].map(
+            async (name) => {
+              try {
+                return (await stat(join(root, name))).size;
+              } catch {
+                return 0;
+              }
+            },
+          ),
+        );
+        capturedBytes += sizes[0]! + sizes[1]!;
+      }),
     );
 
-    return records.filter(
-      (
-        record,
-      ): record is PersistedJobMetadata =>
-        record !== undefined,
+    const endedAt = records
+      .map((record) => record.endedAt)
+      .sort();
+
+    return {
+      entries: records.length,
+      capturedBytes,
+      metadataCacheEntries:
+        this.#metadataCache.size,
+      metadataCacheLimit: Math.max(
+        0,
+        Math.floor(this.metadataCacheLimit),
+      ),
+      ...(endedAt[0] === undefined
+        ? {}
+        : { oldestEndedAt: endedAt[0] }),
+      ...(endedAt.length === 0
+        ? {}
+        : {
+            newestEndedAt:
+              endedAt[endedAt.length - 1]!,
+          }),
+      retention: { ...this.retention },
+    };
+  }
+
+  async prune(
+    now = Date.now(),
+  ): Promise<readonly string[]> {
+    const { maxEntries, maxAgeMs } =
+      this.retention;
+
+    if (
+      maxEntries === undefined &&
+      maxAgeMs === undefined
+    ) {
+      return [];
+    }
+
+    const records = [
+      ...(await this.listMetadata()),
+    ].sort((left, right) =>
+      right.endedAt.localeCompare(left.endedAt),
     );
+
+    const remove = new Set<string>();
+
+    if (maxAgeMs !== undefined) {
+      const cutoff = now - maxAgeMs;
+      for (const record of records) {
+        const endedAt = Date.parse(record.endedAt);
+        if (
+          Number.isFinite(endedAt) &&
+          endedAt < cutoff
+        ) {
+          remove.add(record.id);
+        }
+      }
+    }
+
+    if (maxEntries !== undefined) {
+      const retained = records.filter(
+        (record) => !remove.has(record.id),
+      );
+      for (const record of retained.slice(maxEntries)) {
+        remove.add(record.id);
+      }
+    }
+
+    await Promise.all(
+      [...remove].map(async (id) => {
+        await rm(this.#jobRoot(id), {
+          recursive: true,
+          force: true,
+        });
+        this.#metadataCache.delete(id);
+      }),
+    );
+
+    return [...remove];
   }
 }

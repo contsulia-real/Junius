@@ -12,7 +12,11 @@ import {
   DesktopComputerUseService,
 } from "./desktop-computer-use.js";
 
-async function fixture() {
+async function fixture(
+  serviceOptions: ConstructorParameters<
+    typeof DesktopComputerUseService
+  >[0] = {},
+) {
   const root = await mkdtemp(join(tmpdir(), "junius-desktop-"));
   const helper = join(root, "fake-helper.js");
 
@@ -131,6 +135,7 @@ if (process.argv.includes("--server")) {
   );
 
   const service = new DesktopComputerUseService({
+    ...serviceOptions,
     helperPath: helper,
     pythonExecutable: process.execPath,
     platform: "win32",
@@ -295,10 +300,45 @@ test("desktop adapter validates command-specific arguments", async () => {
   }
 });
 
+test("desktop disable clears refs, stops helper, and supports re-enable", async () => {
+  const f = await fixture();
+
+  try {
+    await f.service.run({
+      session: "desktop",
+      command: "inspect",
+      handle: 42,
+    });
+    assert.equal(f.service.state().sessionCount, 1);
+    assert.equal(f.service.state().helperRunning, true);
+
+    await f.service.setEnabled(false);
+    assert.equal(f.service.state().enabled, false);
+    assert.equal(f.service.state().active, false);
+    assert.equal(f.service.state().sessionCount, 0);
+    assert.equal(f.service.state().helperRunning, false);
+
+    await f.service.setEnabled(true);
+    assert.equal(f.service.state().enabled, true);
+    assert.equal(f.service.state().active, true);
+
+    const resumed = await f.service.run({
+      session: "desktop",
+      command: "inspect",
+      handle: 42,
+    });
+    assert.equal(resumed.command, "inspect");
+    assert.equal(f.service.state().helperRunning, true);
+    assert.equal(f.service.state().sessionCount, 1);
+  } finally {
+    await f.dispose();
+  }
+});
+
 test("desktop rejects execution when machine capability is disabled", async () => {
   const f = await fixture();
   try {
-    f.service.setEnabled(false);
+    await f.service.setEnabled(false);
 
     await assert.rejects(
       f.service.run({
@@ -313,6 +353,79 @@ test("desktop rejects execution when machine capability is disabled", async () =
     assert.equal(f.service.state().enabled, false);
     assert.equal(f.service.state().active, false);
     assert.equal(f.service.state().helperRunning, false);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("desktop prunes idle named-session refs", async () => {
+  const f = await fixture({
+    sessionIdleMs: 20,
+    maxSessions: 8,
+  });
+
+  try {
+    await f.service.run({
+      session: "old",
+      command: "inspect",
+      handle: 42,
+    });
+    assert.equal(f.service.state().sessionCount, 1);
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 35),
+    );
+
+    await f.service.run({
+      session: "new",
+      command: "inspect",
+      handle: 42,
+    });
+
+    assert.equal(f.service.state().sessionCount, 1);
+
+    await assert.rejects(
+      f.service.run({
+        session: "old",
+        command: "invoke",
+        ref: "d1",
+      }),
+      (error: unknown) =>
+        error instanceof DesktopComputerUseError &&
+        error.code === "desktop_ref_not_found",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("desktop bounds named-session ref state", async () => {
+  const f = await fixture({
+    sessionIdleMs: 60_000,
+    maxSessions: 2,
+  });
+
+  try {
+    for (const session of ["one", "two", "three"]) {
+      await f.service.run({
+        session,
+        command: "inspect",
+        handle: 42,
+      });
+    }
+
+    assert.equal(f.service.state().sessionCount, 2);
+
+    await assert.rejects(
+      f.service.run({
+        session: "one",
+        command: "invoke",
+        ref: "d1",
+      }),
+      (error: unknown) =>
+        error instanceof DesktopComputerUseError &&
+        error.code === "desktop_ref_not_found",
+    );
   } finally {
     await f.dispose();
   }

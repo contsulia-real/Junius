@@ -6,6 +6,7 @@ import {
   statSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
+import { terminateProcessTree } from "./process-termination.js";
 import {
   delimiter,
   dirname,
@@ -261,7 +262,10 @@ export async function runSourceCheck(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      void terminateProcessTree(
+        child,
+        environment,
+      );
     }, timeoutMs);
   });
 }

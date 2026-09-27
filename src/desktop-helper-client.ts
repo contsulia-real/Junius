@@ -4,6 +4,7 @@ import {
 } from "node:child_process";
 import { once } from "node:events";
 import { StringDecoder } from "node:string_decoder";
+import { terminateProcessTree } from "./process-termination.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
@@ -191,13 +192,10 @@ export class DesktopHelperClient {
     ]);
 
     if (!exited) {
-      child.kill();
-      await Promise.race([
-        once(child, "close"),
-        new Promise((resolvePromise) =>
-          setTimeout(resolvePromise, 1_000),
-        ),
-      ]);
+      await terminateProcessTree(
+        child,
+        this.#environment,
+      );
     }
   }
 
@@ -425,7 +423,10 @@ export class DesktopHelperClient {
       child.exitCode === null &&
       child.signalCode === null
     ) {
-      child.kill();
+      void terminateProcessTree(
+        child,
+        this.#environment,
+      );
     }
   }
 

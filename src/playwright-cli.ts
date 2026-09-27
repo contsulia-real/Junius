@@ -13,6 +13,7 @@ import {
   PlaywrightCliBrokerError,
 } from "./playwright-cli-broker-client.js";
 import { resolveNodeExecutable } from "./capabilities/node-capability.js";
+import { terminateProcessTree } from "./process-termination.js";
 import {
   delimiter,
   dirname,
@@ -26,6 +27,23 @@ const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const REF_PATTERN = /^e\d+$/u;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const DEFAULT_SESSION_IDLE_MS = 10 * 60_000;
+const DEFAULT_MAX_SESSIONS = 32;
+
+function positiveIntegerOr(
+  value: number | undefined,
+  fallback: number,
+): number {
+  if (
+    value === undefined ||
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.floor(value));
+}
 
 export const PLAYWRIGHT_CLI_COMMANDS = [
   "open",
@@ -88,6 +106,17 @@ interface PlaywrightCliLauncher {
   readonly executable: string;
   readonly fixedArgs: readonly string[];
   readonly entryPath?: string;
+}
+
+export interface PlaywrightCliServiceOptions {
+  readonly sessionIdleMs?: number;
+  readonly maxSessions?: number;
+}
+
+interface BrowserSessionState {
+  lastUsedAt: number;
+  inFlight: number;
+  timer?: NodeJS.Timeout;
 }
 
 export interface PlaywrightCliExecution {
@@ -455,14 +484,35 @@ export class PlaywrightCliService {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #statePath: string;
   readonly #broker: PlaywrightCliBrokerClient | undefined;
+  readonly #sessions = new Map<string, BrowserSessionState>();
+  readonly #pendingSessionCleanup = new Set<Promise<void>>();
+  readonly #sessionIdleMs: number;
+  readonly #maxSessions: number;
   #brokerError: string | undefined;
+  #sessionCleanupError: string | undefined;
+  #closing = false;
   #enabled = true;
 
   constructor(
     environment: NodeJS.ProcessEnv = process.env,
     nodeExecutable = resolveNodeExecutable(environment),
+    options: PlaywrightCliServiceOptions = {},
   ) {
     this.#environment = { ...environment };
+    const environmentSessionIdleMs = Number(
+      environment.JUNIUS_BROWSER_SESSION_IDLE_MS,
+    );
+    this.#sessionIdleMs = positiveIntegerOr(
+      options.sessionIdleMs,
+      positiveIntegerOr(
+        environmentSessionIdleMs,
+        DEFAULT_SESSION_IDLE_MS,
+      ),
+    );
+    this.#maxSessions = positiveIntegerOr(
+      options.maxSessions,
+      DEFAULT_MAX_SESSIONS,
+    );
     this.#statePath = defaultBrowserStatePath(environment);
     this.#launcher = resolvePlaywrightCliLauncher(
       environment,
@@ -491,8 +541,26 @@ export class PlaywrightCliService {
     return this.#enabled && this.available;
   }
 
-  setEnabled(enabled: boolean): void {
+  async setEnabled(enabled: boolean): Promise<void> {
+    if (this.#enabled === enabled) return;
+
     this.#enabled = enabled;
+
+    if (enabled) {
+      return;
+    }
+
+    for (const [session, state] of [
+      ...this.#sessions.entries(),
+    ]) {
+      if (state.inFlight === 0) {
+        this.#startSessionCleanup(session, state);
+      }
+    }
+
+    await Promise.allSettled([
+      ...this.#pendingSessionCleanup,
+    ]);
   }
 
   state(): {
@@ -504,6 +572,10 @@ export class PlaywrightCliService {
     readonly brokerRunning: boolean;
     readonly brokerReady: boolean;
     readonly brokerError?: string;
+    readonly sessionCount: number;
+    readonly sessionIdleMs: number;
+    readonly maxSessions: number;
+    readonly sessionCleanupError?: string;
     readonly launcher?: {
       readonly executable: string;
       readonly fixedArgs: readonly string[];
@@ -521,9 +593,18 @@ export class PlaywrightCliService {
           : "spawn",
       brokerRunning: this.#broker?.running ?? false,
       brokerReady: this.#broker?.ready ?? false,
+      sessionCount: this.#sessions.size,
+      sessionIdleMs: this.#sessionIdleMs,
+      maxSessions: this.#maxSessions,
       ...(this.#brokerError === undefined
         ? {}
         : { brokerError: this.#brokerError }),
+      ...(this.#sessionCleanupError === undefined
+        ? {}
+        : {
+            sessionCleanupError:
+              this.#sessionCleanupError,
+          }),
       ...(this.#launcher === undefined
         ? {}
         : {
@@ -586,7 +667,14 @@ export class PlaywrightCliService {
       );
     }
 
-    if (!this.#enabled) {
+    if (this.#closing && command !== "close") {
+      throw new PlaywrightCliError(
+        "playwright_cli_disabled",
+        "Browser computer use is shutting down.",
+      );
+    }
+
+    if (!this.#enabled && command !== "close") {
       throw new PlaywrightCliError(
         "playwright_cli_disabled",
         "Browser computer use is disabled by the Junius machine capability policy.",
@@ -601,8 +689,22 @@ export class PlaywrightCliService {
     }
 
     const launcher = this.#launcher;
+    const closingState =
+      command === "close"
+        ? this.#sessions.get(session)
+        : undefined;
 
-    await mkdir(this.#statePath, { recursive: true });
+    if (command === "close") {
+      if (closingState?.timer !== undefined) {
+        clearTimeout(closingState.timer);
+        closingState.timer = undefined;
+      }
+    } else {
+      this.#beginSessionActivity(session);
+    }
+
+    try {
+      await mkdir(this.#statePath, { recursive: true });
 
     const startedAt = performance.now();
     const cliArgs = commandArgs(session, command, args);
@@ -625,6 +727,9 @@ export class PlaywrightCliService {
         }
 
         this.#brokerError = undefined;
+        if (command === "close") {
+          this.#forgetSession(session);
+        }
 
         return {
           session,
@@ -643,7 +748,7 @@ export class PlaywrightCliService {
       }
     }
 
-    return new Promise<PlaywrightCliExecution>((resolvePromise, reject) => {
+    return await new Promise<PlaywrightCliExecution>((resolvePromise, reject) => {
       const stdout: Buffer[] = [];
       const stderr: Buffer[] = [];
       let bytes = 0;
@@ -688,8 +793,13 @@ export class PlaywrightCliService {
 
         bytes += buffer.length;
         if (bytes > MAX_OUTPUT_BYTES) {
-          outputLimit = true;
-          child.kill();
+          if (!outputLimit) {
+            outputLimit = true;
+            void terminateProcessTree(
+              child,
+              this.#environment,
+            );
+          }
           return;
         }
 
@@ -741,6 +851,9 @@ export class PlaywrightCliService {
 
         settled = true;
         clearTimeout(timer);
+        if (command === "close") {
+          this.#forgetSession(session);
+        }
         resolvePromise({
           session,
           command,
@@ -754,12 +867,186 @@ export class PlaywrightCliService {
 
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill();
+        void terminateProcessTree(
+          child,
+          this.#environment,
+        );
       }, DEFAULT_TIMEOUT_MS);
+    });
+    } finally {
+      if (command === "close") {
+        const state = this.#sessions.get(session);
+        if (
+          !this.#closing &&
+          state !== undefined &&
+          state === closingState &&
+          state.inFlight === 0 &&
+          state.timer === undefined
+        ) {
+          this.#armSessionTimer(session, state);
+        }
+      } else {
+        this.#endSessionActivity(session);
+      }
+    }
+  }
+
+  #forgetSession(session: string): void {
+    const state = this.#sessions.get(session);
+    if (state?.timer !== undefined) {
+      clearTimeout(state.timer);
+    }
+    this.#sessions.delete(session);
+  }
+
+  #beginSessionActivity(session: string): void {
+    let state = this.#sessions.get(session);
+    if (state === undefined) {
+      state = {
+        lastUsedAt: Date.now(),
+        inFlight: 0,
+      };
+      this.#sessions.set(session, state);
+    }
+
+    if (state.timer !== undefined) {
+      clearTimeout(state.timer);
+      state.timer = undefined;
+    }
+
+    state.inFlight += 1;
+    state.lastUsedAt = Date.now();
+  }
+
+  #endSessionActivity(session: string): void {
+    const state = this.#sessions.get(session);
+    if (state === undefined) return;
+
+    state.inFlight = Math.max(0, state.inFlight - 1);
+    state.lastUsedAt = Date.now();
+
+    if (this.#closing || state.inFlight > 0) {
+      return;
+    }
+
+    if (!this.#enabled) {
+      this.#startSessionCleanup(session, state);
+      return;
+    }
+
+    this.#armSessionTimer(session, state);
+    this.#enforceSessionLimit();
+  }
+
+  #armSessionTimer(
+    session: string,
+    state: BrowserSessionState,
+  ): void {
+    if (state.timer !== undefined) {
+      clearTimeout(state.timer);
+    }
+
+    state.timer = setTimeout(() => {
+      state.timer = undefined;
+      this.#startSessionCleanup(session, state);
+    }, this.#sessionIdleMs);
+  }
+
+  #enforceSessionLimit(): void {
+    const overflow =
+      this.#sessions.size - this.#maxSessions;
+    if (overflow <= 0) return;
+
+    const candidates = [...this.#sessions.entries()]
+      .filter(([, state]) => state.inFlight === 0)
+      .sort(
+        (left, right) =>
+          left[1].lastUsedAt - right[1].lastUsedAt,
+      )
+      .slice(0, overflow);
+
+    for (const [session, state] of candidates) {
+      this.#startSessionCleanup(session, state);
+    }
+  }
+
+  #startSessionCleanup(
+    session: string,
+    state: BrowserSessionState,
+  ): void {
+    if (
+      this.#closing ||
+      this.#sessions.get(session) !== state ||
+      state.inFlight > 0
+    ) {
+      return;
+    }
+
+    this.#forgetSession(session);
+
+    const task = this.#closeDetachedSession(
+      session,
+      state,
+    );
+    this.#pendingSessionCleanup.add(task);
+    void task.finally(() => {
+      this.#pendingSessionCleanup.delete(task);
     });
   }
 
+  async #closeDetachedSession(
+    session: string,
+    state: BrowserSessionState,
+  ): Promise<void> {
+    try {
+      await this.run(session, "close", []);
+      this.#sessionCleanupError = undefined;
+    } catch (error) {
+      this.#sessionCleanupError =
+        error instanceof Error
+          ? error.message
+          : String(error);
+
+      if (
+        !this.#closing &&
+        !this.#sessions.has(session) &&
+        this.#sessions.size < this.#maxSessions
+      ) {
+        state.inFlight = 0;
+        state.lastUsedAt = Date.now();
+        state.timer = undefined;
+        this.#sessions.set(session, state);
+        this.#armSessionTimer(session, state);
+      }
+    }
+  }
+
   async close(): Promise<void> {
+    if (this.#closing) return;
+    this.#closing = true;
+
+    for (const state of this.#sessions.values()) {
+      if (state.timer !== undefined) {
+        clearTimeout(state.timer);
+        state.timer = undefined;
+      }
+    }
+
+    await Promise.allSettled([
+      ...this.#pendingSessionCleanup,
+    ]);
+
+    const sessions = [...this.#sessions.keys()];
+    await Promise.allSettled(
+      sessions.map((session) =>
+        this.run(session, "close", []),
+      ),
+    );
+
+    for (const session of this.#sessions.keys()) {
+      this.#forgetSession(session);
+    }
+
     await this.#broker?.close();
   }
 }

@@ -43,6 +43,8 @@ interface JobHistoryPersistedMessage {
 const DEFAULT_BROWSER_RESOURCE_IDLE_MS = 10 * 60_000;
 const DEFAULT_DESKTOP_RESOURCE_IDLE_MS = 5 * 60_000;
 const DEFAULT_JOB_RESULT_RETENTION_MS = 30 * 60_000;
+const DEFAULT_MCP_SESSION_IDLE_MS = 30 * 60_000;
+const DEFAULT_MAX_EXITED_RECORDS = 16;
 
 export interface WorkerSupervisorOptions {
   readonly cwd: string;
@@ -55,6 +57,8 @@ export interface WorkerSupervisorOptions {
   readonly browserResourceIdleMs?: number;
   readonly desktopResourceIdleMs?: number;
   readonly jobResultRetentionMs?: number;
+  readonly mcpSessionIdleMs?: number;
+  readonly maxExitedRecords?: number;
   readonly validate?: () => Promise<SourceCheckResult>;
   readonly spawnWorker?: () => Promise<ManagedWorker>;
   readonly spawnInitialWorker?: () => Promise<ManagedWorker>;
@@ -103,10 +107,14 @@ export class WorkerSupervisor {
   readonly #resourceRoutes = new Map<string, ResourceBinding>();
   readonly #terminalResourceHints = new Map<string, string>();
   readonly #persistedResourceHints = new Map<string, string>();
+  readonly #hintTimers = new Map<string, NodeJS.Timeout>();
+  readonly #sessionTimers = new Map<string, NodeJS.Timeout>();
   readonly #rollbackWindowMs: number;
   readonly #browserResourceIdleMs: number;
   readonly #desktopResourceIdleMs: number;
   readonly #jobResultRetentionMs: number;
+  readonly #mcpSessionIdleMs: number;
+  readonly #maxExitedRecords: number;
   readonly #validate: () => Promise<SourceCheckResult>;
   readonly #spawnWorker: () => Promise<ManagedWorker>;
   readonly #spawnInitialWorker: () => Promise<ManagedWorker>;
@@ -132,6 +140,16 @@ export class WorkerSupervisor {
     this.#jobResultRetentionMs =
       options.jobResultRetentionMs ??
       DEFAULT_JOB_RESULT_RETENTION_MS;
+    this.#mcpSessionIdleMs =
+      options.mcpSessionIdleMs ??
+      DEFAULT_MCP_SESSION_IDLE_MS;
+    this.#maxExitedRecords = Math.max(
+      0,
+      Math.floor(
+        options.maxExitedRecords ??
+          DEFAULT_MAX_EXITED_RECORDS,
+      ),
+    );
     this.#validate =
       options.validate ??
       (() =>
@@ -248,8 +266,11 @@ export class WorkerSupervisor {
         (!this.#records.has(workerId) ||
           this.#record(workerId).status === "exited")
       ) {
+        this.#clearSessionTimer(sessionId);
         this.#sessionRoutes.delete(sessionId);
         workerId = undefined;
+      } else if (workerId !== undefined) {
+        this.#armSessionExpiry(sessionId, workerId);
       }
     }
 
@@ -289,12 +310,15 @@ export class WorkerSupervisor {
 
     this.#sessionRoutes.set(sessionId, workerId);
     record.sessions.add(sessionId);
+
+    this.#armSessionExpiry(sessionId, workerId);
   }
 
   releaseSession(sessionId: string): void {
     const workerId = this.#sessionRoutes.get(sessionId);
     if (workerId === undefined) return;
 
+    this.#clearSessionTimer(sessionId);
     this.#sessionRoutes.delete(sessionId);
     const record = this.#records.get(workerId);
     record?.sessions.delete(sessionId);
@@ -317,8 +341,16 @@ export class WorkerSupervisor {
       this.#persistedResourceHints.get(resourceKey) ===
         workerId
     ) {
-      this.#persistedResourceHints.delete(resourceKey);
-      this.#terminalResourceHints.delete(resourceKey);
+      this.#deleteHint(
+        this.#persistedResourceHints,
+        "persisted",
+        resourceKey,
+      );
+      this.#deleteHint(
+        this.#terminalResourceHints,
+        "terminal",
+        resourceKey,
+      );
 
       const existingPersisted =
         this.#resourceRoutes.get(resourceKey);
@@ -367,7 +399,11 @@ export class WorkerSupervisor {
       resourceKey.startsWith("job:") &&
       this.#terminalResourceHints.get(resourceKey) === workerId
     ) {
-      this.#terminalResourceHints.delete(resourceKey);
+      this.#deleteHint(
+        this.#terminalResourceHints,
+        "terminal",
+        resourceKey,
+      );
       this.#armResourceExpiry(
         binding,
         this.#jobResultRetentionMs,
@@ -397,14 +433,20 @@ export class WorkerSupervisor {
       binding === undefined ||
       binding.workerId !== workerId
     ) {
-      this.#terminalResourceHints.set(
+      this.#setHint(
+        this.#terminalResourceHints,
+        "terminal",
         resourceKey,
         workerId,
       );
       return;
     }
 
-    this.#terminalResourceHints.delete(resourceKey);
+    this.#deleteHint(
+      this.#terminalResourceHints,
+      "terminal",
+      resourceKey,
+    );
     this.#armResourceExpiry(
       binding,
       this.#jobResultRetentionMs,
@@ -418,20 +460,30 @@ export class WorkerSupervisor {
     const resourceKey = `job:${jobId}`;
     const binding = this.#resourceRoutes.get(resourceKey);
 
-    this.#terminalResourceHints.delete(resourceKey);
+    this.#deleteHint(
+      this.#terminalResourceHints,
+      "terminal",
+      resourceKey,
+    );
 
     if (
       binding === undefined ||
       binding.workerId !== workerId
     ) {
-      this.#persistedResourceHints.set(
+      this.#setHint(
+        this.#persistedResourceHints,
+        "persisted",
         resourceKey,
         workerId,
       );
       return;
     }
 
-    this.#persistedResourceHints.delete(resourceKey);
+    this.#deleteHint(
+      this.#persistedResourceHints,
+      "persisted",
+      resourceKey,
+    );
     this.#releaseResourceBinding(binding);
   }
 
@@ -499,7 +551,16 @@ export class WorkerSupervisor {
       ),
     );
 
+    for (const timer of this.#sessionTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.#sessionTimers.clear();
     this.#sessionRoutes.clear();
+
+    for (const timer of this.#hintTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.#hintTimers.clear();
 
     for (const binding of this.#resourceRoutes.values()) {
       if (binding.timer !== undefined) {
@@ -582,6 +643,12 @@ export class WorkerSupervisor {
       if (previous !== undefined && previous.status !== "exited") {
         previous.status = "retiring";
         previous.retiredAt = new Date().toISOString();
+        for (const sessionId of previous.sessions) {
+          this.#armSessionExpiry(
+            sessionId,
+            previous.worker.id,
+          );
+        }
         this.#scheduleReap(previous);
       }
     }
@@ -627,6 +694,7 @@ export class WorkerSupervisor {
     }
 
     for (const sessionId of record.sessions) {
+      this.#clearSessionTimer(sessionId);
       this.#sessionRoutes.delete(sessionId);
     }
     record.sessions.clear();
@@ -643,7 +711,11 @@ export class WorkerSupervisor {
       this.#terminalResourceHints
     ) {
       if (hintedWorkerId === workerId) {
-        this.#terminalResourceHints.delete(resourceKey);
+        this.#deleteHint(
+          this.#terminalResourceHints,
+          "terminal",
+          resourceKey,
+        );
       }
     }
 
@@ -651,11 +723,16 @@ export class WorkerSupervisor {
       this.#persistedResourceHints
     ) {
       if (hintedWorkerId === workerId) {
-        this.#persistedResourceHints.delete(resourceKey);
+        this.#deleteHint(
+          this.#persistedResourceHints,
+          "persisted",
+          resourceKey,
+        );
       }
     }
 
     if (this.#activeWorkerId !== workerId) {
+      this.#pruneExitedRecords();
       return;
     }
 
@@ -673,6 +750,7 @@ export class WorkerSupervisor {
     if (fallback === undefined) {
       this.#activeWorkerId = undefined;
       this.#lastFailure = "active_worker_exited_without_fallback";
+      this.#pruneExitedRecords();
       return;
     }
 
@@ -683,9 +761,13 @@ export class WorkerSupervisor {
     fallback.status = "active";
     fallback.retiredAt = undefined;
     fallback.promotedAt = new Date().toISOString();
+    for (const sessionId of fallback.sessions) {
+      this.#clearSessionTimer(sessionId);
+    }
     this.#activeWorkerId = fallback.worker.id;
     this.#lastFailure =
       `active_worker_exited_rolled_back_to: ${fallback.worker.id}`;
+    this.#pruneExitedRecords();
   }
 
   #onWorkerMessage(
@@ -726,6 +808,105 @@ export class WorkerSupervisor {
         workerId,
         candidate.jobId,
       );
+    }
+  }
+
+  #hintTimerKey(
+    kind: "terminal" | "persisted",
+    resourceKey: string,
+  ): string {
+    return `${kind}:${resourceKey}`;
+  }
+
+  #setHint(
+    map: Map<string, string>,
+    kind: "terminal" | "persisted",
+    resourceKey: string,
+    workerId: string,
+  ): void {
+    this.#deleteHint(map, kind, resourceKey);
+    map.set(resourceKey, workerId);
+
+    const timerKey =
+      this.#hintTimerKey(kind, resourceKey);
+    const timer = setTimeout(() => {
+      this.#hintTimers.delete(timerKey);
+      if (map.get(resourceKey) === workerId) {
+        map.delete(resourceKey);
+      }
+    }, this.#jobResultRetentionMs);
+
+    this.#hintTimers.set(timerKey, timer);
+  }
+
+  #deleteHint(
+    map: Map<string, string>,
+    kind: "terminal" | "persisted",
+    resourceKey: string,
+  ): void {
+    map.delete(resourceKey);
+
+    const timerKey =
+      this.#hintTimerKey(kind, resourceKey);
+    const timer = this.#hintTimers.get(timerKey);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.#hintTimers.delete(timerKey);
+    }
+  }
+
+  #clearSessionTimer(sessionId: string): void {
+    const timer = this.#sessionTimers.get(sessionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.#sessionTimers.delete(sessionId);
+    }
+  }
+
+  #armSessionExpiry(
+    sessionId: string,
+    workerId: string,
+  ): void {
+    this.#clearSessionTimer(sessionId);
+
+    const timer = setTimeout(() => {
+      this.#sessionTimers.delete(sessionId);
+
+      if (
+        this.#sessionRoutes.get(sessionId) !== workerId
+      ) {
+        return;
+      }
+
+      const record = this.#records.get(workerId);
+      if (
+        record === undefined ||
+        record.status === "exited"
+      ) {
+        return;
+      }
+
+      this.releaseSession(sessionId);
+    }, this.#mcpSessionIdleMs);
+
+    this.#sessionTimers.set(sessionId, timer);
+  }
+
+  #pruneExitedRecords(): void {
+    const exited = [...this.#records.values()]
+      .filter(
+        (record) =>
+          record.status === "exited" &&
+          record.worker.id !== this.#activeWorkerId,
+      )
+      .sort((left, right) =>
+        right.promotedAt.localeCompare(left.promotedAt),
+      );
+
+    for (const record of exited.slice(
+      this.#maxExitedRecords,
+    )) {
+      this.#records.delete(record.worker.id);
     }
   }
 
@@ -793,8 +974,16 @@ export class WorkerSupervisor {
     }
 
     this.#resourceRoutes.delete(binding.key);
-    this.#terminalResourceHints.delete(binding.key);
-    this.#persistedResourceHints.delete(binding.key);
+    this.#deleteHint(
+      this.#terminalResourceHints,
+      "terminal",
+      binding.key,
+    );
+    this.#deleteHint(
+      this.#persistedResourceHints,
+      "persisted",
+      binding.key,
+    );
 
     const record = this.#records.get(binding.workerId);
     record?.resources.delete(binding.key);
@@ -857,6 +1046,7 @@ export class WorkerSupervisor {
 
     void record.worker.close().finally(() => {
       record.status = "exited";
+      this.#pruneExitedRecords();
     });
   }
 

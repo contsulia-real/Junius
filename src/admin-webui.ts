@@ -4,6 +4,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Junius 控制台</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/dashboard.css">
 </head>
 <body>
@@ -94,6 +95,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
               <p>由 Junius 当前进程管理的后台任务。</p>
             </div>
           </div>
+          <div id="job-history-summary" class="detail-grid"></div>
           <div id="job-list" class="stack"></div>
         </div>
         <div id="job-output-panel" class="panel hidden">
@@ -574,7 +576,44 @@ export const ADMIN_DASHBOARD_JS = String.raw`
     }).join("");
   }
 
+  function formatByteCount(value) {
+    var bytes = Number(value || 0);
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KiB";
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MiB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GiB";
+  }
+
   function renderJobs() {
+    var history = data.jobHistory || {
+      entries: 0,
+      capturedBytes: 0,
+      retention: {}
+    };
+    var retention = history.retention || {};
+    var retentionText = "无限保留（未启用自动清理）";
+    if (
+      retention.maxEntries !== undefined ||
+      retention.maxAgeMs !== undefined
+    ) {
+      var rules = [];
+      if (retention.maxEntries !== undefined) {
+        rules.push("最多 " + retention.maxEntries + " 条");
+      }
+      if (retention.maxAgeMs !== undefined) {
+        rules.push("最长 " + retention.maxAgeMs + " ms");
+      }
+      retentionText = rules.join(" · ");
+    }
+
+    document.getElementById("job-history-summary").innerHTML =
+      '<div class="detail"><div class="key">历史任务</div><div class="value">' +
+      esc(history.entries) + '</div></div>' +
+      '<div class="detail"><div class="key">捕获输出</div><div class="value">' +
+      esc(formatByteCount(history.capturedBytes)) + '</div></div>' +
+      '<div class="detail"><div class="key">保留策略</div><div class="value">' +
+      esc(retentionText) + '</div></div>';
+
     var node = document.getElementById("job-list");
     if (data.jobs.length === 0) {
       node.innerHTML = '<div class="empty">当前 Junius 进程中没有后台任务。</div>';
@@ -608,6 +647,13 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       (data.browser.transport === "broker" ? "常驻 Broker" : "单次进程 fallback") + '</div></div>' +
       '<div class="detail"><div class="key">Broker 进程</div><div class="value">' +
       (data.browser.brokerRunning ? "常驻运行中" : (data.browser.transport === "broker" ? "待首次调用" : "未启用")) + '</div></div>' +
+      '<div class="detail"><div class="key">活动 Session</div><div class="value">' +
+      esc(data.browser.sessionCount || 0) + ' / ' + esc(data.browser.maxSessions || 0) + '</div></div>' +
+      '<div class="detail"><div class="key">Session 空闲回收</div><div class="value">' +
+      esc(data.browser.sessionIdleMs || 0) + ' ms</div></div>' +
+      (data.browser.sessionCleanupError
+        ? '<div class="detail"><div class="key">Session 清理错误</div><div class="value">' + esc(data.browser.sessionCleanupError) + '</div></div>'
+        : '') +
       '<div class="detail"><div class="key">默认窗口模式</div><div class="value">可见窗口（headed）</div></div>' +
       '<div class="detail"><div class="key">默认 Profile 模式</div><div class="value">持久化（persistent）</div></div>';
   }

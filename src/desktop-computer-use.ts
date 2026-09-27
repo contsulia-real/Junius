@@ -9,6 +9,8 @@ import { dirname, join, resolve } from "node:path";
 
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const REF_PATTERN = /^d\d+$/u;
+const DEFAULT_SESSION_IDLE_MS = 5 * 60_000;
+const DEFAULT_MAX_SESSIONS = 64;
 const DEFAULT_HELPER_PATH = fileURLToPath(
   new URL("../python/desktop_helper.py", import.meta.url),
 );
@@ -64,6 +66,7 @@ interface DesktopElementRef {
 interface DesktopSessionState {
   readonly refs: Map<string, DesktopElementRef>;
   nextRef: number;
+  lastUsedAt: number;
 }
 
 interface HelperImage {
@@ -99,6 +102,8 @@ export interface DesktopComputerUseOptions {
   readonly pythonExecutable?: string;
   readonly helperPath?: string;
   readonly platform?: NodeJS.Platform;
+  readonly sessionIdleMs?: number;
+  readonly maxSessions?: number;
 }
 
 function localPythonCandidate(
@@ -246,7 +251,9 @@ export class DesktopComputerUseService {
   readonly #helperPath: string;
   readonly #platform: NodeJS.Platform;
   readonly #sessions = new Map<string, DesktopSessionState>();
-  readonly #helperClient: DesktopHelperClient | undefined;
+  #helperClient: DesktopHelperClient | undefined;
+  readonly #sessionIdleMs: number;
+  readonly #maxSessions: number;
   #enabled = true;
 
   constructor(options: DesktopComputerUseOptions = {}) {
@@ -255,6 +262,18 @@ export class DesktopComputerUseService {
       ...options.environment,
     };
     this.#platform = options.platform ?? process.platform;
+    this.#sessionIdleMs = Math.max(
+      1,
+      Math.floor(
+        options.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS,
+      ),
+    );
+    this.#maxSessions = Math.max(
+      1,
+      Math.floor(
+        options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+      ),
+    );
     this.#helperPath = resolve(
       options.helperPath ??
         this.#environment.JUNIUS_DESKTOP_HELPER_PATH ??
@@ -265,14 +284,7 @@ export class DesktopComputerUseService {
       this.#environment,
       options.pythonExecutable,
     );
-    this.#helperClient =
-      this.#pythonExecutable === undefined
-        ? undefined
-        : new DesktopHelperClient({
-            pythonExecutable: this.#pythonExecutable,
-            helperPath: this.#helperPath,
-            environment: this.#environment,
-          });
+    this.#helperClient = this.#createHelperClient();
   }
 
   get enabled(): boolean {
@@ -291,8 +303,22 @@ export class DesktopComputerUseService {
     return this.#enabled && this.available;
   }
 
-  setEnabled(enabled: boolean): void {
+  async setEnabled(enabled: boolean): Promise<void> {
+    if (this.#enabled === enabled) return;
+
     this.#enabled = enabled;
+
+    if (!enabled) {
+      this.#sessions.clear();
+      const helper = this.#helperClient;
+      this.#helperClient = undefined;
+      await helper?.close();
+      return;
+    }
+
+    if (this.#helperClient === undefined) {
+      this.#helperClient = this.#createHelperClient();
+    }
   }
 
   state(): {
@@ -303,7 +329,9 @@ export class DesktopComputerUseService {
     readonly pythonExecutable?: string;
     readonly helperRunning: boolean;
     readonly helperReady: boolean;
+    readonly sessionCount: number;
   } {
+    this.#pruneExpiredSessions();
     return {
       enabled: this.enabled,
       available: this.available,
@@ -311,6 +339,7 @@ export class DesktopComputerUseService {
       helperPath: this.#helperPath,
       helperRunning: this.#helperClient?.running ?? false,
       helperReady: this.#helperClient?.ready ?? false,
+      sessionCount: this.#sessions.size,
       ...(this.#pythonExecutable === undefined
         ? {}
         : { pythonExecutable: this.#pythonExecutable }),
@@ -396,17 +425,51 @@ export class DesktopComputerUseService {
   }
 
   #session(name: string): DesktopSessionState {
+    const now = Date.now();
+    this.#pruneExpiredSessions(now);
+
     let state = this.#sessions.get(name);
 
     if (state === undefined) {
+      while (this.#sessions.size >= this.#maxSessions) {
+        let oldestName: string | undefined;
+        let oldestUsedAt = Number.POSITIVE_INFINITY;
+
+        for (const [candidateName, candidate] of
+          this.#sessions
+        ) {
+          if (candidate.lastUsedAt < oldestUsedAt) {
+            oldestUsedAt = candidate.lastUsedAt;
+            oldestName = candidateName;
+          }
+        }
+
+        if (oldestName === undefined) break;
+        this.#sessions.delete(oldestName);
+      }
+
       state = {
         refs: new Map(),
         nextRef: 1,
+        lastUsedAt: now,
       };
       this.#sessions.set(name, state);
+    } else {
+      state.lastUsedAt = now;
     }
 
     return state;
+  }
+
+  #pruneExpiredSessions(now = Date.now()): void {
+    for (const [name, session] of this.#sessions) {
+      if (
+        now - session.lastUsedAt >=
+        this.#sessionIdleMs
+      ) {
+        this.#sessions.delete(name);
+      }
+    }
   }
 
   #toHelperRequest(
@@ -537,7 +600,22 @@ export class DesktopComputerUseService {
   }
 
   async close(): Promise<void> {
-    await this.#helperClient?.close();
+    this.#sessions.clear();
+    const helper = this.#helperClient;
+    this.#helperClient = undefined;
+    await helper?.close();
+  }
+
+  #createHelperClient(): DesktopHelperClient | undefined {
+    if (this.#pythonExecutable === undefined) {
+      return undefined;
+    }
+
+    return new DesktopHelperClient({
+      pythonExecutable: this.#pythonExecutable,
+      helperPath: this.#helperPath,
+      environment: this.#environment,
+    });
   }
 
   async #executeHelper(

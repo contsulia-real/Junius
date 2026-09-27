@@ -4,6 +4,7 @@ import {
 } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { terminateProcessTree } from "./process-termination.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -197,13 +198,10 @@ export class PlaywrightCliBrokerClient {
     ]);
 
     if (!exited) {
-      child.kill();
-      await Promise.race([
-        once(child, "close"),
-        new Promise((resolvePromise) =>
-          setTimeout(resolvePromise, 1_000),
-        ),
-      ]);
+      await terminateProcessTree(
+        child,
+        this.#environment,
+      );
     }
   }
 
@@ -445,7 +443,10 @@ export class PlaywrightCliBrokerClient {
       child.exitCode === null &&
       child.signalCode === null
     ) {
-      child.kill();
+      void terminateProcessTree(
+        child,
+        this.#environment,
+      );
     }
   }
 

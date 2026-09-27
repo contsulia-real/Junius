@@ -3,6 +3,7 @@ import {
   type ChildProcess,
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { terminateProcessTree } from "./process-termination.js";
 
 const MAX_LOG_CHARS = 128 * 1024;
 
@@ -236,7 +237,10 @@ export async function spawnManagedWorker(
 
     await assertHealthy(id, ready.adminPort);
   } catch (error) {
-    child.kill();
+    await terminateProcessTree(
+      child,
+      options.environment ?? process.env,
+    );
     await waitForExit(child, 2_000);
     throw error;
   }
@@ -259,15 +263,18 @@ export async function spawnManagedWorker(
       if (child.connected) {
         child.send({ type: "junius-worker-shutdown" });
       } else {
-        child.kill();
+        await terminateProcessTree(
+          child,
+          options.environment ?? process.env,
+        );
       }
 
       if (!(await waitForExit(child, 5_000))) {
-        child.kill("SIGTERM");
-        if (!(await waitForExit(child, 2_000))) {
-          child.kill("SIGKILL");
-          await waitForExit(child, 1_000);
-        }
+        await terminateProcessTree(
+          child,
+          options.environment ?? process.env,
+        );
+        await waitForExit(child, 2_000);
       }
     },
   };

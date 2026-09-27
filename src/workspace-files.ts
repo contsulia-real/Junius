@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { terminateProcessTree } from "./process-termination.js";
 import {
   chmod,
   lstat,
@@ -942,15 +943,17 @@ async function runRg(
     let settled = false;
 
     const timer = setTimeout(() => {
-      child.kill();
+      void terminateProcessTree(child);
     }, RG_TIMEOUT_MS);
 
     const append = (targetChunks: Buffer[], chunk: Buffer | string) => {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       bytes += buffer.length;
       if (bytes > RG_MAX_OUTPUT_BYTES) {
-        outputLimit = true;
-        child.kill();
+        if (!outputLimit) {
+          outputLimit = true;
+          void terminateProcessTree(child);
+        }
         return;
       }
       targetChunks.push(buffer);

@@ -200,7 +200,7 @@ export class MachineCapabilityManager {
       );
     }
 
-    manager.#reconcileAll();
+    await manager.#reconcileAll();
 
     if (persisted === undefined) {
       await manager.#save();
@@ -255,7 +255,7 @@ export class MachineCapabilityManager {
     }
 
     this.#preferences.set(key, enabled);
-    this.#reconcile(key);
+    await this.#reconcile(key);
     await this.#save();
 
     return this.#status(key);
@@ -367,22 +367,24 @@ export class MachineCapabilityManager {
     };
   }
 
-  #reconcileAll(): void {
+  async #reconcileAll(): Promise<void> {
     for (const key of KNOWN_KEYS) {
-      this.#reconcile(key);
+      await this.#reconcile(key);
     }
   }
 
-  #reconcile(key: MachineCapabilityKey): void {
+  async #reconcile(
+    key: MachineCapabilityKey,
+  ): Promise<void> {
     const enabled = this.#preferences.get(key) ?? true;
 
     if (key === "browser") {
-      this.services.browser.setEnabled(enabled);
+      await this.services.browser.setEnabled(enabled);
       return;
     }
 
     if (key === "desktop") {
-      this.services.desktop.setEnabled(enabled);
+      await this.services.desktop.setEnabled(enabled);
       return;
     }
 

@@ -406,22 +406,69 @@ export class JobManager {
     return snapshot(record);
   }
 
-  async list(): Promise<readonly JobSnapshot[]> {
+  async historyStats() {
+    return this.history?.stats();
+  }
+
+  async list(
+    terminalLimit?: number,
+  ): Promise<readonly JobSnapshot[]> {
+    const live = [...this.#jobs.values()].map(
+      snapshot,
+    );
+    const running = live
+      .filter((job) => job.status === "running")
+      .sort((left, right) =>
+        right.startedAt.localeCompare(left.startedAt),
+      );
+    const liveTerminal = live
+      .filter((job) => job.status !== "running")
+      .sort((left, right) =>
+        right.startedAt.localeCompare(left.startedAt),
+      );
+
+    const boundedLimit =
+      terminalLimit === undefined
+        ? undefined
+        : Math.max(
+            0,
+            Math.floor(terminalLimit),
+          );
+
     const merged = new Map<string, JobSnapshot>();
 
     if (this.history !== undefined) {
-      for (const record of await this.history.listMetadata()) {
-        merged.set(record.id, persistedSnapshot(record));
+      const historyRecords =
+        await this.history.listMetadata(
+          boundedLimit === undefined
+            ? undefined
+            : boundedLimit +
+                liveTerminal.length,
+        );
+
+      for (const record of historyRecords) {
+        merged.set(
+          record.id,
+          persistedSnapshot(record),
+        );
       }
     }
 
-    for (const record of this.#jobs.values()) {
-      merged.set(record.id, snapshot(record));
+    for (const job of liveTerminal) {
+      merged.set(job.id, job);
     }
 
-    return [...merged.values()].sort((left, right) =>
-      right.startedAt.localeCompare(left.startedAt),
+    const terminal = [...merged.values()].sort(
+      (left, right) =>
+        right.startedAt.localeCompare(left.startedAt),
     );
+
+    return [
+      ...running,
+      ...(boundedLimit === undefined
+        ? terminal
+        : terminal.slice(0, boundedLimit)),
+    ];
   }
 
   async get(id: string): Promise<JobSnapshot> {
@@ -574,10 +621,19 @@ export class JobManager {
     const task = this.history
       .save(persisted)
       .then(() => {
+        const persistedSnapshotValue = snapshot(record);
+
         try {
-          this.onPersisted?.(snapshot(record));
+          this.onPersisted?.(persistedSnapshotValue);
         } catch {
           // Persistence success must not be changed by observer failures.
+        }
+
+        if (
+          this.#jobs.get(record.id) === record &&
+          terminal(record.status)
+        ) {
+          this.#jobs.delete(record.id);
         }
       })
       .catch((error: unknown) => {
