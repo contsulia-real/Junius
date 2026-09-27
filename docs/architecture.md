@@ -397,7 +397,7 @@ The current ProcessCapability provides:
 - maximum output size;
 - timeout handling.
 
-Current synchronous ProcessCapability timeout termination targets the directly spawned process. Junius does not claim general descendant process-tree containment for synchronous commands.
+Synchronous ProcessCapability timeout and output-limit termination use the shared process-termination primitive also used by Job Manager. On Windows, the primitive invokes `%SystemRoot%\\System32\\taskkill.exe /PID <pid> /T /F` directly with `shell: false` and waits for termination before the synchronous result is returned, providing descendant process-tree termination for those forced-stop paths. Other platforms currently terminate only the direct child with SIGTERM and then SIGKILL fallback.
 
 Long-running processes use the implemented Job Manager described below.
 

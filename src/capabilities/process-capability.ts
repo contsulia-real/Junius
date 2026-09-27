@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { terminateProcessTree } from "../process-termination.js";
 import type {
   Capability,
   CapabilityExecution,
@@ -113,7 +114,9 @@ export class ProcessCapability implements Capability {
       const stderrChunks: Buffer[] = [];
       let capturedBytes = 0;
       let settled = false;
-      let timedOut = false;
+      let forcedFailure:
+        | (() => CapabilityExecution)
+        | undefined;
       let timer: NodeJS.Timeout | undefined;
 
       const child = spawn(
@@ -147,11 +150,41 @@ export class ProcessCapability implements Capability {
         resolve(result);
       };
 
+      const terminateWith = (
+        result: () => CapabilityExecution,
+      ): void => {
+        if (
+          settled ||
+          forcedFailure !== undefined
+        ) {
+          return;
+        }
+
+        forcedFailure = result;
+
+        void terminateProcessTree(
+          child,
+          prepared.process.env,
+        ).finally(() => {
+          if (
+            settled ||
+            forcedFailure === undefined
+          ) {
+            return;
+          }
+
+          finish(forcedFailure());
+        });
+      };
+
       const appendChunk = (
         target: Buffer[],
         chunk: Buffer | string,
       ): void => {
-        if (settled) {
+        if (
+          settled ||
+          forcedFailure !== undefined
+        ) {
           return;
         }
 
@@ -159,16 +192,17 @@ export class ProcessCapability implements Capability {
         capturedBytes += buffer.length;
 
         if (capturedBytes > this.#maxOutputBytes) {
-          child.kill();
-          const captured = capturedText();
-          finish({
-            ok: false,
-            code: "output_limit",
-            message: `Process output exceeded ${this.#maxOutputBytes} bytes.`,
-            exitCode: null,
-            signal: null,
-            ...captured,
-            durationMs: durationMs(),
+          terminateWith(() => {
+            const captured = capturedText();
+            return {
+              ok: false,
+              code: "output_limit",
+              message: `Process output exceeded ${this.#maxOutputBytes} bytes.`,
+              exitCode: child.exitCode,
+              signal: child.signalCode,
+              ...captured,
+              durationMs: durationMs(),
+            };
           });
           return;
         }
@@ -185,6 +219,10 @@ export class ProcessCapability implements Capability {
       });
 
       child.once("error", (error) => {
+        if (forcedFailure !== undefined) {
+          return;
+        }
+
         const captured = capturedText();
         finish({
           ok: false,
@@ -198,24 +236,14 @@ export class ProcessCapability implements Capability {
       });
 
       child.once("close", (exitCode, signal) => {
-        if (settled) {
+        if (
+          settled ||
+          forcedFailure !== undefined
+        ) {
           return;
         }
 
         const captured = capturedText();
-
-        if (timedOut) {
-          finish({
-            ok: false,
-            code: "process_timeout",
-            message: `Process exceeded timeout of ${this.#timeoutMs} ms.`,
-            exitCode,
-            signal,
-            ...captured,
-            durationMs: durationMs(),
-          });
-          return;
-        }
 
         if (exitCode === 0) {
           finish({
@@ -239,8 +267,18 @@ export class ProcessCapability implements Capability {
       });
 
       timer = setTimeout(() => {
-        timedOut = true;
-        child.kill();
+        terminateWith(() => {
+          const captured = capturedText();
+          return {
+            ok: false,
+            code: "process_timeout",
+            message: `Process exceeded timeout of ${this.#timeoutMs} ms.`,
+            exitCode: child.exitCode,
+            signal: child.signalCode,
+            ...captured,
+            durationMs: durationMs(),
+          };
+        });
       }, this.#timeoutMs);
     });
   }

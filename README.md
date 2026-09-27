@@ -133,7 +133,7 @@ The current process adapter:
 
 It also inherits the Junius host environment. Therefore an authorized project script can observe environment variables available to Junius.
 
-Timeout termination currently targets the directly spawned process only. Junius does not claim process-tree containment.
+Synchronous ProcessCapability timeout and output-limit termination share the same process-termination primitive as Job Manager. On Windows, Junius invokes `%SystemRoot%\\System32\\taskkill.exe /PID <pid> /T /F` directly with `shell: false`, so the spawned process tree is terminated before the synchronous call returns. Other platforms currently use direct-child SIGTERM followed by SIGKILL fallback.
 
 The `Workspace` concept is therefore an authorization/routing boundary, not an OS access-control boundary.
 
@@ -463,7 +463,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 100 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 102 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

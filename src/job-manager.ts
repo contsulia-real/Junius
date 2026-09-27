@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { join } from "node:path";
 import { isProcessPreparableCapability } from "./capabilities/types.js";
+import { terminateProcessTree } from "./process-termination.js";
 import { RunCommandService } from "./run-command.js";
 
 const MAX_CAPTURE_CHARS = 4 * 1024 * 1024;
@@ -158,72 +158,6 @@ function snapshot(record: JobRecord): JobSnapshot {
   };
 }
 
-async function terminateProcessTree(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return;
-  }
-
-  const pid = child.pid;
-  if (pid === undefined) {
-    child.kill();
-    return;
-  }
-
-  if (process.platform === "win32") {
-    const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows";
-    const taskkill = join(systemRoot, "System32", "taskkill.exe");
-
-    await new Promise<void>((resolve) => {
-      let killer: ChildProcess;
-      try {
-        killer = spawn(
-          taskkill,
-          ["/PID", String(pid), "/T", "/F"],
-          {
-            shell: false,
-            windowsHide: true,
-            stdio: "ignore",
-          },
-        );
-      } catch {
-        child.kill();
-        resolve();
-        return;
-      }
-
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-
-      killer.once("error", () => {
-        child.kill();
-        finish();
-      });
-      killer.once("close", finish);
-    });
-
-    return;
-  }
-
-  child.kill("SIGTERM");
-
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null) {
-        child.kill("SIGKILL");
-      }
-      resolve();
-    }, 2_000);
-
-    child.once("close", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
-}
 
 export class JobManager {
   readonly #jobs = new Map<string, JobRecord>();
