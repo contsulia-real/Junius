@@ -13,6 +13,7 @@ import {
   PlaywrightCliBrokerError,
 } from "./playwright-cli-broker-client.js";
 import { resolveNodeExecutable } from "./capabilities/node-capability.js";
+import { withoutEnvironmentVariables } from "./execution-environment.js";
 import { terminateProcessTree } from "./process-termination.js";
 import {
   delimiter,
@@ -498,7 +499,12 @@ export class PlaywrightCliService {
     nodeExecutable = resolveNodeExecutable(environment),
     options: PlaywrightCliServiceOptions = {},
   ) {
-    this.#environment = { ...environment };
+    this.#environment = withoutEnvironmentVariables(
+      environment,
+      {
+        names: ["NODE_OPTIONS", "NODE_PATH"],
+      },
+    );
     const environmentSessionIdleMs = Number(
       environment.JUNIUS_BROWSER_SESSION_IDLE_MS,
     );

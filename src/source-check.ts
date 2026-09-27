@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { spawn } from "node:child_process";
 import { terminateProcessTree } from "./process-termination.js";
+import { withoutEnvironmentVariables } from "./execution-environment.js";
 import {
   delimiter,
   dirname,
@@ -212,6 +213,12 @@ export async function runSourceCheck(
   }
 
   const startedAt = performance.now();
+  const childEnvironment = withoutEnvironmentVariables(
+    environment,
+    {
+      names: ["NODE_OPTIONS", "NODE_PATH"],
+    },
+  );
 
   return new Promise<SourceCheckResult>((resolve, reject) => {
     let stdout = "";
@@ -224,7 +231,7 @@ export async function runSourceCheck(
       [...launcher.fixedArgs, "run", "check"],
       {
         cwd,
-        env: environment,
+        env: childEnvironment,
         shell: false,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
@@ -264,7 +271,7 @@ export async function runSourceCheck(
       timedOut = true;
       void terminateProcessTree(
         child,
-        environment,
+        childEnvironment,
       );
     }, timeoutMs);
   });

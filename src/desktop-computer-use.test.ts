@@ -30,6 +30,12 @@ function responseFor(request) {
       result: {
         handle: request.handle,
         helperPid: process.pid,
+        pythonEnvironment: {
+          PYTHONPATH: process.env.PYTHONPATH ?? null,
+          PYTHONHOME: process.env.PYTHONHOME ?? null,
+          PYTHONSTARTUP: process.env.PYTHONSTARTUP ?? null,
+          PYTHONINSPECT: process.env.PYTHONINSPECT ?? null
+        },
         truncated: false,
         elements: [
           {
@@ -150,6 +156,46 @@ if (process.argv.includes("--server")) {
     },
   };
 }
+
+test("desktop helper strips inherited Python preload environment", async () => {
+  const f = await fixture({
+    environment: {
+      PYTHONPATH: "C:\\evil\\modules",
+      pythonhome: "C:\\evil\\python",
+      PYTHONSTARTUP: "C:\\evil\\startup.py",
+      pythoninspect: "1",
+    },
+  });
+
+  try {
+    const result = await f.service.run({
+      session: "desktop",
+      command: "inspect",
+      handle: 42,
+    });
+
+    const body = result.result as {
+      pythonEnvironment: {
+        PYTHONPATH: string | null;
+        PYTHONHOME: string | null;
+        PYTHONSTARTUP: string | null;
+        PYTHONINSPECT: string | null;
+      };
+    };
+
+    assert.deepEqual(
+      body.pythonEnvironment,
+      {
+        PYTHONPATH: null,
+        PYTHONHOME: null,
+        PYTHONSTARTUP: null,
+        PYTHONINSPECT: null,
+      },
+    );
+  } finally {
+    await f.dispose();
+  }
+});
 
 test("desktop inspect creates session-local element refs", async () => {
   const f = await fixture();

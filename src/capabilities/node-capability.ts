@@ -61,6 +61,7 @@ export function createNodeCapability(
       ? undefined
       : { executable, fixedArgs: [] };
   })(),
+  inheritedEnvironment: NodeJS.ProcessEnv = process.env,
 ): ProcessCapability | undefined {
   if (launcher === undefined) {
     return undefined;
@@ -75,6 +76,11 @@ export function createNodeCapability(
     allowedArgVectors: [
       ["--version"],
       ["-p", "process.platform"],
+    ],
+    inheritedEnvironment,
+    inheritedEnvironmentDenyNames: [
+      "NODE_OPTIONS",
+      "NODE_PATH",
     ],
     timeoutMs: 5_000,
     maxOutputBytes: 16 * 1024,

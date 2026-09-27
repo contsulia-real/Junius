@@ -11,6 +11,7 @@ import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
 
 const MAX_MCP_REQUEST_BYTES = 16 * 1024 * 1024;
+const MAX_CAPTURED_TOOL_RESPONSE_BYTES = 1024 * 1024;
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -636,12 +637,36 @@ async function proxyModernMcp(
       }
 
       const chunks: Buffer[] = [];
+      let capturedBytes = 0;
+      let captureExceeded = false;
+
       upstreamResponse.on("data", (chunk: Buffer | string) => {
-        chunks.push(
-          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
-        );
+        if (captureExceeded) return;
+
+        const buffer = Buffer.isBuffer(chunk)
+          ? chunk
+          : Buffer.from(chunk);
+        capturedBytes += buffer.length;
+
+        if (
+          capturedBytes >
+          MAX_CAPTURED_TOOL_RESPONSE_BYTES
+        ) {
+          captureExceeded = true;
+          upstreamResponse.destroy();
+          res.removeHeader("content-length");
+          sendHostJson(res, 502, {
+            error: "worker_response_too_large",
+          });
+          recordTrace(502);
+          lease.release();
+          return;
+        }
+
+        chunks.push(buffer);
       });
       upstreamResponse.once("end", () => {
+        if (captureExceeded) return;
         const responseBody = Buffer.concat(chunks);
         const jobId = extractStartedJobId(
           responseBody.toString("utf8"),
@@ -660,6 +685,7 @@ async function proxyModernMcp(
         lease.release();
       });
       upstreamResponse.once("error", (error) => {
+        if (captureExceeded) return;
         recordTrace(502);
         res.destroy(error);
         lease.release();

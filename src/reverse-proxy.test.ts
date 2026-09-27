@@ -170,6 +170,13 @@ async function statelessToolWorker(
           id: "job-1",
           worker: id,
         },
+        ...(args.oversized === true
+          ? {
+              padding: "x".repeat(
+                1024 * 1024 + 1024,
+              ),
+            }
+          : {}),
       };
     }
 
@@ -480,6 +487,53 @@ test("reverse proxy keeps existing MCP session on retiring worker after promotio
     await Promise.allSettled([
       closeServer(first.server),
       closeServer(second.server),
+    ]);
+  }
+});
+
+test("reverse proxy bounds captured start_job responses", async () => {
+  const target = await statelessToolWorker("worker-a");
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    validate: async () => successfulCheck(),
+    spawnWorker: async () => target.worker,
+  });
+
+  const proxy = createServer((req, res) => {
+    proxyToActiveWorker(req, res, supervisor, "mcp");
+  });
+
+  try {
+    await supervisor.startInitial();
+    const proxyPort = await listen(proxy);
+    const origin =
+      "http://127.0.0.1:" + String(proxyPort);
+
+    const response = await fetch(origin + "/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: toolCall("start_job", {
+        oversized: true,
+      }),
+    });
+
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), {
+      error: "worker_response_too_large",
+    });
+    assert.deepEqual(
+      supervisor.state().resourceBindings,
+      [],
+    );
+  } finally {
+    await Promise.allSettled([
+      closeServer(proxy),
+      supervisor.close(),
     ]);
   }
 });

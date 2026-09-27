@@ -229,6 +229,23 @@ test("MachineCapabilityManager validates Workspace grants against machine policy
     );
     assert.deepEqual(
       manager.workspaceGrantCompatibility("pnpm", {
+        mode: "prefix",
+        args: ["run", "check"],
+      }),
+      { valid: true },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("pnpm", {
+        mode: "prefix",
+        args: ["run"],
+      }),
+      {
+        valid: false,
+        reason: "arguments_outside_machine_policy",
+      },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("pnpm", {
         mode: "exact",
         args: ["install"],
       }),

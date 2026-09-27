@@ -4,6 +4,7 @@ import {
   DesktopHelperClientError,
   type DesktopHelperResponse,
 } from "./desktop-helper-client.js";
+import { withoutEnvironmentVariables } from "./execution-environment.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -257,10 +258,20 @@ export class DesktopComputerUseService {
   #enabled = true;
 
   constructor(options: DesktopComputerUseOptions = {}) {
-    this.#environment = {
-      ...process.env,
-      ...options.environment,
-    };
+    this.#environment = withoutEnvironmentVariables(
+      {
+        ...process.env,
+        ...options.environment,
+      },
+      {
+        names: [
+          "PYTHONPATH",
+          "PYTHONHOME",
+          "PYTHONSTARTUP",
+          "PYTHONINSPECT",
+        ],
+      },
+    );
     this.#platform = options.platform ?? process.platform;
     this.#sessionIdleMs = Math.max(
       1,

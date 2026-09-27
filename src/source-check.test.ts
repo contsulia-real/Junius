@@ -32,6 +32,53 @@ async function waitForProcessExit(
   assert.fail("descendant_still_running_after_timeout");
 }
 
+test("runSourceCheck strips inherited Node preload environment", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-source-check-env-"),
+  );
+  const bin = join(root, "bin");
+  const fakePnpm = join(bin, "pnpm.js");
+
+  try {
+    await mkdir(bin, { recursive: true });
+    await writeFile(
+      fakePnpm,
+      [
+        'if (process.env.NODE_OPTIONS || process.env.NODE_PATH || process.env.node_options) process.exit(9);',
+        'if (process.argv.slice(2).join(" ") !== "run check") process.exit(8);',
+        'process.stdout.write("ok");',
+        '',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await runSourceCheck(
+      root,
+      {
+        ...process.env,
+        PATH: [
+          bin,
+          process.env.PATH ?? "",
+        ].filter(Boolean).join(delimiter),
+        NODE_OPTIONS:
+          "--require=definitely-missing-junius-module",
+        NODE_PATH: "C:\\evil\\modules",
+        node_options:
+          "--require=another-missing-junius-module",
+      },
+      5_000,
+    );
+
+    assert.equal(result.ok, true, result.stderr);
+    assert.equal(result.stdout, "ok");
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("runSourceCheck timeout terminates descendant processes on Windows", {
   skip: process.platform !== "win32",
 }, async () => {

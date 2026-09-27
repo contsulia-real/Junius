@@ -17,6 +17,7 @@ async function fixture(
   options: ConstructorParameters<
     typeof PlaywrightCliService
   >[2] = {},
+  environmentOverrides: NodeJS.ProcessEnv = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "junius-playwright-cli-"));
   const launcher = join(root, "playwright-cli.js");
@@ -40,6 +41,7 @@ async function fixture(
       PATH: root,
       JUNIUS_BROWSER_STATE_PATH: root,
       JUNIUS_TEST_PLAYWRIGHT_LOG: logPath,
+      ...environmentOverrides,
     },
     process.execPath,
     options,
@@ -78,6 +80,28 @@ async function waitFor(
   }
   assert.fail("condition_not_met_before_timeout");
 }
+
+test("playwright-cli strips inherited Node preload environment", async () => {
+  const f = await fixture(
+    {},
+    {
+      NODE_OPTIONS:
+        "--require=definitely-missing-junius-module",
+      node_path: "C:\\evil\\modules",
+    },
+  );
+
+  try {
+    const result = await f.service.run(
+      "browser",
+      "snapshot",
+      [],
+    );
+    assert.equal(result.exitCode, 0);
+  } finally {
+    await f.dispose();
+  }
+});
 
 test("playwright-cli snapshot uses named session and raw output", async () => {
   const f = await fixture();

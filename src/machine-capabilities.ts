@@ -80,7 +80,7 @@ function pnpmGrantCompatible(grant: WorkspaceArgumentGrant): boolean {
   if (isAllowedPnpmArgs(args)) return true;
 
   if (args[0] !== "run") return false;
-  if (args.length === 1) return true;
+  if (args.length < 2) return false;
 
   const script = args[1] ?? "";
   if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/u.test(script)) {
@@ -398,10 +398,13 @@ export class MachineCapabilityManager {
       const capability =
         this.nodeExecutable === undefined
           ? undefined
-          : createNodeCapability({
-              executable: this.nodeExecutable,
-              fixedArgs: [],
-            });
+          : createNodeCapability(
+              {
+                executable: this.nodeExecutable,
+                fixedArgs: [],
+              },
+              this.environment,
+            );
 
       if (capability !== undefined) {
         this.registry.register(capability);
@@ -417,7 +420,10 @@ export class MachineCapabilityManager {
       const capability =
         launcher === undefined
           ? undefined
-          : createPnpmCapability(launcher);
+          : createPnpmCapability(
+              launcher,
+              this.environment,
+            );
 
       if (capability !== undefined) {
         this.registry.register(capability);
@@ -429,7 +435,10 @@ export class MachineCapabilityManager {
     const capability =
       launcher === undefined
         ? undefined
-        : createGitCapability(launcher);
+        : createGitCapability(
+            launcher,
+            this.environment,
+          );
 
     if (capability !== undefined) {
       this.registry.register(capability);

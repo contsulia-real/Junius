@@ -205,6 +205,7 @@ export function resolvePnpmLauncher(
 
 export function createPnpmCapability(
   launcher: PnpmLauncher | undefined = resolvePnpmLauncher(),
+  inheritedEnvironment: NodeJS.ProcessEnv = process.env,
 ): ProcessCapability | undefined {
   if (!launcher) {
     return undefined;
@@ -217,6 +218,11 @@ export function createPnpmCapability(
     executable: launcher.executable,
     fixedArgs: launcher.fixedArgs,
     argumentPolicy: isAllowedPnpmArgs,
+    inheritedEnvironment,
+    inheritedEnvironmentDenyNames: [
+      "NODE_OPTIONS",
+      "NODE_PATH",
+    ],
     timeoutMs: 120_000,
     maxOutputBytes: 512 * 1024,
   });

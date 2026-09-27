@@ -488,6 +488,61 @@ test("rg cannot re-include protected .junius state with user globs", async () =>
   }
 });
 
+test("ls does not recurse through Workspace symlinks or junctions outside the root", async () => {
+  const f = await fixture();
+  const outside = await mkdtemp(
+    join(tmpdir(), "junius-ls-outside-"),
+  );
+
+  try {
+    await writeFile(
+      join(outside, "secret.txt"),
+      "outside-secret\n",
+      "utf8",
+    );
+    await mkdir(join(f.root, "nested"), {
+      recursive: true,
+    });
+    await symlink(
+      outside,
+      join(f.root, "nested", "external"),
+      process.platform === "win32"
+        ? "junction"
+        : "dir",
+    );
+
+    const listed = await f.service.ls(
+      "demo",
+      ".",
+      4,
+    );
+
+    const external = listed.find(
+      (entry) =>
+        entry.path
+          .replaceAll("\\", "/")
+          .toLowerCase() ===
+        "nested/external",
+    );
+    assert.equal(external?.type, "symlink");
+    assert.equal(
+      listed.some((entry) =>
+        entry.path
+          .replaceAll("\\", "/")
+          .toLowerCase()
+          .startsWith("nested/external/"),
+      ),
+      false,
+    );
+  } finally {
+    await f.dispose();
+    await rm(outside, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("rg does not follow Workspace symlinks or junctions outside the root", async () => {
   const f = await fixture();
   const outside = await mkdtemp(

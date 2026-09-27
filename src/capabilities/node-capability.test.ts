@@ -11,8 +11,46 @@ import {
 } from "node:path";
 import test from "node:test";
 import {
+  createNodeCapability,
   resolveNodeExecutable,
 } from "./node-capability.js";
+
+test("node capability strips inherited Node preload environment", () => {
+  const capability = createNodeCapability(
+    {
+      executable: process.execPath,
+      fixedArgs: [],
+    },
+    {
+      PATH: process.env.PATH,
+      NODE_OPTIONS:
+        "--require=definitely-missing-junius-module",
+      node_path: "C:\\evil\\modules",
+      SAFE_VALUE: "kept",
+    },
+  )!;
+
+  const prepared = capability.prepareProcess(
+    ["--version"],
+    { cwd: process.cwd() },
+  );
+
+  assert.equal(prepared.ok, true);
+  if (prepared.ok) {
+    assert.equal(
+      prepared.process.env.NODE_OPTIONS,
+      undefined,
+    );
+    assert.equal(
+      prepared.process.env.node_path,
+      undefined,
+    );
+    assert.equal(
+      prepared.process.env.SAFE_VALUE,
+      "kept",
+    );
+  }
+});
 
 test("resolveNodeExecutable follows PATH order", async () => {
   const root = await mkdtemp(
