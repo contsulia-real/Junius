@@ -133,6 +133,8 @@ The current process adapter:
 
 It also inherits the Junius host environment. Therefore an authorized project script can observe environment variables available to Junius.
 
+`pnpm run <script>` is explicitly an authorization to execute the Workspace's own package-script code. Junius constrains the pnpm command shape and script name, but it does not sandbox or freeze the contents of that script. A Workspace whose package scripts can be modified should therefore be treated as executable code, not as passive data.
+
 Synchronous ProcessCapability timeout and output-limit termination share the same process-termination primitive as Job Manager. On Windows, Junius invokes `%SystemRoot%\\System32\\taskkill.exe /PID <pid> /T /F` directly with `shell: false`, so the spawned process tree is terminated before the synchronous call returns. Other platforms currently use direct-child SIGTERM followed by SIGKILL fallback.
 
 The `Workspace` concept is therefore an authorization/routing boundary, not an OS access-control boundary.
@@ -166,7 +168,7 @@ Machine-level pnpm policy permits:
 
 It does not expose `install`, `add`, `exec`, or `dlx`.
 
-pnpm runs directly in the selected Workspace. Junius does not add `--dir` indirection or a sandbox portal.
+pnpm runs directly in the selected Workspace. Junius does not add `--dir` indirection or a sandbox portal. The package-script body remains trusted Workspace code; the argument policy does not claim to sandbox what that script itself executes.
 
 ### git
 
@@ -195,6 +197,8 @@ ls-files
 The policy intentionally does not expose destructive forms such as `git clean`, `git reset --hard`, arbitrary Git aliases, mirror pushes, or remote branch deletion.
 
 A Workspace must still explicitly grant the Git argument ranges it needs. Machine capability policy and Workspace grants remain an intersection.
+
+Before a repository command is prepared, the Git capability also performs a repository-local safety preflight. Git metadata must be self-contained under the Workspace root rather than borrowed from a parent repository or redirected through a `.git` symlink/worktree file. Local Git config is restricted to a small non-executable whitelist covering core repository metadata, user identity, remote URLs/refspecs, and branch tracking. Repository-local executable configuration such as credential helpers, SSH commands, filters, diff/textconv commands, includes, or other unrecognized keys is rejected. `fetch`/`push` additionally require the selected repository-local remote URL to use the bounded HTTP(S)/SSH forms accepted by Junius. Git is launched with `--no-pager`, hooks redirected to Junius's disabled-hooks directory, and commit signing disabled for this capability.
 
 For an explicit local-source-of-truth synchronization, Junius can authorize a flow such as:
 
@@ -392,7 +396,7 @@ rg
 - `write` creates, replaces, or exact-text edits UTF-8 files through the transactional multi-file commit path; no version token or prior `read` is required.
 - `rg` searches with ripgrep using Junius-controlled arguments and a Workspace-scoped target.
 
-The built-in file tools reject absolute paths, `..` traversal, and existing paths that canonicalize outside the registered Workspace. This is a boundary implemented by the file tools themselves; it does not turn `run_command` into a sandbox.
+The built-in file tools reject absolute paths, `..` traversal, and existing paths that canonicalize outside the registered Workspace. Reads may follow a link only when its canonical target remains inside the Workspace. Writes do not traverse symbolic-link/junction parent aliases at all: new/existing write parents are canonicalized after directory creation and revalidated again immediately before transactional commit. This narrows filesystem TOCTOU/link-escape windows without claiming OS-level `openat`/handle-based atomic path confinement. This is a boundary implemented by the file tools themselves; it does not turn `run_command` into a sandbox.
 
 The `rg` tool requires a usable `rg` executable on the Junius process PATH.
 
@@ -463,7 +467,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 126 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 138 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

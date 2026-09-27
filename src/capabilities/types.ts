@@ -4,6 +4,7 @@ export interface CapabilityExecutionContext {
 
 export type CapabilityExecutionErrorCode =
   | "arguments_not_allowed"
+  | "unsafe_repository_config"
   | "process_timeout"
   | "output_limit"
   | "spawn_failed"

@@ -189,12 +189,12 @@ test("WorkerSupervisor keeps resource affinity on retiring worker until released
 
   try {
     await supervisor.startInitial();
-    supervisor.bindResource("job:abc", first.worker.id);
+    supervisor.bindResource("job:11111111-1111-4111-8111-111111111111", first.worker.id);
     await supervisor.reload("good-edit");
 
     const lease = supervisor.acquire(
       undefined,
-      "job:abc",
+      "job:11111111-1111-4111-8111-111111111111",
     );
     try {
       assert.equal(lease.worker.id, first.worker.id);
@@ -209,11 +209,11 @@ test("WorkerSupervisor keeps resource affinity on retiring worker until released
       1,
     );
 
-    supervisor.releaseResource("job:abc");
+    supervisor.releaseResource("job:11111111-1111-4111-8111-111111111111");
 
     const newLease = supervisor.acquire(
       undefined,
-      "job:abc",
+      "job:11111111-1111-4111-8111-111111111111",
     );
     try {
       assert.equal(newLease.worker.id, second.worker.id);
@@ -281,14 +281,14 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
 
   try {
     await supervisor.startInitial();
-    supervisor.bindResource("job:abc", first.worker.id);
+    supervisor.bindResource("job:11111111-1111-4111-8111-111111111111", first.worker.id);
     await supervisor.reload("good-edit");
 
     await delay(15);
     assert.equal(first.closed(), false);
     assert.equal(
       supervisor.state().resourceBindings.find(
-        (binding) => binding.key === "job:abc",
+        (binding) => binding.key === "job:11111111-1111-4111-8111-111111111111",
       )?.expiresAt,
       undefined,
     );
@@ -296,12 +296,12 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
     first.message({
       type: "junius-job-terminal",
       workerId: first.worker.id,
-      jobId: "abc",
+      jobId: "11111111-1111-4111-8111-111111111111",
     });
 
     assert.equal(
       typeof supervisor.state().resourceBindings.find(
-        (binding) => binding.key === "job:abc",
+        (binding) => binding.key === "job:11111111-1111-4111-8111-111111111111",
       )?.expiresAt,
       "string",
     );
@@ -309,7 +309,7 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
     await delay(20);
     const lease = supervisor.acquire(
       undefined,
-      "job:abc",
+      "job:11111111-1111-4111-8111-111111111111",
     );
     lease.release();
 
@@ -340,18 +340,18 @@ test("WorkerSupervisor releases terminal job affinity after history persistence"
 
   try {
     await supervisor.startInitial();
-    supervisor.bindResource("job:persisted", first.worker.id);
+    supervisor.bindResource("job:22222222-2222-4222-8222-222222222222", first.worker.id);
     await supervisor.reload("good-edit");
 
     first.message({
       type: "junius-job-terminal",
       workerId: first.worker.id,
-      jobId: "persisted",
+      jobId: "22222222-2222-4222-8222-222222222222",
     });
 
     assert.equal(
       typeof supervisor.state().resourceBindings.find(
-        (binding) => binding.key === "job:persisted",
+        (binding) => binding.key === "job:22222222-2222-4222-8222-222222222222",
       )?.expiresAt,
       "string",
     );
@@ -359,12 +359,12 @@ test("WorkerSupervisor releases terminal job affinity after history persistence"
     first.message({
       type: "junius-job-history-persisted",
       workerId: first.worker.id,
-      jobId: "persisted",
+      jobId: "22222222-2222-4222-8222-222222222222",
     });
 
     assert.equal(
       supervisor.state().resourceBindings.some(
-        (binding) => binding.key === "job:persisted",
+        (binding) => binding.key === "job:22222222-2222-4222-8222-222222222222",
       ),
       false,
     );
@@ -393,23 +393,23 @@ test("WorkerSupervisor skips job affinity when persisted history arrives before 
     first.message({
       type: "junius-job-terminal",
       workerId: first.worker.id,
-      jobId: "fast-persisted",
+      jobId: "33333333-3333-4333-8333-333333333333",
     });
     first.message({
       type: "junius-job-history-persisted",
       workerId: first.worker.id,
-      jobId: "fast-persisted",
+      jobId: "33333333-3333-4333-8333-333333333333",
     });
 
     supervisor.bindResource(
-      "job:fast-persisted",
+      "job:33333333-3333-4333-8333-333333333333",
       first.worker.id,
     );
 
     assert.equal(
       supervisor.state().resourceBindings.some(
         (binding) =>
-          binding.key === "job:fast-persisted",
+          binding.key === "job:33333333-3333-4333-8333-333333333333",
       ),
       false,
     );
@@ -435,20 +435,67 @@ test("WorkerSupervisor remembers terminal IPC that arrives before job binding", 
     first.message({
       type: "junius-job-terminal",
       workerId: first.worker.id,
-      jobId: "fast",
+      jobId: "44444444-4444-4444-8444-444444444444",
     });
 
     supervisor.bindResource(
-      "job:fast",
+      "job:44444444-4444-4444-8444-444444444444",
       first.worker.id,
     );
 
     assert.equal(
       typeof supervisor.state().resourceBindings.find(
-        (binding) => binding.key === "job:fast",
+        (binding) => binding.key === "job:44444444-4444-4444-8444-444444444444",
       )?.expiresAt,
       "string",
     );
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor ignores malformed or mismatched runtime Job IPC", async () => {
+  const first = fakeWorker("worker-1");
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    validate: async () => check(true),
+    spawnWorker: async () => first.worker,
+  });
+
+  try {
+    await supervisor.startInitial();
+
+    first.message({
+      type: "junius-job-terminal",
+      workerId: first.worker.id,
+      jobId: "not-a-uuid",
+    });
+    first.message({
+      type: "junius-job-terminal",
+      workerId: "worker-other",
+      jobId: "55555555-5555-4555-8555-555555555555",
+    });
+
+    supervisor.bindResource("job:not-a-uuid", first.worker.id);
+    supervisor.bindResource(
+      "job:55555555-5555-4555-8555-555555555555",
+      first.worker.id,
+    );
+
+    for (const key of [
+      "job:not-a-uuid",
+      "job:55555555-5555-4555-8555-555555555555",
+    ]) {
+      assert.equal(
+        supervisor.state().resourceBindings.find(
+          (binding) => binding.key === key,
+        )?.expiresAt,
+        undefined,
+      );
+    }
   } finally {
     await supervisor.close();
   }

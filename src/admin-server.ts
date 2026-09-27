@@ -16,6 +16,26 @@ import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const ADMIN_CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "connect-src 'self'",
+  "img-src 'self' data:",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+function applyAdminSecurityHeaders(
+  res: ServerResponse,
+): void {
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("x-frame-options", "DENY");
+  res.setHeader("referrer-policy", "no-referrer");
+  res.setHeader("content-security-policy", ADMIN_CSP);
+}
 
 function assertAdminHost(
   req: IncomingMessage,
@@ -194,6 +214,7 @@ export async function handleAdminRequest(
   adminToken: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", origin);
+  applyAdminSecurityHeaders(res);
 
   try {
     assertAdminHost(req, origin);
@@ -251,7 +272,9 @@ export async function handleAdminRequest(
       workspaces: workspaceAdminState(workspaces, machineCapabilities),
       jobs: await jobs.list(100),
       jobHistory: await jobs.historyStats(),
-      adminToken,
+      ...(url.pathname === "/state"
+        ? { adminToken }
+        : {}),
       browser: playwrightCli.state(),
       desktop: desktop.state(),
     });

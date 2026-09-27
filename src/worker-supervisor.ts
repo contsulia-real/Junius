@@ -790,7 +790,9 @@ export class WorkerSupervisor {
     if (
       candidate.workerId !== workerId ||
       typeof candidate.jobId !== "string" ||
-      candidate.jobId.length === 0
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+        candidate.jobId,
+      )
     ) {
       return;
     }

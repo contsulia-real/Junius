@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -114,9 +114,19 @@ test("admin server serves the local WebUI and runtime state", async () => {
       /^text\/html/u,
     );
     assert.match(await page.text(), /Junius 控制台/u);
+    assert.equal(page.headers.get("cache-control"), "no-store");
+    assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(page.headers.get("x-frame-options"), "DENY");
+    assert.equal(page.headers.get("referrer-policy"), "no-referrer");
+    assert.match(
+      page.headers.get("content-security-policy") ?? "",
+      /frame-ancestors 'none'/u,
+    );
 
     const state = await fetch(f.origin + "/state");
     assert.equal(state.status, 200);
+    assert.equal(state.headers.get("cache-control"), "no-store");
+    assert.equal(state.headers.get("x-content-type-options"), "nosniff");
 
     const body = await state.json() as {
       registeredCapabilities: { key: string }[];
@@ -444,6 +454,64 @@ test("Workspace grant API preserves exact and prefix authorization semantics", a
         ],
       },
     ]);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("admin API state omits the mutation token", async () => {
+  const f = await fixture();
+  try {
+    const response = await fetch(f.origin + "/api/state");
+    assert.equal(response.status, 200);
+    const body = await response.json() as Record<string, unknown>;
+    assert.equal("adminToken" in body, false);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("admin rejects hostile Host headers even for reads", async () => {
+  const f = await fixture();
+  try {
+    const result = await new Promise<{
+      statusCode?: number;
+      body: string;
+    }>((resolvePromise, reject) => {
+      const req = request(
+        f.origin + "/state",
+        {
+          method: "GET",
+          headers: {
+            host: "example.invalid",
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk: Buffer | string) => {
+            chunks.push(
+              Buffer.isBuffer(chunk)
+                ? chunk
+                : Buffer.from(chunk),
+            );
+          });
+          res.once("end", () => {
+            resolvePromise({
+              statusCode: res.statusCode,
+              body: Buffer.concat(chunks).toString("utf8"),
+            });
+          });
+        },
+      );
+      req.once("error", reject);
+      req.end();
+    });
+
+    assert.equal(result.statusCode, 403);
+    assert.equal(
+      (JSON.parse(result.body) as { error: string }).error,
+      "admin_host_not_allowed",
+    );
   } finally {
     await f.dispose();
   }

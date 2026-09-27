@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -155,6 +155,97 @@ test("Workspace file tools reject path traversal", async () => {
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
         error.code === "invalid_path",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("Workspace file tools reject links that escape the Workspace", async () => {
+  const f = await fixture();
+  const outside = await mkdtemp(
+    join(tmpdir(), "junius-files-outside-"),
+  );
+
+  try {
+    await writeFile(
+      join(outside, "secret.txt"),
+      "outside\n",
+      "utf8",
+    );
+    await symlink(
+      outside,
+      join(f.root, "escape"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await assert.rejects(
+      f.service.read("demo", [
+        { path: "escape/secret.txt" },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "path_outside_workspace",
+    );
+
+    await assert.rejects(
+      f.service.write("demo", [
+        {
+          path: "escape/new.txt",
+          content: "no\n",
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "path_outside_workspace",
+    );
+
+    await assert.rejects(
+      readFile(join(outside, "new.txt"), "utf8"),
+      (error: unknown) =>
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT",
+    );
+  } finally {
+    await f.dispose();
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("Workspace writes reject symbolic or junction parent aliases inside the Workspace", async () => {
+  const f = await fixture();
+
+  try {
+    await mkdir(join(f.root, "real"), {
+      recursive: true,
+    });
+    await symlink(
+      join(f.root, "real"),
+      join(f.root, "alias"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await assert.rejects(
+      f.service.write("demo", [
+        {
+          path: "alias/new.txt",
+          content: "no\n",
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "invalid_path",
+    );
+
+    await assert.rejects(
+      readFile(join(f.root, "real", "new.txt"), "utf8"),
+      (error: unknown) =>
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT",
     );
   } finally {
     await f.dispose();

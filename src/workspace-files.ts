@@ -80,6 +80,26 @@ function assertRelativeWorkspacePath(input: string): string {
   return segments.length === 0 ? "." : segments.join("/");
 }
 
+function assertWritableWorkspacePath(
+  relativePath: string,
+): void {
+  const segments = relativePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean);
+
+  if (
+    segments.some(
+      (segment) => segment.toLowerCase() === ".git",
+    )
+  ) {
+    throw new WorkspaceFileError(
+      "invalid_path",
+      `Writing Git metadata directly is not allowed: ${relativePath}`,
+    );
+  }
+}
+
 async function findExistingAncestor(path: string): Promise<string> {
   let current = path;
 
@@ -151,6 +171,7 @@ export class WorkspacePathResolver {
     readonly exists: boolean;
   }> {
     const relativePath = assertRelativeWorkspacePath(input);
+    assertWritableWorkspacePath(relativePath);
     const lexical = resolve(this.rootPath, relativePath);
 
     if (!pathInside(this.rootPath, lexical)) {
@@ -592,6 +613,45 @@ interface StagedWrite {
   installed: boolean;
 }
 
+async function assertWriteParentSafe(
+  resolver: WorkspacePathResolver,
+  item: PreparedWrite,
+): Promise<void> {
+  const parent = dirname(item.targetPath);
+  let canonicalParent: string;
+
+  try {
+    canonicalParent = await realpath(parent);
+  } catch (error) {
+    throw new WorkspaceFileError(
+      "write_failed",
+      `Write parent changed after validation: ${item.relativePath}; ${errorMessage(error)}`,
+    );
+  }
+
+  if (!pathInside(resolver.rootPath, canonicalParent)) {
+    throw new WorkspaceFileError(
+      "path_outside_workspace",
+      item.relativePath,
+    );
+  }
+
+  let current = parent;
+  while (
+    current !== resolver.rootPath &&
+    pathInside(resolver.rootPath, current)
+  ) {
+    const info = await lstat(current);
+    if (!info.isDirectory() || info.isSymbolicLink()) {
+      throw new WorkspaceFileError(
+        "invalid_path",
+        `Writing through a symbolic/reparse parent is not allowed: ${item.relativePath}`,
+      );
+    }
+    current = dirname(current);
+  }
+}
+
 async function assertTargetUnchanged(item: PreparedWrite): Promise<void> {
   if (item.created) {
     try {
@@ -675,6 +735,12 @@ async function transactionalWrite(
     );
 
     await Promise.all(
+      prepared.map((item) =>
+        assertWriteParentSafe(resolver, item),
+      ),
+    );
+
+    await Promise.all(
       prepared.map(async (item) => {
         const tempPath = join(
           dirname(item.targetPath),
@@ -696,6 +762,7 @@ async function transactionalWrite(
 
     for (const stage of staged) {
       const item = stage.prepared;
+      await assertWriteParentSafe(resolver, item);
       await assertTargetUnchanged(item);
 
       if (!item.created) {

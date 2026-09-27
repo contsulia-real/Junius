@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
   createServer,
+  request as httpRequest,
   type Server,
 } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -20,6 +21,46 @@ async function freePort(): Promise<number> {
   server.close();
   await once(server, "close");
   return port;
+}
+
+async function rawRequest(
+  port: number,
+  path: string,
+  headers: Record<string, string>,
+): Promise<{
+  readonly statusCode: number;
+  readonly body: string;
+}> {
+  return new Promise((resolvePromise, reject) => {
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "GET",
+        headers,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer | string) => {
+          chunks.push(
+            Buffer.isBuffer(chunk)
+              ? chunk
+              : Buffer.from(chunk),
+          );
+        });
+        res.once("end", () => {
+          resolvePromise({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+
+    req.once("error", reject);
+    req.end();
+  });
 }
 
 async function waitForHealth(
@@ -108,6 +149,50 @@ test("Junius Host owns public ports and proxies admin state to its active worker
     assert.equal(
       typeof healthBody.activeWorkerId,
       "string",
+    );
+
+    const hostileHost = await rawRequest(
+      adminPort,
+      "/__junius/host-health",
+      {
+        Host: "example.invalid",
+      },
+    );
+    assert.equal(hostileHost.statusCode, 403);
+    assert.equal(
+      (JSON.parse(hostileHost.body) as {
+        error: string;
+      }).error,
+      "host_not_allowed",
+    );
+
+    const hostileOrigin = await fetch(
+      `http://127.0.0.1:${mcpPort}/mcp`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://example.invalid",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 99,
+          method: "tools/call",
+          params: {
+            name: "list_workspaces",
+            arguments: {},
+          },
+        }),
+      },
+    );
+    assert.equal(hostileOrigin.status, 403);
+    assert.equal(
+      (
+        await hostileOrigin.json() as {
+          error: string;
+        }
+      ).error,
+      "origin_not_allowed",
     );
 
     const stateResponse = await fetch(adminOrigin + "/state");

@@ -51,6 +51,15 @@ function appendBounded(current: string, chunk: Buffer | string): string {
     : next.slice(next.length - MAX_LOG_CHARS);
 }
 
+function isValidPort(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 65_535
+  );
+}
+
 function isReadyMessage(value: unknown): value is WorkerReadyMessage {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
@@ -58,9 +67,13 @@ function isReadyMessage(value: unknown): value is WorkerReadyMessage {
   return (
     record.type === "junius-worker-ready" &&
     typeof record.workerId === "string" &&
+    record.workerId.length > 0 &&
     typeof record.pid === "number" &&
-    typeof record.mcpPort === "number" &&
-    typeof record.adminPort === "number"
+    Number.isInteger(record.pid) &&
+    record.pid > 0 &&
+    isValidPort(record.mcpPort) &&
+    isValidPort(record.adminPort) &&
+    record.mcpPort !== record.adminPort
   );
 }
 
@@ -73,7 +86,10 @@ function isStartupErrorMessage(
   return (
     record.type === "junius-worker-startup-error" &&
     typeof record.workerId === "string" &&
-    typeof record.message === "string"
+    record.workerId.length > 0 &&
+    typeof record.message === "string" &&
+    record.message.length > 0 &&
+    record.message.length <= MAX_LOG_CHARS
   );
 }
 
@@ -194,12 +210,18 @@ export async function spawnManagedWorker(
       };
 
       const onMessage = (message: unknown) => {
-        if (isReadyMessage(message)) {
+        if (
+          isReadyMessage(message) &&
+          message.workerId === id
+        ) {
           finish(undefined, message);
           return;
         }
 
-        if (isStartupErrorMessage(message)) {
+        if (
+          isStartupErrorMessage(message) &&
+          message.workerId === id
+        ) {
           finish(
             new Error(
               `worker_startup_failed: ${message.message}`,
@@ -233,6 +255,13 @@ export async function spawnManagedWorker(
 
     if (ready.workerId !== id) {
       throw new Error("worker_ready_id_mismatch");
+    }
+
+    if (
+      child.pid === undefined ||
+      ready.pid !== child.pid
+    ) {
+      throw new Error("worker_ready_pid_mismatch");
     }
 
     await assertHealthy(id, ready.adminPort);

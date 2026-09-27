@@ -13,6 +13,19 @@ export interface ProcessCapabilityOptions {
   readonly executable: string;
   readonly allowedArgVectors?: readonly (readonly string[])[];
   readonly argumentPolicy?: (args: readonly string[]) => boolean;
+  readonly preflight?: (
+    args: readonly string[],
+    context: CapabilityExecutionContext,
+  ) =>
+    | { readonly ok: true }
+    | {
+        readonly ok: false;
+        readonly code: Extract<
+          CapabilityExecution,
+          { ok: false }
+        >["code"];
+        readonly message: string;
+      };
   readonly fixedArgs?: readonly string[];
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
@@ -39,6 +52,7 @@ export class ProcessCapability implements Capability {
   readonly #executable: string;
   readonly #allowedArgVectors: readonly (readonly string[])[];
   readonly #argumentPolicy?: (args: readonly string[]) => boolean;
+  readonly #preflight?: ProcessCapabilityOptions["preflight"];
   readonly #fixedArgs: readonly string[];
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
@@ -50,6 +64,7 @@ export class ProcessCapability implements Capability {
     this.#executable = options.executable;
     this.#allowedArgVectors = options.allowedArgVectors ?? [];
     this.#argumentPolicy = options.argumentPolicy;
+    this.#preflight = options.preflight;
     this.#fixedArgs = options.fixedArgs ?? [];
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#maxOutputBytes =
@@ -74,6 +89,23 @@ export class ProcessCapability implements Capability {
           ok: false,
           code: "arguments_not_allowed",
           message: `Arguments are not allowed for capability ${this.key}.`,
+          exitCode: null,
+          signal: null,
+          stdout: "",
+          stderr: "",
+          durationMs: 0,
+        },
+      };
+    }
+
+    const preflight = this.#preflight?.(args, context);
+    if (preflight !== undefined && !preflight.ok) {
+      return {
+        ok: false,
+        execution: {
+          ok: false,
+          code: preflight.code,
+          message: preflight.message,
           exitCode: null,
           signal: null,
           stdout: "",

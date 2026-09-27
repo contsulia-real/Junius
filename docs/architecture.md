@@ -219,6 +219,8 @@ Machine policy:
 
 The pnpm capability does not expose `install`, `add`, `exec`, or `dlx`.
 
+This policy constrains pnpm invocation shape, not the implementation of the selected package script. `pnpm run <script>` is therefore an explicit grant to execute Workspace-controlled code with the Junius process user's permissions and inherited environment.
+
 ### git
 
 Git is a machine-level `ProcessCapability` and is invoked through the same existing command surface:
@@ -232,6 +234,8 @@ The Git adapter resolves the first matching local Git executable directly from t
 The policy permits explicit force pushes because local-source-of-truth synchronization can require replacing the remote branch. It does not expose `clean`, `reset --hard`, arbitrary aliases, mirror pushes, or remote branch deletion.
 
 Workspace grants remain required and can only narrow this machine-level Git policy.
+
+Git also performs a synchronous repository preflight inside `prepareProcess()`, so both `run_command` and Job Manager use the same check. The Workspace root must contain its own non-symlink `.git` directory; Junius does not borrow a parent repository or follow a worktree/gitdir redirection outside the Workspace. Repository-local config is parsed through a conservative whitelist of non-executable core/user/remote/branch fields. Unknown or executable local config is rejected with `unsafe_repository_config`. `fetch` and `push` additionally validate the configured local remote URL before process launch. Git runs with `--no-pager`, a disabled hooks path, and commit signing disabled.
 
 ## Machine Capability state
 
@@ -382,7 +386,7 @@ ripgrep config loading is disabled for this tool.
 
 These four tools are implemented by Junius and therefore apply their own path checks even though `run_command` is not sandboxed.
 
-They reject absolute paths and `..` traversal. Existing targets are canonicalized and must resolve within the Workspace. New writes validate the nearest existing ancestor before directories are created. Directory traversal does not follow symlink entries.
+They reject absolute paths and `..` traversal. Existing targets are canonicalized and must resolve within the Workspace. New writes validate the nearest existing ancestor before directories are created. Reads do not escape through links, and writes reject symbolic-link/junction parent aliases even when the alias target is still inside the Workspace. After missing directories are created, the canonical write parent chain is checked again; it is checked once more immediately before each staged rename is committed. Directory traversal does not follow symlink entries. These checks reduce link/TOCTOU escape windows but are not represented as kernel-level `openat`-style path confinement.
 
 This boundary applies only to Junius's built-in file tools. It does not restrict what an executable launched through `run_command` can access.
 
@@ -535,14 +539,16 @@ Desktop machine state uses the same persisted `enabled` / runtime `available` / 
 
 The admin WebUI binds to the configured localhost address and is not routed through the Secure MCP Tunnel.
 
+The public Host binds both MCP and Admin to `127.0.0.1`. Before either public port is processed, the Host requires the exact configured local `Host` value and rejects any present browser `Origin` that is not the corresponding local origin. This blocks DNS-rebinding/host-header and hostile browser-origin access at the public ingress while still allowing non-browser MCP/local clients that omit `Origin`.
+
 The admin HTTP layer additionally enforces:
 
-- the configured local `Host` value;
 - same-origin mutation requests when an `Origin` header is present;
 - a per-process random admin token on all mutation requests;
-- `application/json` for mutation endpoints that accept JSON bodies.
+- `application/json` for mutation endpoints that accept JSON bodies;
+- `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a restrictive CSP (`default-src 'none'`, same-origin script/style/connect, no forms/base/frames).
 
-`GET /state` returns the current admin token to same-origin WebUI code. Browser same-origin policy prevents an unrelated website from reading that token, while the custom mutation header also forces cross-origin script requests through preflight. Direct local clients may read `/state` and explicitly supply the token.
+`GET /state` returns the current admin token to same-origin WebUI code. `/api/state` deliberately omits it. Browser same-origin policy plus CSP/Host/Origin enforcement prevents an unrelated website from reading or replaying that token, while the custom mutation header also forces cross-origin script requests through preflight. Direct local clients may read `/state` and explicitly supply the token.
 
 Workspace grant mutation validates new rules against the machine policy even when the capability is currently disabled or unavailable. Historical rules that no longer intersect the machine policy are preserved and marked invalid in admin state rather than silently deleted; they may be retained while editing so users can remove them incrementally.
 

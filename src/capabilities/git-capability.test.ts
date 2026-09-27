@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  mkdir,
   mkdtemp,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -69,6 +71,268 @@ test("git capability rejects destructive and arbitrary command shapes", () => {
       false,
       `expected git args to be rejected: ${JSON.stringify(args)}`,
     );
+  }
+});
+
+async function writeGitConfig(
+  root: string,
+  content: string,
+): Promise<void> {
+  await mkdir(join(root, ".git"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(root, ".git", "config"),
+    content,
+    "utf8",
+  );
+}
+
+function testGitCapability() {
+  return createGitCapability({
+    executable:
+      process.platform === "win32"
+        ? "C:\\Windows\\System32\\where.exe"
+        : "/usr/bin/true",
+    fixedArgs: [],
+  })!;
+}
+
+test("git preflight accepts self-contained safe repository config", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-git-safe-"),
+  );
+
+  try {
+    await writeGitConfig(
+      root,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "\tfilemode = false",
+        "\tbare = false",
+        "\tlogallrefupdates = true",
+        "\tignorecase = true",
+        "[remote \"origin\"]",
+        "\turl = https://github.com/owner/repo.git",
+        "\tfetch = +refs/heads/*:refs/remotes/origin/*",
+        "[branch \"main\"]",
+        "\tremote = origin",
+        "\tmerge = refs/heads/main",
+        "\tvscode-merge-base = origin/main",
+        "",
+      ].join("\n"),
+    );
+
+    const capability = testGitCapability();
+    for (const args of [
+      ["status", "--short"],
+      ["fetch", "origin"],
+      ["push", "--force", "origin", "main"],
+    ] as const) {
+      const prepared = capability.prepareProcess(
+        args,
+        { cwd: root },
+      );
+      assert.equal(
+        prepared.ok,
+        true,
+        JSON.stringify(prepared),
+      );
+    }
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("git preflight rejects executable repository-local config", async () => {
+  const dangerous = [
+    [
+      "[credential]",
+      "\thelper = !powershell -NoProfile -Command calc",
+    ],
+    [
+      "[core]",
+      "\tsshCommand = powershell -Command calc",
+    ],
+    [
+      "[filter \"evil\"]",
+      "\tprocess = powershell -Command calc",
+    ],
+    [
+      "[include]",
+      "\tpath = ../outside-config",
+    ],
+  ] as const;
+
+  for (const lines of dangerous) {
+    const root = await mkdtemp(
+      join(tmpdir(), "junius-git-unsafe-"),
+    );
+
+    try {
+      await writeGitConfig(
+        root,
+        [
+          "[core]",
+          "\trepositoryformatversion = 0",
+          ...lines,
+          "",
+        ].join("\n"),
+      );
+
+      const prepared =
+        testGitCapability().prepareProcess(
+          ["status", "--short"],
+          { cwd: root },
+        );
+
+      assert.equal(prepared.ok, false);
+      if (!prepared.ok) {
+        assert.equal(
+          prepared.execution.code,
+          "unsafe_repository_config",
+        );
+      }
+    } finally {
+      await rm(root, {
+        recursive: true,
+        force: true,
+      });
+    }
+  }
+});
+
+test("git preflight rejects repository metadata outside Workspace root", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-git-boundary-"),
+  );
+  const outside = await mkdtemp(
+    join(tmpdir(), "junius-git-outside-"),
+  );
+
+  try {
+    await writeGitConfig(
+      outside,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "",
+      ].join("\n"),
+    );
+
+    await symlink(
+      join(outside, ".git"),
+      join(root, ".git"),
+      process.platform === "win32"
+        ? "junction"
+        : "dir",
+    );
+
+    const prepared =
+      testGitCapability().prepareProcess(
+        ["status", "--short"],
+        { cwd: root },
+      );
+    assert.equal(prepared.ok, false);
+    if (!prepared.ok) {
+      assert.equal(
+        prepared.execution.code,
+        "unsafe_repository_config",
+      );
+    }
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+    await rm(outside, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("git preflight rejects unsafe configured fetch and push URLs", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-git-remote-"),
+  );
+
+  try {
+    await writeGitConfig(
+      root,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "[remote \"origin\"]",
+        "\turl = ext::powershell -Command calc",
+        "",
+      ].join("\n"),
+    );
+
+    const capability = testGitCapability();
+    for (const args of [
+      ["fetch", "origin"],
+      ["push", "origin", "main"],
+    ] as const) {
+      const prepared = capability.prepareProcess(
+        args,
+        { cwd: root },
+      );
+      assert.equal(prepared.ok, false);
+      if (!prepared.ok) {
+        assert.equal(
+          prepared.execution.code,
+          "unsafe_repository_config",
+        );
+      }
+    }
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("git preflight does not borrow a parent repository", async () => {
+  const parent = await mkdtemp(
+    join(tmpdir(), "junius-git-parent-"),
+  );
+  const child = join(parent, "child");
+
+  try {
+    await writeGitConfig(
+      parent,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "",
+      ].join("\n"),
+    );
+    await mkdir(child, { recursive: true });
+
+    const capability = testGitCapability();
+
+    const status = capability.prepareProcess(
+      ["status", "--short"],
+      { cwd: child },
+    );
+    assert.equal(status.ok, false);
+
+    const init = capability.prepareProcess(
+      ["init", "-b", "main"],
+      { cwd: child },
+    );
+    assert.equal(init.ok, true);
+  } finally {
+    await rm(parent, {
+      recursive: true,
+      force: true,
+    });
   }
 });
 

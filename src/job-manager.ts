@@ -30,6 +30,7 @@ export type JobManagerErrorCode =
   | "capability_not_allowed"
   | "arguments_not_allowed_by_workspace"
   | "arguments_not_allowed"
+  | "unsafe_repository_config"
   | "spawn_failed";
 
 export class JobManagerError extends Error {
@@ -266,8 +267,9 @@ export class JobManager {
 
     if (!prepared.ok) {
       const code =
-        prepared.execution.code === "arguments_not_allowed"
-          ? "arguments_not_allowed"
+        prepared.execution.code === "arguments_not_allowed" ||
+        prepared.execution.code === "unsafe_repository_config"
+          ? prepared.execution.code
           : "spawn_failed";
 
       throw new JobManagerError(code, prepared.execution.message);

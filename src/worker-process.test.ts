@@ -1,10 +1,131 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { spawnManagedWorker } from "./worker-process.js";
+
+test("spawnManagedWorker ignores startup IPC for another worker id", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-worker-ipc-"),
+  );
+  const entry = join(root, "worker.mjs");
+
+  try {
+    await writeFile(
+      entry,
+      `
+import { createServer } from "node:http";
+
+const workerId = process.env.JUNIUS_WORKER_ID;
+const admin = createServer((req, res) => {
+  if (req.url === "/__junius/worker-health") {
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({
+      ok: true,
+      workerId,
+      pid: process.pid,
+    }));
+    return;
+  }
+  res.statusCode = 404;
+  res.end();
+});
+const mcp = createServer((_req, res) => res.end("ok"));
+
+await Promise.all([
+  new Promise((resolve) => admin.listen(0, "127.0.0.1", resolve)),
+  new Promise((resolve) => mcp.listen(0, "127.0.0.1", resolve)),
+]);
+
+process.send?.({
+  type: "junius-worker-startup-error",
+  workerId: "wrong-worker-id",
+  message: "must be ignored",
+});
+process.send?.({
+  type: "junius-worker-ready",
+  workerId,
+  pid: process.pid,
+  mcpPort: mcp.address().port,
+  adminPort: admin.address().port,
+});
+
+process.on("message", (message) => {
+  if (message?.type !== "junius-worker-shutdown") return;
+  Promise.all([
+    new Promise((resolve) => admin.close(resolve)),
+    new Promise((resolve) => mcp.close(resolve)),
+  ]).finally(() => process.exit(0));
+});
+`,
+      "utf8",
+    );
+
+    const worker = await spawnManagedWorker({
+      workerEntryPath: entry,
+      cwd: root,
+      publicMcpOrigin: "http://127.0.0.1:48787",
+      publicAdminOrigin: "http://127.0.0.1:48788",
+      startupTimeoutMs: 2_000,
+      execArgv: [],
+    });
+
+    try {
+      assert.equal(worker.exited(), false);
+      assert.equal(worker.pid > 0, true);
+    } finally {
+      await worker.close();
+    }
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("spawnManagedWorker rejects a ready message with the wrong pid", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-worker-bad-pid-"),
+  );
+  const entry = join(root, "worker.mjs");
+
+  try {
+    await writeFile(
+      entry,
+      `
+process.send?.({
+  type: "junius-worker-ready",
+  workerId: process.env.JUNIUS_WORKER_ID,
+  pid: process.pid + 1,
+  mcpPort: 40101,
+  adminPort: 40102,
+});
+setInterval(() => {}, 1000);
+`,
+      "utf8",
+    );
+
+    await assert.rejects(
+      spawnManagedWorker({
+        workerEntryPath: entry,
+        cwd: root,
+        publicMcpOrigin: "http://127.0.0.1:48787",
+        publicAdminOrigin: "http://127.0.0.1:48788",
+        startupTimeoutMs: 2_000,
+        execArgv: [],
+      }),
+      /worker_ready_pid_mismatch/u,
+    );
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
 
 test("spawnManagedWorker starts an isolated healthy Junius worker", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-worker-process-"));

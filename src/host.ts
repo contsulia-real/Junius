@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostConfig } from "./host-config.js";
 import { sendHostJson } from "./host-http.js";
+import { hostRequestRejection } from "./host-request-security.js";
 import {
   HostLatencyTraceStore,
   proxyToActiveWorker,
@@ -16,6 +17,7 @@ import { WorkerSupervisor } from "./worker-supervisor.js";
 const HOST_ONLY_FILES = new Set([
   "host-config.ts",
   "host-http.ts",
+  "host-request-security.ts",
   "host.ts",
   "reverse-proxy.ts",
   "source-check.ts",
@@ -165,7 +167,35 @@ for (const area of ["src", "python"] as const) {
   );
 }
 
+function allowPublicRequest(
+  req: Parameters<typeof hostRequestRejection>[0],
+  res: Parameters<typeof sendHostJson>[0],
+  origin: string,
+): boolean {
+  const rejection =
+    hostRequestRejection(req, origin);
+
+  if (rejection === undefined) {
+    return true;
+  }
+
+  sendHostJson(res, 403, {
+    error: rejection,
+  });
+  return false;
+}
+
 const mcpHttpServer = createHttpServer((req, res) => {
+  if (
+    !allowPublicRequest(
+      req,
+      res,
+      publicMcpOrigin,
+    )
+  ) {
+    return;
+  }
+
   proxyToActiveWorker(
     req,
     res,
@@ -176,6 +206,16 @@ const mcpHttpServer = createHttpServer((req, res) => {
 });
 
 const adminHttpServer = createHttpServer((req, res) => {
+  if (
+    !allowPublicRequest(
+      req,
+      res,
+      publicAdminOrigin,
+    )
+  ) {
+    return;
+  }
+
   if (
     req.method === "GET" &&
     req.url === "/__junius/supervisor"
