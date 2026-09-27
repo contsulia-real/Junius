@@ -618,6 +618,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       esc(data.desktop.pythonExecutable || "未解析") + '</div></div>' +
       '<div class="detail"><div class="key">Helper</div><div class="value">' +
       esc(data.desktop.helperPath) + '</div></div>' +
+      '<div class="detail"><div class="key">Helper 进程</div><div class="value">' +
+      (data.desktop.helperRunning ? "常驻运行中" : "尚未启动") + '</div></div>' +
       '<div class="detail"><div class="key">自动化路径</div><div class="value">UI Automation + Screenshot / Mouse / Keyboard</div></div>';
   }
 

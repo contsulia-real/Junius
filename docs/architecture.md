@@ -71,7 +71,7 @@ Worker replacement is guarded rather than automatic process restart:
 
 A failed source check or failed candidate startup never changes the active Worker. If the newly active Worker exits while the previous Worker is still retained, the Host promotes the previous Worker again.
 
-The proxy records MCP session IDs returned by Workers. Requests carrying an existing session ID continue to route to that same retiring Worker after a promotion; requests without an existing routed session go to the active Worker. This prevents a hot swap from silently moving stateful MCP sessions between Worker runtimes.
+The proxy records MCP session IDs returned by Workers. Requests carrying an existing session ID continue to route to that same retiring Worker after a promotion. Modern sessionless MCP calls require an additional resource-affinity layer because process-local resources can otherwise disappear between adjacent tool calls. The Host therefore binds returned Job IDs to their creating Worker, binds named browser sessions until `close`, and binds Desktop UIA refs by desktop session until the next `inspect`. Retiring Workers are not reaped while they still own routed sessions, in-flight requests, or bound stateful resources.
 
 Host-only files are a separate stability boundary. Changes to the Host/Supervisor/proxy/check implementation set a restart-required state rather than hot-restarting the Host. The local supervisor state endpoint is `/__junius/supervisor`.
 
@@ -87,6 +87,7 @@ ls(workspace, ...)
 read(workspace, ...)
 write(workspace, ...)
 rg(workspace, ...)
+workspace_batch(workspace, operations)
 playwright_cli(session, command, args)
 desktop(session, command, ...)
 start_job(workspace, key, args)
@@ -100,6 +101,8 @@ run_command(workspace, key, args)
 `list_workspaces` exposes registered Workspace IDs, canonical roots, and their current command grants.
 
 `ls`, `read`, `write`, and `rg` are built-in Workspace file operations. Registering a Workspace defines the filesystem scope available to these built-in tools. Their paths are always Workspace-relative and are resolved by Junius rather than passed to a shell.
+
+`workspace_batch` is a read-only orchestration surface over `ls`, `read`, and `rg`. It does not add new filesystem authority. Up to 16 known read operations execute concurrently in one MCP round trip; expected file errors are returned per operation instead of aborting unrelated operations, and bounded result budgets prevent batch amplification.
 
 `run_command` always requires an explicit Workspace ID and separately requires that Workspace's capability/argument grant. There is no global active Workspace.
 
@@ -485,9 +488,9 @@ When semantic UI Automation is not useful, the capability can take screenshots a
 
 Text input uses Windows Unicode `SendInput` keyboard events rather than `pyautogui.write`. This supports arbitrary Unicode text without mutating the clipboard.
 
-The Python helper is intentionally short-lived: each desktop action launches one helper process with `shell: false`, exchanges one JSON request/response over stdio, and exits. This keeps helper state out of Python; named-session refs remain owned by the Node service.
+Each Worker owns one lazily started persistent Python helper process. The helper is launched with `shell: false` in `--server` mode and speaks a request-ID JSONL protocol over stdio. Imports and Windows automation initialization therefore occur once per Worker rather than once per desktop action. Node keeps UIA ref/session state; Python remains an execution helper rather than the authority for Junius session semantics. A helper timeout, crash, output-limit violation, or malformed protocol response rejects outstanding requests and tears the helper process down so a later action can start a clean instance.
 
-Desktop machine state uses the same persisted `enabled` / runtime `available` / derived `active` model as browser. A disabled desktop capability keeps the stable MCP surface but rejects actions before launching the helper.
+Desktop machine state uses the same persisted `enabled` / runtime `available` / derived `active` model as browser. A disabled desktop capability keeps the stable MCP surface but rejects actions before contacting the helper. The admin state also exposes whether the persistent helper process is currently running.
 
 ## Local WebUI security
 

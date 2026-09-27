@@ -167,6 +167,7 @@ async function shutdown(signal: string): Promise<void> {
   adminHttpServer.close();
   await mcpRuntime.close();
   await jobManager.close();
+  await desktopComputerUseService.close();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -10,6 +10,7 @@ type WorkerStatus = "active" | "retiring" | "exited";
 interface WorkerRecord {
   readonly worker: ManagedWorker;
   readonly sessions: Set<string>;
+  readonly resources: Set<string>;
   promotedAt: string;
   retiredAt?: string;
   status: WorkerStatus;
@@ -53,6 +54,7 @@ export interface WorkerSupervisorState {
     readonly promotedAt: string;
     readonly retiredAt?: string;
     readonly sessions: number;
+    readonly resources: number;
     readonly inFlight: number;
   }[];
 }
@@ -60,6 +62,7 @@ export interface WorkerSupervisorState {
 export class WorkerSupervisor {
   readonly #records = new Map<string, WorkerRecord>();
   readonly #sessionRoutes = new Map<string, string>();
+  readonly #resourceRoutes = new Map<string, string>();
   readonly #rollbackWindowMs: number;
   readonly #validate: () => Promise<SourceCheckResult>;
   readonly #spawnWorker: () => Promise<ManagedWorker>;
@@ -134,19 +137,37 @@ export class WorkerSupervisor {
     return this.#reloadPromise;
   }
 
-  acquire(sessionId?: string): WorkerLease {
+  acquire(
+    sessionId?: string,
+    resourceKey?: string,
+  ): WorkerLease {
     let workerId =
-      sessionId === undefined
+      resourceKey === undefined
         ? undefined
-        : this.#sessionRoutes.get(sessionId);
+        : this.#resourceRoutes.get(resourceKey);
 
     if (
       workerId !== undefined &&
       (!this.#records.has(workerId) ||
         this.#record(workerId).status === "exited")
     ) {
-      this.#sessionRoutes.delete(sessionId!);
+      if (resourceKey !== undefined) {
+        this.#resourceRoutes.delete(resourceKey);
+      }
       workerId = undefined;
+    }
+
+    if (workerId === undefined && sessionId !== undefined) {
+      workerId = this.#sessionRoutes.get(sessionId);
+
+      if (
+        workerId !== undefined &&
+        (!this.#records.has(workerId) ||
+          this.#record(workerId).status === "exited")
+      ) {
+        this.#sessionRoutes.delete(sessionId);
+        workerId = undefined;
+      }
     }
 
     workerId ??= this.#activeWorkerId;
@@ -200,6 +221,40 @@ export class WorkerSupervisor {
     }
   }
 
+  bindResource(resourceKey: string, workerId: string): void {
+    if (!resourceKey) return;
+
+    const record = this.#records.get(workerId);
+    if (record === undefined || record.status === "exited") {
+      return;
+    }
+
+    const previousId = this.#resourceRoutes.get(resourceKey);
+    if (previousId !== undefined && previousId !== workerId) {
+      const previous = this.#records.get(previousId);
+      previous?.resources.delete(resourceKey);
+      if (previous !== undefined) {
+        this.#maybeReap(previous);
+      }
+    }
+
+    this.#resourceRoutes.set(resourceKey, workerId);
+    record.resources.add(resourceKey);
+  }
+
+  releaseResource(resourceKey: string): void {
+    const workerId = this.#resourceRoutes.get(resourceKey);
+    if (workerId === undefined) return;
+
+    this.#resourceRoutes.delete(resourceKey);
+    const record = this.#records.get(workerId);
+    record?.resources.delete(resourceKey);
+
+    if (record !== undefined) {
+      this.#maybeReap(record);
+    }
+  }
+
   state(): WorkerSupervisorState {
     return {
       ...(this.#activeWorkerId === undefined
@@ -226,6 +281,7 @@ export class WorkerSupervisor {
             ? {}
             : { retiredAt: record.retiredAt }),
           sessions: record.sessions.size,
+          resources: record.resources.size,
           inFlight: record.inFlight,
         }))
         .sort((left, right) =>
@@ -251,6 +307,7 @@ export class WorkerSupervisor {
     );
 
     this.#sessionRoutes.clear();
+    this.#resourceRoutes.clear();
     this.#records.clear();
     this.#activeWorkerId = undefined;
   }
@@ -341,6 +398,7 @@ export class WorkerSupervisor {
     const record: WorkerRecord = {
       worker,
       sessions: new Set(),
+      resources: new Set(),
       promotedAt: new Date().toISOString(),
       status,
       inFlight: 0,
@@ -367,6 +425,11 @@ export class WorkerSupervisor {
       this.#sessionRoutes.delete(sessionId);
     }
     record.sessions.clear();
+
+    for (const resourceKey of record.resources) {
+      this.#resourceRoutes.delete(resourceKey);
+    }
+    record.resources.clear();
 
     if (this.#activeWorkerId !== workerId) {
       return;
@@ -420,7 +483,11 @@ export class WorkerSupervisor {
       return;
     }
 
-    if (record.inFlight > 0 || record.sessions.size > 0) {
+    if (
+      record.inFlight > 0 ||
+      record.sessions.size > 0 ||
+      record.resources.size > 0
+    ) {
       if (record.retireTimer === undefined) {
         record.retireTimer = setTimeout(() => {
           record.retireTimer = undefined;

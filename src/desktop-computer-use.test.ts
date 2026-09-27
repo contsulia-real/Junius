@@ -19,17 +19,13 @@ async function fixture() {
   await writeFile(
     helper,
     `
-let input = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => input += chunk);
-process.stdin.on("end", () => {
-  const request = JSON.parse(input);
-
+function responseFor(request) {
   if (request.command === "inspect") {
-    process.stdout.write(JSON.stringify({
+    return {
       ok: true,
       result: {
         handle: request.handle,
+        helperPid: process.pid,
         truncated: false,
         elements: [
           {
@@ -54,14 +50,14 @@ process.stdin.on("end", () => {
           }
         ]
       }
-    }));
-    return;
+    };
   }
 
   if (request.command === "screenshot") {
-    process.stdout.write(JSON.stringify({
+    return {
       ok: true,
       result: {
+        helperPid: process.pid,
         image: {
           mimeType: "image/jpeg",
           data: "ZmFrZS1pbWFnZQ=="
@@ -73,15 +69,55 @@ process.stdin.on("end", () => {
           height: 600
         }
       }
-    }));
-    return;
+    };
   }
 
-  process.stdout.write(JSON.stringify({
+  return {
     ok: true,
-    result: { received: request }
-  }));
-});
+    result: {
+      helperPid: process.pid,
+      received: request
+    }
+  };
+}
+
+function writeEnvelope(id, request) {
+  process.stdout.write(
+    JSON.stringify({
+      id,
+      ...responseFor(request)
+    }) + "\\n"
+  );
+}
+
+if (process.argv.includes("--server")) {
+  let buffer = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    buffer += chunk;
+
+    for (;;) {
+      const newline = buffer.indexOf("\\n");
+      if (newline < 0) break;
+
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (!line.trim()) continue;
+
+      const envelope = JSON.parse(line);
+      writeEnvelope(envelope.id, envelope.request);
+    }
+  });
+} else {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => input += chunk);
+  process.stdin.on("end", () => {
+    process.stdout.write(
+      JSON.stringify(responseFor(JSON.parse(input)))
+    );
+  });
+}
 `,
     "utf8",
   );
@@ -96,6 +132,7 @@ process.stdin.on("end", () => {
     root,
     service,
     async dispose() {
+      await service.close();
       await rm(root, { recursive: true, force: true });
     },
   };
@@ -139,13 +176,14 @@ test("desktop inspect creates session-local element refs", async () => {
       ref: "d2",
     });
 
-    assert.deepEqual(invoked.result, {
-      received: {
+    assert.deepEqual(
+      (invoked.result as { received: unknown }).received,
+      {
         command: "invoke",
         handle: 42,
         path: [0],
       },
-    });
+    );
   } finally {
     await f.dispose();
   }
@@ -188,13 +226,23 @@ test("desktop screenshot separates MCP image data from metadata", async () => {
       mimeType: "image/jpeg",
       data: "ZmFrZS1pbWFnZQ==",
     });
-    assert.deepEqual(result.result, {
+
+    const body = result.result as {
+      helperPid: number;
       region: {
-        left: 0,
-        top: 0,
-        width: 800,
-        height: 600,
-      },
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      };
+    };
+
+    assert.equal(typeof body.helperPid, "number");
+    assert.deepEqual(body.region, {
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
     });
   } finally {
     await f.dispose();
@@ -214,6 +262,8 @@ test("desktop adapter rejects unknown refs before launching helper", async () =>
         error instanceof DesktopComputerUseError &&
         error.code === "desktop_ref_not_found",
     );
+
+    assert.equal(f.service.state().helperRunning, false);
   } finally {
     await f.dispose();
   }
@@ -254,27 +304,69 @@ test("desktop rejects execution when machine capability is disabled", async () =
 
     assert.equal(f.service.state().enabled, false);
     assert.equal(f.service.state().active, false);
+    assert.equal(f.service.state().helperRunning, false);
   } finally {
     await f.dispose();
   }
 });
 
-test("desktop real Python helper can enumerate Windows when installed", async (t) => {
+test("desktop reuses one persistent helper process across actions", async () => {
+  const f = await fixture();
+  try {
+    const first = await f.service.run({
+      session: "desktop",
+      command: "windows",
+    });
+    const second = await f.service.run({
+      session: "desktop",
+      command: "key_press",
+      key: "esc",
+    });
+
+    const firstPid = (
+      first.result as { helperPid: number }
+    ).helperPid;
+    const secondPid = (
+      second.result as { helperPid: number }
+    ).helperPid;
+
+    assert.equal(firstPid, secondPid);
+    assert.equal(f.service.state().helperRunning, true);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("desktop real Python helper can enumerate Windows repeatedly when installed", async (t) => {
   const service = new DesktopComputerUseService();
 
-  if (!service.available) {
-    t.skip("Junius desktop Python environment is not installed.");
-    return;
+  try {
+    if (!service.available) {
+      t.skip("Junius desktop Python environment is not installed.");
+      return;
+    }
+
+    const first = await service.run({
+      session: "integration",
+      command: "windows",
+    });
+    const second = await service.run({
+      session: "integration",
+      command: "windows",
+    });
+
+    const firstResult = first.result as {
+      windows?: unknown;
+    };
+    const secondResult = second.result as {
+      windows?: unknown;
+    };
+
+    assert.equal(Array.isArray(firstResult.windows), true);
+    assert.equal(Array.isArray(secondResult.windows), true);
+    assert.equal(service.state().active, true);
+    assert.equal(service.state().helperRunning, true);
+  } finally {
+    await service.close();
   }
-
-  const execution = await service.run({
-    session: "integration",
-    command: "windows",
-  });
-  const result = execution.result as {
-    windows?: unknown;
-  };
-
-  assert.equal(Array.isArray(result.windows), true);
-  assert.equal(service.state().active, true);
 });

@@ -127,6 +127,58 @@ test("WorkerSupervisor promotes healthy candidate while existing session stays o
   }
 });
 
+test("WorkerSupervisor keeps resource affinity on retiring worker until released", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindResource("job:abc", first.worker.id);
+    await supervisor.reload("good-edit");
+
+    const lease = supervisor.acquire(
+      undefined,
+      "job:abc",
+    );
+    try {
+      assert.equal(lease.worker.id, first.worker.id);
+    } finally {
+      lease.release();
+    }
+
+    assert.equal(
+      supervisor.state().workers.find(
+        (worker) => worker.id === first.worker.id,
+      )?.resources,
+      1,
+    );
+
+    supervisor.releaseResource("job:abc");
+
+    const newLease = supervisor.acquire(
+      undefined,
+      "job:abc",
+    );
+    try {
+      assert.equal(newLease.worker.id, second.worker.id);
+    } finally {
+      newLease.release();
+    }
+  } finally {
+    await supervisor.close();
+  }
+});
+
 test("WorkerSupervisor rolls back when newly active worker exits inside rollback window", async () => {
   const first = fakeWorker("worker-1");
   const second = fakeWorker("worker-2");

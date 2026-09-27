@@ -73,7 +73,7 @@ source change
 -> keep previous Worker during rollback/drain window
 ```
 
-If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their original retiring Worker while new sessions use the new active Worker.
+If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their original retiring Worker. For modern sessionless MCP calls, the Host also keeps resource affinity for Job IDs, named browser sessions, and Desktop UIA refs so hot swaps do not move process-local state to the wrong Worker.
 
 Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. Supervisor state is available locally at `/__junius/supervisor`.
 
@@ -87,6 +87,7 @@ ls
 read
 write
 rg
+workspace_batch
 playwright_cli
 desktop
 start_job
@@ -462,7 +463,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm typecheck && pnpm test
 ```
 
-The current full check completes with 68 tests passed, 0 failed, 0 cancelled, and 0 skipped, including a real Windows Python desktop-helper integration test when the local desktop environment is installed.
+The current full check completes with 81 tests passed, 0 failed, 0 cancelled, and 0 skipped, including real Host/Worker proxying, hot-swap affinity, read batching, and Windows Python desktop-helper integration tests.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -483,7 +484,7 @@ The current allowlist covers ordinary browser navigation and interaction, includ
 
 Browser sessions are named, headed, and persistent by default. Runtime browser state lives in Junius's own state directory rather than a project Workspace or the user's normal browser profile.
 
-Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants.
+Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants. The Host keeps a named browser session on the Worker that owns it across hot swaps and releases that affinity when the session is closed.
 
 ## Desktop Computer Use
 
@@ -501,5 +502,13 @@ Desktop element refs are scoped to a named desktop session and are rebuilt by `i
 
 Text input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, so non-ASCII input is supported without relying on clipboard mutation.
 
+The Python helper now runs as a persistent JSONL server inside each Worker. Python, `pywinauto`, and PyAutoGUI are loaded once on the first desktop action and reused for later actions instead of spawning a fresh Python process per mouse/key/screenshot/UIA request. If the helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
+
+Desktop UIA refs remain Worker-local. The Host therefore binds a named desktop session to the Worker that performed `inspect`; a later `inspect` is the explicit migration boundary to the current active Worker.
+
 Desktop is machine-scoped like browser. It has persisted `enabled`, runtime `available`, and derived `active` state and does not use Workspace grants.
+
+## Workspace read batching
+
+`workspace_batch` executes up to 16 independent `ls`, `read`, and `rg` operations in one MCP round trip. The operations run concurrently, expected Workspace-file failures are isolated per operation, and per-result/aggregate response budgets prevent one batch from returning unbounded data. Each sub-operation and the whole batch report `durationMs` so Junius can distinguish local execution time from external MCP round-trip latency.
 

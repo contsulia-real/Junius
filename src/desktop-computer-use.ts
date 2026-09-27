@@ -1,12 +1,14 @@
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import {
+  DesktopHelperClient,
+  DesktopHelperClientError,
+  type DesktopHelperResponse,
+} from "./desktop-helper-client.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const REF_PATTERN = /^d\d+$/u;
-const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 const DEFAULT_HELPER_PATH = fileURLToPath(
   new URL("../python/desktop_helper.py", import.meta.url),
 );
@@ -67,13 +69,6 @@ interface DesktopSessionState {
 interface HelperImage {
   readonly mimeType: string;
   readonly data: string;
-}
-
-interface HelperResponse {
-  readonly ok: boolean;
-  readonly result?: unknown;
-  readonly code?: string;
-  readonly message?: string;
 }
 
 export interface DesktopRunRequest {
@@ -252,6 +247,7 @@ export class DesktopComputerUseService {
   readonly #helperPath: string;
   readonly #platform: NodeJS.Platform;
   readonly #sessions = new Map<string, DesktopSessionState>();
+  readonly #helperClient: DesktopHelperClient | undefined;
   #enabled = true;
 
   constructor(options: DesktopComputerUseOptions = {}) {
@@ -270,6 +266,14 @@ export class DesktopComputerUseService {
       this.#helperPath,
       options.pythonExecutable,
     );
+    this.#helperClient =
+      this.#pythonExecutable === undefined
+        ? undefined
+        : new DesktopHelperClient({
+            pythonExecutable: this.#pythonExecutable,
+            helperPath: this.#helperPath,
+            environment: this.#environment,
+          });
   }
 
   get enabled(): boolean {
@@ -298,12 +302,14 @@ export class DesktopComputerUseService {
     readonly active: boolean;
     readonly helperPath: string;
     readonly pythonExecutable?: string;
+    readonly helperRunning: boolean;
   } {
     return {
       enabled: this.enabled,
       available: this.available,
       active: this.active,
       helperPath: this.#helperPath,
+      helperRunning: this.#helperClient?.running ?? false,
       ...(this.#pythonExecutable === undefined
         ? {}
         : { pythonExecutable: this.#pythonExecutable }),
@@ -517,137 +523,31 @@ export class DesktopComputerUseService {
     return { result: value };
   }
 
-  #executeHelper(
+  async close(): Promise<void> {
+    await this.#helperClient?.close();
+  }
+
+  async #executeHelper(
     request: Record<string, unknown>,
-  ): Promise<HelperResponse> {
-    const python = this.#pythonExecutable!;
-
-    return new Promise<HelperResponse>((resolvePromise, reject) => {
-      const stdout: Buffer[] = [];
-      const stderr: Buffer[] = [];
-      let bytes = 0;
-      let settled = false;
-      let timedOut = false;
-      let outputLimit = false;
-
-      const child = spawn(
-        python,
-        [this.#helperPath],
-        {
-          env: this.#environment,
-          shell: false,
-          windowsHide: true,
-          stdio: ["pipe", "pipe", "pipe"],
-        },
+  ): Promise<DesktopHelperResponse> {
+    if (this.#helperClient === undefined) {
+      throw new DesktopComputerUseError(
+        "desktop_not_available",
+        "Desktop helper client is not available.",
       );
+    }
 
-      const finishError = (
-        code: DesktopComputerUseErrorCode,
-        message: string,
-      ) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(new DesktopComputerUseError(code, message));
-      };
+    try {
+      return await this.#helperClient.request(request);
+    } catch (error) {
+      if (error instanceof DesktopHelperClientError) {
+        throw new DesktopComputerUseError(
+          error.code,
+          error.message,
+        );
+      }
 
-      const append = (
-        target: Buffer[],
-        chunk: Buffer | string,
-      ) => {
-        if (settled) return;
-
-        const buffer = Buffer.isBuffer(chunk)
-          ? chunk
-          : Buffer.from(chunk);
-
-        bytes += buffer.length;
-        if (bytes > MAX_OUTPUT_BYTES) {
-          outputLimit = true;
-          child.kill();
-          return;
-        }
-
-        target.push(buffer);
-      };
-
-      child.stdout.on("data", (chunk: Buffer | string) => {
-        append(stdout, chunk);
-      });
-      child.stderr.on("data", (chunk: Buffer | string) => {
-        append(stderr, chunk);
-      });
-
-      child.once("error", (error) => {
-        finishError("spawn_failed", error.message);
-      });
-
-      child.once("close", (exitCode) => {
-        if (settled) return;
-
-        if (outputLimit) {
-          finishError(
-            "output_limit",
-            `Desktop helper output exceeded ${MAX_OUTPUT_BYTES} bytes.`,
-          );
-          return;
-        }
-
-        if (timedOut) {
-          finishError(
-            "process_timeout",
-            `Desktop helper exceeded ${DEFAULT_TIMEOUT_MS} ms.`,
-          );
-          return;
-        }
-
-        const stdoutText = Buffer.concat(stdout).toString("utf8");
-        const stderrText = Buffer.concat(stderr).toString("utf8");
-
-        if (exitCode !== 0) {
-          finishError(
-            "helper_failed",
-            stderrText ||
-              stdoutText ||
-              `Desktop helper exited with code ${String(exitCode)}.`,
-          );
-          return;
-        }
-
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(stdoutText);
-        } catch {
-          finishError(
-            "invalid_helper_response",
-            "Desktop helper did not return valid JSON.",
-          );
-          return;
-        }
-
-        const record = asRecord(parsed);
-        if (
-          record === undefined ||
-          typeof record.ok !== "boolean"
-        ) {
-          finishError(
-            "invalid_helper_response",
-            "Desktop helper returned an invalid response object.",
-          );
-          return;
-        }
-
-        settled = true;
-        clearTimeout(timer);
-        resolvePromise(record as unknown as HelperResponse);
-      });
-
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill();
-      }, DEFAULT_TIMEOUT_MS);
-
-      child.stdin.end(JSON.stringify(request));
-    });
+      throw error;
+    }
   }
 }

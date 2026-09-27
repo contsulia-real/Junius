@@ -451,54 +451,116 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def main() -> None:
+def execute_response(request: Any) -> dict[str, Any]:
     try:
-        raw = sys.stdin.read()
-        if not raw:
-            raise DesktopHelperError(
-                "invalid_request",
-                "Desktop helper requires a JSON request on stdin.",
-            )
-
-        request = json.loads(raw)
         if not isinstance(request, dict):
             raise DesktopHelperError(
                 "invalid_request",
                 "Desktop helper request must be an object.",
             )
 
-        result = execute(request)
-        sys.stdout.write(
-            json.dumps(
-                {"ok": True, "result": result},
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-        )
+        return {
+            "ok": True,
+            "result": execute(request),
+        }
     except DesktopHelperError as error:
-        sys.stdout.write(
-            json.dumps(
-                {
-                    "ok": False,
-                    "code": error.code,
-                    "message": str(error),
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-        )
+        return {
+            "ok": False,
+            "code": error.code,
+            "message": str(error),
+        }
     except Exception as error:
-        sys.stdout.write(
-            json.dumps(
-                {
-                    "ok": False,
-                    "code": "helper_failed",
-                    "message": str(error),
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
+        return {
+            "ok": False,
+            "code": "helper_failed",
+            "message": str(error),
+        }
+
+
+def write_response(response: dict[str, Any]) -> None:
+    sys.stdout.write(
+        json.dumps(
+            response,
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
+    )
+
+
+def one_shot_main() -> None:
+    raw = sys.stdin.read()
+    if not raw:
+        write_response(
+            {
+                "ok": False,
+                "code": "invalid_request",
+                "message": "Desktop helper requires a JSON request on stdin.",
+            }
+        )
+        return
+
+    try:
+        request = json.loads(raw)
+    except Exception as error:
+        write_response(
+            {
+                "ok": False,
+                "code": "invalid_request",
+                "message": str(error),
+            }
+        )
+        return
+
+    write_response(execute_response(request))
+
+
+def server_main() -> None:
+    for raw_line in sys.stdin:
+        raw = raw_line.strip()
+        if not raw:
+            continue
+
+        request_id: Any = None
+
+        try:
+            envelope = json.loads(raw)
+            if not isinstance(envelope, dict):
+                raise DesktopHelperError(
+                    "invalid_request",
+                    "Desktop helper server envelope must be an object.",
+                )
+
+            request_id = envelope.get("id")
+            response = execute_response(envelope.get("request"))
+        except DesktopHelperError as error:
+            response = {
+                "ok": False,
+                "code": error.code,
+                "message": str(error),
+            }
+        except Exception as error:
+            response = {
+                "ok": False,
+                "code": "invalid_request",
+                "message": str(error),
+            }
+
+        write_response(
+            {
+                "id": request_id,
+                **response,
+            }
+        )
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
+def main() -> None:
+    if "--server" in sys.argv[1:]:
+        server_main()
+        return
+
+    one_shot_main()
 
 
 if __name__ == "__main__":
