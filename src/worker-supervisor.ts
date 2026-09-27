@@ -7,6 +7,12 @@ import {
 import { WorkerAffinityRegistry } from "./worker-affinity-registry.js";
 import { reloadWorkerConfiguration } from "./worker-configuration-reload.js";
 import { prepareReloadCandidate } from "./worker-reload-candidate.js";
+import {
+  synchronizeWorkerConfigurations,
+  type ConfigurationSyncResult,
+} from "./worker-configuration-sync.js";
+
+export type { ConfigurationSyncResult } from "./worker-configuration-sync.js";
 
 type WorkerStatus = "active" | "retiring" | "exited";
 
@@ -52,11 +58,6 @@ export interface ReloadResult {
   readonly promoted: boolean;
   readonly workerId?: string;
   readonly reason?: string;
-}
-
-export interface ConfigurationSyncResult {
-  readonly synchronizedWorkerIds: readonly string[];
-  readonly quarantinedWorkerIds: readonly string[];
 }
 
 export interface WorkerSupervisorState {
@@ -223,39 +224,33 @@ export class WorkerSupervisor {
     }
 
     this.#configurationEpoch += 1;
-    const targets = [...this.#records.values()].filter(
-      (record) =>
-        record.worker.id !== sourceWorkerId &&
-        record.status !== "exited" &&
-        !record.worker.exited(),
-    );
-    const synchronizedWorkerIds: string[] = [];
-    const quarantinedWorkerIds: string[] = [];
+    const workers = [...this.#records.values()]
+      .filter(
+        (record) =>
+          record.worker.id !== sourceWorkerId &&
+          record.status !== "exited" &&
+          !record.worker.exited(),
+      )
+      .map((record) => record.worker);
 
-    await Promise.all(
-      targets.map(async (record) => {
-        try {
-          await this.#reloadWorkerConfiguration(record.worker);
-          synchronizedWorkerIds.push(record.worker.id);
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          this.#lastFailure =
-            `configuration_sync_failed: ${record.worker.id}: ${message}`;
-
-          await record.worker.close().catch(() => undefined);
-          if (record.status !== "exited") {
-            this.#onWorkerExit(record.worker.id);
-          }
-          quarantinedWorkerIds.push(record.worker.id);
+    return synchronizeWorkerConfigurations({
+      workers,
+      reloadWorkerConfiguration:
+        this.#reloadWorkerConfiguration,
+      onFailure: (message) => {
+        this.#lastFailure = message;
+      },
+      quarantineWorker: async (worker) => {
+        await worker.close().catch(() => undefined);
+        const record = this.#records.get(worker.id);
+        if (
+          record !== undefined &&
+          record.status !== "exited"
+        ) {
+          this.#onWorkerExit(worker.id);
         }
-      }),
-    );
-
-    return {
-      synchronizedWorkerIds: synchronizedWorkerIds.sort(),
-      quarantinedWorkerIds: quarantinedWorkerIds.sort(),
-    };
+      },
+    });
   }
 
   acquire(
