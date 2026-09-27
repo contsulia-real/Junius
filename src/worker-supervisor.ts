@@ -597,6 +597,15 @@ export class WorkerSupervisor {
   }
 
   async #reloadOnce(): Promise<ReloadResult> {
+    if (!this.#canPromote()) {
+      this.#lastFailure =
+        "candidate_promotion_blocked";
+      return {
+        promoted: false,
+        reason: this.#lastFailure,
+      };
+    }
+
     let check: SourceCheckResult;
     try {
       check = await this.#validate();
