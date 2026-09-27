@@ -5,36 +5,25 @@ import {
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { terminateProcessTree } from "./process-termination.js";
+import {
+  PlaywrightCliBrokerError,
+  PlaywrightCliBrokerProtocolDecoder,
+  playwrightCliBrokerResponse,
+  type PlaywrightCliBrokerEnvelope,
+  type PlaywrightCliBrokerErrorCode,
+  type PlaywrightCliBrokerResponse,
+} from "./playwright-cli-broker-protocol.js";
+
+export {
+  PlaywrightCliBrokerError,
+  type PlaywrightCliBrokerErrorCode,
+  type PlaywrightCliBrokerResponse,
+} from "./playwright-cli-broker-protocol.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
-const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
-
 const DEFAULT_BROKER_PATH = fileURLToPath(
   new URL("./playwright-cli-broker.ts", import.meta.url),
 );
-
-export type PlaywrightCliBrokerErrorCode =
-  | "broker_unavailable"
-  | "broker_spawn_failed"
-  | "broker_timeout"
-  | "broker_output_limit"
-  | "broker_protocol_error";
-
-export class PlaywrightCliBrokerError extends Error {
-  constructor(
-    readonly code: PlaywrightCliBrokerErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface PlaywrightCliBrokerResponse {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly message?: string;
-}
 
 interface Pending {
   readonly resolve: (
@@ -62,7 +51,8 @@ export class PlaywrightCliBrokerClient {
   readonly #timeoutMs: number;
 
   #child: ChildProcessWithoutNullStreams | undefined;
-  #buffer = "";
+  readonly #protocol =
+    new PlaywrightCliBrokerProtocolDecoder();
   #nextId = 1;
   #pending = new Map<number, Pending>();
   #ready = false;
@@ -210,7 +200,7 @@ export class PlaywrightCliBrokerClient {
       return this.#child!;
     }
 
-    this.#buffer = "";
+    this.#protocol.reset();
     this.#ready = false;
     this.#readyPromise = new Promise<void>(
       (resolvePromise, reject) => {
@@ -251,23 +241,27 @@ export class PlaywrightCliBrokerClient {
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
-      this.#buffer += chunk;
-
-      if (
-        Buffer.byteLength(this.#buffer, "utf8") >
-        MAX_OUTPUT_BYTES
-      ) {
+      let records: readonly PlaywrightCliBrokerEnvelope[];
+      try {
+        records = this.#protocol.push(chunk);
+      } catch (error) {
         this.#fail(
-          new PlaywrightCliBrokerError(
-            "broker_output_limit",
-            `Playwright CLI broker output exceeded ${MAX_OUTPUT_BYTES} bytes.`,
-          ),
+          error instanceof PlaywrightCliBrokerError
+            ? error
+            : new PlaywrightCliBrokerError(
+                "broker_protocol_error",
+                error instanceof Error
+                  ? error.message
+                  : String(error),
+              ),
           !this.#ready,
         );
         return;
       }
 
-      this.#drain();
+      for (const record of records) {
+        this.#handleResponse(record);
+      }
     });
 
     let stderr = "";
@@ -314,89 +308,35 @@ export class PlaywrightCliBrokerClient {
     return child;
   }
 
-  #drain(): void {
-    for (;;) {
-      const newline = this.#buffer.indexOf("\n");
-      if (newline < 0) return;
+  #handleResponse(
+    response: PlaywrightCliBrokerEnvelope,
+  ): void {
+    const pending = this.#pending.get(response.id);
 
-      const line = this.#buffer.slice(0, newline);
-      this.#buffer = this.#buffer.slice(newline + 1);
-      if (!line.trim()) continue;
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(line) as unknown;
-      } catch {
-        this.#fail(
-          new PlaywrightCliBrokerError(
-            "broker_protocol_error",
-            "Playwright CLI broker returned invalid JSON.",
-          ),
-          !this.#ready,
-        );
-        return;
-      }
-
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        typeof (parsed as { id?: unknown }).id !== "number" ||
-        typeof (parsed as { exitCode?: unknown }).exitCode !==
-          "number" ||
-        typeof (parsed as { stdout?: unknown }).stdout !==
-          "string" ||
-        typeof (parsed as { stderr?: unknown }).stderr !==
-          "string"
-      ) {
-        this.#fail(
-          new PlaywrightCliBrokerError(
-            "broker_protocol_error",
-            "Playwright CLI broker returned an invalid response.",
-          ),
-          !this.#ready,
-        );
-        return;
-      }
-
-      const response = parsed as {
-        id: number;
-        exitCode: number;
-        stdout: string;
-        stderr: string;
-        message?: string;
-      };
-      const pending = this.#pending.get(response.id);
-
-      if (pending === undefined) {
-        if (response.id === 0) {
-          if (response.exitCode === 0) {
-            this.#markReady();
-          } else {
-            this.#fail(
-              new PlaywrightCliBrokerError(
-                "broker_unavailable",
-                response.message ||
-                  response.stderr ||
-                  "Playwright CLI broker failed to initialize.",
-              ),
-              true,
-            );
-          }
+    if (pending === undefined) {
+      if (response.id === 0) {
+        if (response.exitCode === 0) {
+          this.#markReady();
+        } else {
+          this.#fail(
+            new PlaywrightCliBrokerError(
+              "broker_unavailable",
+              response.message ||
+                response.stderr ||
+                "Playwright CLI broker failed to initialize.",
+            ),
+            true,
+          );
         }
-        continue;
       }
-
-      this.#pending.delete(response.id);
-      clearTimeout(pending.timer);
-      pending.resolve({
-        exitCode: response.exitCode,
-        stdout: response.stdout,
-        stderr: response.stderr,
-        ...(response.message === undefined
-          ? {}
-          : { message: response.message }),
-      });
+      return;
     }
+
+    this.#pending.delete(response.id);
+    clearTimeout(pending.timer);
+    pending.resolve(
+      playwrightCliBrokerResponse(response),
+    );
   }
 
   #markReady(): void {
