@@ -236,6 +236,7 @@ export class JobManager {
     private readonly commands: RunCommandService,
     private readonly onTerminal?: (job: JobSnapshot) => void,
     private readonly history?: JobHistoryStore,
+    private readonly onPersisted?: (job: JobSnapshot) => void,
   ) {}
 
   start(
@@ -570,14 +571,21 @@ export class JobManager {
       return;
     }
 
-    const task = this.history.save(persisted).catch(
-      (error: unknown) => {
+    const task = this.history
+      .save(persisted)
+      .then(() => {
+        try {
+          this.onPersisted?.(snapshot(record));
+        } catch {
+          // Persistence success must not be changed by observer failures.
+        }
+      })
+      .catch((error: unknown) => {
         console.error(
           `[job-history ${record.id}]`,
           error,
         );
-      },
-    );
+      });
 
     this.#pendingPersistence.add(task);
     void task.finally(() => {

@@ -45,6 +45,14 @@ try {
         status: job.status,
       });
     },
+    onJobHistoryPersisted: (job) => {
+      process.send?.({
+        type: "junius-job-history-persisted",
+        workerId,
+        jobId: job.id,
+        status: job.status,
+      });
+    },
   });
 
   process.send?.({

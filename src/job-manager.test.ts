@@ -238,10 +238,14 @@ test("JobManager persists terminal history across manager restart", async () => 
     workspaces,
   );
 
+  const persistedJobs: string[] = [];
   const first = new JobManager(
     commands,
     undefined,
     new JobHistoryStore(historyPath),
+    (job) => {
+      persistedJobs.push(`${job.id}:${job.status}`);
+    },
   );
   let second: JobManager | undefined;
 
@@ -261,6 +265,9 @@ test("JobManager persists terminal history across manager restart", async () => 
     assert.equal(finished.status, "succeeded");
 
     await first.close();
+    assert.deepEqual(persistedJobs, [
+      `${started.id}:succeeded`,
+    ]);
 
     second = new JobManager(
       commands,

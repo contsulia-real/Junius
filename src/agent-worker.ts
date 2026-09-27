@@ -40,6 +40,7 @@ export interface AgentWorkerOptions {
   readonly publicMcpOrigin?: string;
   readonly publicAdminOrigin?: string;
   readonly onJobTerminal?: (job: JobSnapshot) => void;
+  readonly onJobHistoryPersisted?: (job: JobSnapshot) => void;
 }
 
 export interface AgentWorkerHandle {
@@ -147,6 +148,7 @@ export async function startAgentWorker(
     new JobHistoryStore(
       resolveJobHistoryPath(),
     ),
+    options.onJobHistoryPersisted,
   );
   const mcpRuntime = await createMcpRuntime(
     commands,

@@ -34,6 +34,12 @@ interface JobTerminalMessage {
   readonly jobId: string;
 }
 
+interface JobHistoryPersistedMessage {
+  readonly type: "junius-job-history-persisted";
+  readonly workerId: string;
+  readonly jobId: string;
+}
+
 const DEFAULT_BROWSER_RESOURCE_IDLE_MS = 10 * 60_000;
 const DEFAULT_DESKTOP_RESOURCE_IDLE_MS = 5 * 60_000;
 const DEFAULT_JOB_RESULT_RETENTION_MS = 30 * 60_000;
@@ -96,6 +102,7 @@ export class WorkerSupervisor {
   readonly #sessionRoutes = new Map<string, string>();
   readonly #resourceRoutes = new Map<string, ResourceBinding>();
   readonly #terminalResourceHints = new Map<string, string>();
+  readonly #persistedResourceHints = new Map<string, string>();
   readonly #rollbackWindowMs: number;
   readonly #browserResourceIdleMs: number;
   readonly #desktopResourceIdleMs: number;
@@ -305,6 +312,27 @@ export class WorkerSupervisor {
       return;
     }
 
+    if (
+      resourceKey.startsWith("job:") &&
+      this.#persistedResourceHints.get(resourceKey) ===
+        workerId
+    ) {
+      this.#persistedResourceHints.delete(resourceKey);
+      this.#terminalResourceHints.delete(resourceKey);
+
+      const existingPersisted =
+        this.#resourceRoutes.get(resourceKey);
+      if (
+        existingPersisted !== undefined &&
+        existingPersisted.workerId === workerId
+      ) {
+        this.#releaseResourceBinding(
+          existingPersisted,
+        );
+      }
+      return;
+    }
+
     const previous = this.#resourceRoutes.get(resourceKey);
     if (
       previous !== undefined &&
@@ -355,6 +383,14 @@ export class WorkerSupervisor {
 
   markJobTerminal(workerId: string, jobId: string): void {
     const resourceKey = `job:${jobId}`;
+
+    if (
+      this.#persistedResourceHints.get(resourceKey) ===
+      workerId
+    ) {
+      return;
+    }
+
     const binding = this.#resourceRoutes.get(resourceKey);
 
     if (
@@ -373,6 +409,30 @@ export class WorkerSupervisor {
       binding,
       this.#jobResultRetentionMs,
     );
+  }
+
+  markJobHistoryPersisted(
+    workerId: string,
+    jobId: string,
+  ): void {
+    const resourceKey = `job:${jobId}`;
+    const binding = this.#resourceRoutes.get(resourceKey);
+
+    this.#terminalResourceHints.delete(resourceKey);
+
+    if (
+      binding === undefined ||
+      binding.workerId !== workerId
+    ) {
+      this.#persistedResourceHints.set(
+        resourceKey,
+        workerId,
+      );
+      return;
+    }
+
+    this.#persistedResourceHints.delete(resourceKey);
+    this.#releaseResourceBinding(binding);
   }
 
   state(): WorkerSupervisorState {
@@ -448,6 +508,7 @@ export class WorkerSupervisor {
     }
     this.#resourceRoutes.clear();
     this.#terminalResourceHints.clear();
+    this.#persistedResourceHints.clear();
     this.#records.clear();
     this.#activeWorkerId = undefined;
   }
@@ -586,6 +647,14 @@ export class WorkerSupervisor {
       }
     }
 
+    for (const [resourceKey, hintedWorkerId] of
+      this.#persistedResourceHints
+    ) {
+      if (hintedWorkerId === workerId) {
+        this.#persistedResourceHints.delete(resourceKey);
+      }
+    }
+
     if (this.#activeWorkerId !== workerId) {
       return;
     }
@@ -630,9 +699,13 @@ export class WorkerSupervisor {
       return;
     }
 
-    const candidate = message as Partial<JobTerminalMessage>;
+    const candidate = message as {
+      readonly type?: string;
+      readonly workerId?: string;
+      readonly jobId?: string;
+    };
+
     if (
-      candidate.type !== "junius-job-terminal" ||
       candidate.workerId !== workerId ||
       typeof candidate.jobId !== "string" ||
       candidate.jobId.length === 0
@@ -640,7 +713,20 @@ export class WorkerSupervisor {
       return;
     }
 
-    this.markJobTerminal(workerId, candidate.jobId);
+    if (candidate.type === "junius-job-terminal") {
+      this.markJobTerminal(workerId, candidate.jobId);
+      return;
+    }
+
+    if (
+      candidate.type ===
+      "junius-job-history-persisted"
+    ) {
+      this.markJobHistoryPersisted(
+        workerId,
+        candidate.jobId,
+      );
+    }
   }
 
   #resourceIdleTtl(
@@ -708,6 +794,7 @@ export class WorkerSupervisor {
 
     this.#resourceRoutes.delete(binding.key);
     this.#terminalResourceHints.delete(binding.key);
+    this.#persistedResourceHints.delete(binding.key);
 
     const record = this.#records.get(binding.workerId);
     record?.resources.delete(binding.key);

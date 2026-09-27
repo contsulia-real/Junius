@@ -323,6 +323,101 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
   }
 });
 
+test("WorkerSupervisor releases terminal job affinity after history persistence", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 30,
+    jobResultRetentionMs: 1_000,
+    validate: async () => check(true),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  try {
+    await supervisor.startInitial();
+    supervisor.bindResource("job:persisted", first.worker.id);
+    await supervisor.reload("good-edit");
+
+    first.message({
+      type: "junius-job-terminal",
+      workerId: first.worker.id,
+      jobId: "persisted",
+    });
+
+    assert.equal(
+      typeof supervisor.state().resourceBindings.find(
+        (binding) => binding.key === "job:persisted",
+      )?.expiresAt,
+      "string",
+    );
+
+    first.message({
+      type: "junius-job-history-persisted",
+      workerId: first.worker.id,
+      jobId: "persisted",
+    });
+
+    assert.equal(
+      supervisor.state().resourceBindings.some(
+        (binding) => binding.key === "job:persisted",
+      ),
+      false,
+    );
+
+    await delay(40);
+    assert.equal(first.closed(), true);
+  } finally {
+    await supervisor.close();
+  }
+});
+
+test("WorkerSupervisor skips job affinity when persisted history arrives before binding", async () => {
+  const first = fakeWorker("worker-1");
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    validate: async () => check(true),
+    spawnWorker: async () => first.worker,
+  });
+
+  try {
+    await supervisor.startInitial();
+
+    first.message({
+      type: "junius-job-terminal",
+      workerId: first.worker.id,
+      jobId: "fast-persisted",
+    });
+    first.message({
+      type: "junius-job-history-persisted",
+      workerId: first.worker.id,
+      jobId: "fast-persisted",
+    });
+
+    supervisor.bindResource(
+      "job:fast-persisted",
+      first.worker.id,
+    );
+
+    assert.equal(
+      supervisor.state().resourceBindings.some(
+        (binding) =>
+          binding.key === "job:fast-persisted",
+      ),
+      false,
+    );
+  } finally {
+    await supervisor.close();
+  }
+});
+
 test("WorkerSupervisor remembers terminal IPC that arrives before job binding", async () => {
   const first = fakeWorker("worker-1");
 
