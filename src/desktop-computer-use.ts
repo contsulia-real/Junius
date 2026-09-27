@@ -5,59 +5,27 @@ import {
   type DesktopHelperResponse,
 } from "./desktop-helper-client.js";
 import { withoutEnvironmentVariables } from "./execution-environment.js";
-import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
+import {
+  DEFAULT_DESKTOP_HELPER_PATH,
+  resolveDesktopPythonExecutable,
+} from "./desktop-computer-use-launcher.js";
+import {
+  DESKTOP_SESSION_PATTERN,
+  validateDesktopRequest,
+} from "./desktop-computer-use-policy.js";
+import {
+  DESKTOP_COMMANDS,
+  DesktopComputerUseError,
+  type DesktopCommand,
+  type DesktopComputerUseOptions,
+  type DesktopExecution,
+  type DesktopHelperImage,
+  type DesktopRunRequest,
+} from "./desktop-computer-use-types.js";
 
-const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
-const REF_PATTERN = /^d\d+$/u;
 const DEFAULT_SESSION_IDLE_MS = 5 * 60_000;
 const DEFAULT_MAX_SESSIONS = 64;
-const DEFAULT_HELPER_PATH = fileURLToPath(
-  new URL("../python/desktop_helper.py", import.meta.url),
-);
-
-export const DESKTOP_COMMANDS = [
-  "windows",
-  "screenshot",
-  "inspect",
-  "invoke",
-  "set_value",
-  "focus",
-  "focus_window",
-  "mouse_move",
-  "mouse_click",
-  "mouse_down",
-  "mouse_up",
-  "mouse_wheel",
-  "key_press",
-  "key_down",
-  "key_up",
-  "type",
-] as const;
-
-export type DesktopCommand = (typeof DESKTOP_COMMANDS)[number];
-
-export type DesktopComputerUseErrorCode =
-  | "desktop_disabled"
-  | "desktop_not_available"
-  | "invalid_session"
-  | "command_not_allowed"
-  | "arguments_not_allowed"
-  | "desktop_ref_not_found"
-  | "spawn_failed"
-  | "process_timeout"
-  | "output_limit"
-  | "helper_failed"
-  | "invalid_helper_response";
-
-export class DesktopComputerUseError extends Error {
-  constructor(
-    readonly code: DesktopComputerUseErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 interface DesktopElementRef {
   readonly handle: number;
@@ -70,164 +38,9 @@ interface DesktopSessionState {
   lastUsedAt: number;
 }
 
-interface HelperImage {
-  readonly mimeType: string;
-  readonly data: string;
-}
-
-export interface DesktopRunRequest {
-  readonly session: string;
-  readonly command: DesktopCommand;
-  readonly handle?: number;
-  readonly ref?: string;
-  readonly depth?: number;
-  readonly x?: number;
-  readonly y?: number;
-  readonly button?: "left" | "right" | "middle";
-  readonly clicks?: number;
-  readonly amount?: number;
-  readonly key?: string;
-  readonly text?: string;
-}
-
-export interface DesktopExecution {
-  readonly session: string;
-  readonly command: DesktopCommand;
-  readonly result: unknown;
-  readonly image?: HelperImage;
-  readonly durationMs: number;
-}
-
-export interface DesktopComputerUseOptions {
-  readonly environment?: NodeJS.ProcessEnv;
-  readonly pythonExecutable?: string;
-  readonly helperPath?: string;
-  readonly platform?: NodeJS.Platform;
-  readonly sessionIdleMs?: number;
-  readonly maxSessions?: number;
-}
-
-function localPythonCandidate(
-  helperPath: string,
-  environment: NodeJS.ProcessEnv,
-): string {
-  const root =
-    environment.JUNIUS_PROJECT_ROOT ??
-    dirname(dirname(helperPath));
-
-  if (process.platform === "win32") {
-    return join(root, ".venv", "Scripts", "python.exe");
-  }
-
-  return join(root, ".venv", "bin", "python");
-}
-
-function resolvePythonExecutable(
-  helperPath: string,
-  environment: NodeJS.ProcessEnv,
-  explicit?: string,
-): string | undefined {
-  const candidate =
-    explicit ??
-    localPythonCandidate(helperPath, environment);
-
-  return existsSync(candidate)
-    ? resolve(candidate)
-    : undefined;
-}
-
-function isFiniteInteger(value: number | undefined): value is number {
-  return (
-    value !== undefined &&
-    Number.isInteger(value) &&
-    Number.isFinite(value)
-  );
-}
-
-function validateRequest(request: DesktopRunRequest): boolean {
-  switch (request.command) {
-    case "windows":
-      return (
-        request.handle === undefined &&
-        request.ref === undefined
-      );
-
-    case "screenshot":
-      return (
-        request.handle === undefined ||
-        (isFiniteInteger(request.handle) && request.handle > 0)
-      );
-
-    case "inspect":
-      return (
-        isFiniteInteger(request.handle) &&
-        request.handle > 0 &&
-        (request.depth === undefined ||
-          (isFiniteInteger(request.depth) &&
-            request.depth >= 0 &&
-            request.depth <= 8))
-      );
-
-    case "invoke":
-    case "focus":
-      return request.ref !== undefined && REF_PATTERN.test(request.ref);
-
-    case "set_value":
-      return (
-        request.ref !== undefined &&
-        REF_PATTERN.test(request.ref) &&
-        request.text !== undefined
-      );
-
-    case "focus_window":
-      return isFiniteInteger(request.handle) && request.handle > 0;
-
-    case "mouse_move":
-    case "mouse_down":
-    case "mouse_up":
-      return (
-        isFiniteInteger(request.x) &&
-        isFiniteInteger(request.y) &&
-        (request.handle === undefined ||
-          (isFiniteInteger(request.handle) && request.handle > 0))
-      );
-
-    case "mouse_click":
-      return (
-        isFiniteInteger(request.x) &&
-        isFiniteInteger(request.y) &&
-        (request.handle === undefined ||
-          (isFiniteInteger(request.handle) && request.handle > 0)) &&
-        (request.clicks === undefined ||
-          (isFiniteInteger(request.clicks) &&
-            request.clicks >= 1 &&
-            request.clicks <= 4))
-      );
-
-    case "mouse_wheel":
-      return (
-        isFiniteInteger(request.x) &&
-        isFiniteInteger(request.y) &&
-        isFiniteInteger(request.amount) &&
-        (request.handle === undefined ||
-          (isFiniteInteger(request.handle) && request.handle > 0))
-      );
-
-    case "key_press":
-    case "key_down":
-    case "key_up":
-      return (
-        request.key !== undefined &&
-        request.key.length >= 1 &&
-        request.key.length <= 64
-      );
-
-    case "type":
-      return request.text !== undefined && request.text.length <= 65_536;
-  }
-}
-
-function isHelperImage(value: unknown): value is HelperImage {
+function isHelperImage(
+  value: unknown,
+): value is DesktopHelperImage {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -238,7 +51,9 @@ function isHelperImage(value: unknown): value is HelperImage {
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
+function asRecord(
+  value: unknown,
+): Record<string, unknown> | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
   }
@@ -288,9 +103,9 @@ export class DesktopComputerUseService {
     this.#helperPath = resolve(
       options.helperPath ??
         this.#environment.JUNIUS_DESKTOP_HELPER_PATH ??
-        DEFAULT_HELPER_PATH,
+        DEFAULT_DESKTOP_HELPER_PATH,
     );
-    this.#pythonExecutable = resolvePythonExecutable(
+    this.#pythonExecutable = resolveDesktopPythonExecutable(
       this.#helperPath,
       this.#environment,
       options.pythonExecutable,
@@ -370,7 +185,7 @@ export class DesktopComputerUseService {
   }
 
   async run(request: DesktopRunRequest): Promise<DesktopExecution> {
-    if (!SESSION_PATTERN.test(request.session)) {
+    if (!DESKTOP_SESSION_PATTERN.test(request.session)) {
       throw new DesktopComputerUseError(
         "invalid_session",
         `Invalid desktop session name: ${request.session}`,
@@ -384,7 +199,7 @@ export class DesktopComputerUseService {
       );
     }
 
-    if (!validateRequest(request)) {
+    if (!validateDesktopRequest(request)) {
       throw new DesktopComputerUseError(
         "arguments_not_allowed",
         `Arguments are not allowed for desktop command ${request.command}.`,
@@ -529,7 +344,7 @@ export class DesktopComputerUseService {
     value: unknown,
   ): {
     readonly result: unknown;
-    readonly image?: HelperImage;
+    readonly image?: DesktopHelperImage;
   } {
     if (command === "inspect") {
       const record = asRecord(value);
@@ -653,3 +468,16 @@ export class DesktopComputerUseService {
     }
   }
 }
+
+
+export {
+  DESKTOP_COMMANDS,
+  DesktopComputerUseError,
+};
+export type {
+  DesktopCommand,
+  DesktopComputerUseErrorCode,
+  DesktopComputerUseOptions,
+  DesktopExecution,
+  DesktopRunRequest,
+} from "./desktop-computer-use-types.js";
