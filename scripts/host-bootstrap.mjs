@@ -205,23 +205,36 @@ async function targetFromWindowsCmdShim(shimPath) {
   }
 }
 
-function launcherForPnpmCandidate(candidate) {
+async function isPortableExecutable(path) {
+  try {
+    const data = await readFile(path);
+    return (
+      data.byteLength >= 2 &&
+      data[0] === 0x4d &&
+      data[1] === 0x5a
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function launcherForPnpmCandidate(candidate) {
   const extension = extname(candidate).toLowerCase();
+
+  if (
+    extension === ".exe" ||
+    await isPortableExecutable(candidate)
+  ) {
+    return {
+      executable: candidate,
+      fixedArgs: [],
+    };
+  }
 
   if ([".js", ".cjs", ".mjs"].includes(extension)) {
     return {
       executable: process.execPath,
       fixedArgs: [candidate],
-    };
-  }
-
-  if (
-    extension === ".exe" ||
-    extension === ""
-  ) {
-    return {
-      executable: candidate,
-      fixedArgs: [],
     };
   }
 
@@ -260,7 +273,8 @@ async function pnpmInvocation() {
         continue;
       }
 
-      const direct = launcherForPnpmCandidate(candidate);
+      const direct =
+        await launcherForPnpmCandidate(candidate);
       if (direct !== undefined) {
         return direct;
       }
@@ -273,7 +287,7 @@ async function pnpmInvocation() {
         await fileExists(shimTarget)
       ) {
         const shimLauncher =
-          launcherForPnpmCandidate(shimTarget);
+          await launcherForPnpmCandidate(shimTarget);
 
         if (shimLauncher !== undefined) {
           return shimLauncher;

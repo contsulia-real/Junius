@@ -46,6 +46,11 @@ async function runBootstrap(
   await mkdir(workspaceRoot, { recursive: true });
   await mkdir(fakeBin, { recursive: true });
   await writeFile(
+    join(fakeBin, "pnpm"),
+    "not-a-native-executable\n",
+    "utf8",
+  );
+  await writeFile(
     fakePnpm,
     `
 const result = process.env.JUNIUS_BOOTSTRAP_TEST_CHECK_RESULT;
