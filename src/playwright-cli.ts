@@ -1,12 +1,10 @@
 import { mkdir } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import {
   PlaywrightCliBrokerClient,
   PlaywrightCliBrokerError,
 } from "./playwright-cli-broker-client.js";
 import { resolveNodeExecutable } from "./capabilities/node-capability.js";
 import { withoutEnvironmentVariables } from "./execution-environment.js";
-import { terminateProcessTree } from "./process-termination.js";
 import {
   resolveBrowserStatePath,
   resolvePlaywrightCliLauncher,
@@ -23,16 +21,14 @@ import {
   PlaywrightSessionPool,
   type PlaywrightSessionToken,
 } from "./playwright-session-pool.js";
+import { runPlaywrightCliSpawn } from "./playwright-cli-spawn-executor.js";
 import {
   PlaywrightCliError,
-  type PlaywrightCliErrorCode,
   type PlaywrightCliExecution,
   type PlaywrightCliServiceOptions,
 } from "./playwright-cli-types.js";
 
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const DEFAULT_TIMEOUT_MS = 60_000;
-const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_IDLE_MS = 10 * 60_000;
 const DEFAULT_MAX_SESSIONS = 32;
 
@@ -313,131 +309,21 @@ export class PlaywrightCliService {
       }
     }
 
-    return await new Promise<PlaywrightCliExecution>((resolvePromise, reject) => {
-      const stdout: Buffer[] = [];
-      const stderr: Buffer[] = [];
-      let bytes = 0;
-      let settled = false;
-      let timedOut = false;
-      let outputLimit = false;
-
-      const child = spawn(
-        launcher.executable,
-        [
-          ...launcher.fixedArgs,
-          ...cliArgs,
-        ],
-        {
-          cwd: this.#statePath,
-          env: this.#environment,
-          shell: false,
-          windowsHide: true,
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-
-      const finishError = (
-        code: PlaywrightCliErrorCode,
-        message: string,
-      ) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(new PlaywrightCliError(code, message));
-      };
-
-      const append = (
-        target: Buffer[],
-        chunk: Buffer | string,
-      ) => {
-        if (settled) return;
-
-        const buffer = Buffer.isBuffer(chunk)
-          ? chunk
-          : Buffer.from(chunk);
-
-        bytes += buffer.length;
-        if (bytes > MAX_OUTPUT_BYTES) {
-          if (!outputLimit) {
-            outputLimit = true;
-            void terminateProcessTree(
-              child,
-              this.#environment,
-            );
-          }
-          return;
-        }
-
-        target.push(buffer);
-      };
-
-      child.stdout.on("data", (chunk: Buffer | string) => {
-        append(stdout, chunk);
-      });
-      child.stderr.on("data", (chunk: Buffer | string) => {
-        append(stderr, chunk);
-      });
-
-      child.once("error", (error) => {
-        finishError("spawn_failed", error.message);
-      });
-
-      child.once("close", (exitCode) => {
-        if (settled) return;
-
-        if (outputLimit) {
-          finishError(
-            "output_limit",
-            `playwright-cli output exceeded ${MAX_OUTPUT_BYTES} bytes.`,
-          );
-          return;
-        }
-
-        if (timedOut) {
-          finishError(
-            "process_timeout",
-            `playwright-cli command exceeded ${DEFAULT_TIMEOUT_MS} ms.`,
-          );
-          return;
-        }
-
-        const stdoutText = Buffer.concat(stdout).toString("utf8");
-        const stderrText = Buffer.concat(stderr).toString("utf8");
-
-        if (exitCode !== 0) {
-          finishError(
-            "nonzero_exit",
-            stderrText ||
-              stdoutText ||
-              `playwright-cli exited with code ${String(exitCode)}.`,
-          );
-          return;
-        }
-
-        settled = true;
-        clearTimeout(timer);
-        if (command === "close") {
-          this.#sessions.completeClose(session);
-        }
-        resolvePromise({
-          session,
-          command,
-          exitCode: 0,
-          stdout: stdoutText,
-          stderr: stderrText,
-          durationMs: Math.round(performance.now() - startedAt),
-          transport: "spawn",
-        });
-      });
-
-      const timer = setTimeout(() => {
-        timedOut = true;
-        void terminateProcessTree(
-          child,
-          this.#environment,
-        );
-      }, DEFAULT_TIMEOUT_MS);
+    const execution = await runPlaywrightCliSpawn({
+      launcher,
+      cliArgs,
+      cwd: this.#statePath,
+      environment: this.#environment,
+      session,
+      command,
+      startedAt,
     });
+
+    if (command === "close") {
+      this.#sessions.completeClose(session);
+    }
+
+    return execution;
     } finally {
       if (command === "close") {
         this.#sessions.restoreAfterClose(
@@ -480,7 +366,9 @@ export {
 };
 export type {
   PlaywrightCliCommand,
-  PlaywrightCliErrorCode,
   PlaywrightCliExecution,
   PlaywrightCliServiceOptions,
 };
+export type {
+  PlaywrightCliErrorCode,
+} from "./playwright-cli-types.js";
