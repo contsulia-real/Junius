@@ -12,6 +12,7 @@ import {
   PlaywrightCliBrokerClient,
   PlaywrightCliBrokerError,
 } from "./playwright-cli-broker-client.js";
+import { resolveNodeExecutable } from "./capabilities/node-capability.js";
 import {
   delimiter,
   dirname,
@@ -126,7 +127,7 @@ function isPortableExecutable(path: string): boolean {
 
 function launcherFromCandidate(
   candidate: string,
-  nodeExecutable: string,
+  nodeExecutable: string | undefined,
 ): PlaywrightCliLauncher | undefined {
   if (!isFile(candidate)) {
     return undefined;
@@ -142,6 +143,8 @@ function launcherFromCandidate(
   }
 
   if ([".js", ".cjs", ".mjs"].includes(extension)) {
+    if (nodeExecutable === undefined) return undefined;
+
     return {
       executable: nodeExecutable,
       fixedArgs: [candidate],
@@ -256,7 +259,7 @@ function candidatePaths(
 
 export function resolvePlaywrightCliLauncher(
   environment: NodeJS.ProcessEnv = process.env,
-  nodeExecutable = process.execPath,
+  nodeExecutable = resolveNodeExecutable(environment),
 ): PlaywrightCliLauncher | undefined {
   for (const candidate of candidatePaths(environment)) {
     const direct = launcherFromCandidate(candidate, nodeExecutable);
@@ -475,7 +478,7 @@ export class PlaywrightCliService {
 
   constructor(
     environment: NodeJS.ProcessEnv = process.env,
-    nodeExecutable = process.execPath,
+    nodeExecutable = resolveNodeExecutable(environment),
   ) {
     this.#environment = { ...environment };
     this.#statePath = defaultBrowserStatePath(environment);
@@ -484,6 +487,7 @@ export class PlaywrightCliService {
       nodeExecutable,
     );
     this.#broker =
+      nodeExecutable !== undefined &&
       supportsPersistentBroker(this.#launcher?.entryPath)
         ? new PlaywrightCliBrokerClient({
             cliEntryPath: this.#launcher.entryPath,

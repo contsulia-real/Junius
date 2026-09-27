@@ -144,12 +144,16 @@ The `Workspace` concept is therefore an authorization/routing boundary, not an O
 
 ### node
 
-The built-in `node` capability currently permits only:
+The built-in `node` capability resolves Node directly from the inherited `PATH` in normal command-search order. Junius does not infer a Node version from the executable path and does not fall back to the Node binary that happened to launch Junius when `PATH` has no Node.
+
+The capability currently permits only:
 
 ```text
 ["--version"]
 ["-p", "process.platform"]
 ```
+
+JavaScript-based pnpm and Playwright launchers use the same PATH-resolved Node executable, so changing the Node selected by `PATH` takes effect on the next Worker start without changing Junius configuration.
 
 ### pnpm
 

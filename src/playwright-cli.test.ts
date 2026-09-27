@@ -22,12 +22,15 @@ async function fixture() {
     "utf8",
   );
 
-  const service = new PlaywrightCliService({
-    ...process.env,
-    PATH: "",
-    JUNIUS_PLAYWRIGHT_CLI_PATH: launcher,
-    JUNIUS_BROWSER_STATE_PATH: root,
-  });
+  const service = new PlaywrightCliService(
+    {
+      ...process.env,
+      PATH: "",
+      JUNIUS_PLAYWRIGHT_CLI_PATH: launcher,
+      JUNIUS_BROWSER_STATE_PATH: root,
+    },
+    process.execPath,
+  );
 
   return {
     root,

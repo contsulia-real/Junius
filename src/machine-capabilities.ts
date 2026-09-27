@@ -1,4 +1,7 @@
-import { ProcessCapability } from "./capabilities/process-capability.js";
+import {
+  createNodeCapability,
+  resolveNodeExecutable,
+} from "./capabilities/node-capability.js";
 import {
   createPnpmCapability,
   isAllowedPnpmArgs,
@@ -170,7 +173,7 @@ export class MachineCapabilityManager {
     private readonly store: MachineCapabilityStateStore,
     private readonly services: MachineCapabilityServices,
     private readonly environment: NodeJS.ProcessEnv,
-    private readonly nodeExecutable: string,
+    private readonly nodeExecutable: string | undefined,
   ) {}
 
   static async create(
@@ -178,7 +181,7 @@ export class MachineCapabilityManager {
     store: MachineCapabilityStateStore,
     services: MachineCapabilityServices,
     environment: NodeJS.ProcessEnv = process.env,
-    nodeExecutable = process.execPath,
+    nodeExecutable = resolveNodeExecutable(environment),
   ): Promise<MachineCapabilityManager> {
     const manager = new MachineCapabilityManager(
       registry,
@@ -266,14 +269,18 @@ export class MachineCapabilityManager {
         key,
         scope: "workspace",
         description:
-          "Node.js executable. Only --version and -p process.platform are permitted.",
+          "Node.js executable resolved from PATH. Only --version and -p process.platform are permitted.",
         enabled,
-        available: true,
+        available: this.nodeExecutable !== undefined,
         active: this.registry.has(key),
-        launcher: {
-          executable: this.nodeExecutable,
-          fixedArgs: [],
-        },
+        ...(this.nodeExecutable === undefined
+          ? {}
+          : {
+              launcher: {
+                executable: this.nodeExecutable,
+                fixedArgs: [],
+              },
+            }),
         policy: [
           "--version",
           "-p process.platform",
@@ -386,17 +393,17 @@ export class MachineCapabilityManager {
     }
 
     if (key === "node") {
-      this.registry.register(
-        new ProcessCapability({
-          key: "node",
-          description:
-            "Node.js executable. Only --version and -p process.platform are permitted.",
-          executable: this.nodeExecutable,
-          allowedArgVectors: NODE_ALLOWED_ARGUMENTS,
-          timeoutMs: 5_000,
-          maxOutputBytes: 16 * 1024,
-        }),
-      );
+      const capability =
+        this.nodeExecutable === undefined
+          ? undefined
+          : createNodeCapability({
+              executable: this.nodeExecutable,
+              fixedArgs: [],
+            });
+
+      if (capability !== undefined) {
+        this.registry.register(capability);
+      }
       return;
     }
 

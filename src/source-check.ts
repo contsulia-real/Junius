@@ -64,6 +64,7 @@ function isPortableExecutable(path: string): boolean {
 
 function launcherFromCandidate(
   candidate: string,
+  nodeExecutable: string | undefined,
 ): PnpmLauncher | undefined {
   if (!isFile(candidate)) return undefined;
 
@@ -76,10 +77,43 @@ function launcherFromCandidate(
   }
 
   if ([".js", ".cjs", ".mjs"].includes(extension)) {
-    return {
-      executable: process.execPath,
-      fixedArgs: [candidate],
-    };
+    return nodeExecutable === undefined
+      ? undefined
+      : {
+          executable: nodeExecutable,
+          fixedArgs: [candidate],
+        };
+  }
+
+  return undefined;
+}
+
+function resolvePathNode(
+  environment: NodeJS.ProcessEnv,
+): string | undefined {
+  const pathValue =
+    environment.PATH ??
+    environment.Path ??
+    environment.path ??
+    "";
+
+  for (const rawEntry of pathValue.split(delimiter)) {
+    const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");
+    if (!entry) continue;
+
+    const candidates =
+      process.platform === "win32"
+        ? [
+            join(entry, "node.exe"),
+            join(entry, "node"),
+          ]
+        : [join(entry, "node")];
+
+    for (const candidate of candidates) {
+      if (isFile(candidate)) {
+        return candidate;
+      }
+    }
   }
 
   return undefined;
@@ -89,6 +123,7 @@ function resolveHostPnpm(
   environment: NodeJS.ProcessEnv,
 ): PnpmLauncher | undefined {
   const candidates: string[] = [];
+  const nodeExecutable = resolvePathNode(environment);
   const npmExecPath = environment.npm_execpath;
 
   if (
@@ -122,7 +157,10 @@ function resolveHostPnpm(
   }
 
   for (const candidate of [...new Set(candidates)]) {
-    const launcher = launcherFromCandidate(candidate);
+    const launcher = launcherFromCandidate(
+      candidate,
+      nodeExecutable,
+    );
     if (launcher !== undefined) return launcher;
   }
 

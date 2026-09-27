@@ -48,7 +48,7 @@ interface Pending {
 export interface PlaywrightCliBrokerClientOptions {
   readonly cliEntryPath: string;
   readonly environment: NodeJS.ProcessEnv;
-  readonly nodeExecutable?: string;
+  readonly nodeExecutable: string;
   readonly brokerPath?: string;
   readonly timeoutMs?: number;
 }
@@ -70,8 +70,7 @@ export class PlaywrightCliBrokerClient {
   constructor(options: PlaywrightCliBrokerClientOptions) {
     this.#cliEntryPath = options.cliEntryPath;
     this.#environment = options.environment;
-    this.#nodeExecutable =
-      options.nodeExecutable ?? process.execPath;
+    this.#nodeExecutable = options.nodeExecutable;
     this.#brokerPath =
       options.brokerPath ?? DEFAULT_BROKER_PATH;
     this.#timeoutMs =
@@ -195,7 +194,6 @@ export class PlaywrightCliBrokerClient {
     const child = spawn(
       this.#nodeExecutable,
       [
-        "--experimental-strip-types",
         "--no-warnings",
         this.#brokerPath,
       ],

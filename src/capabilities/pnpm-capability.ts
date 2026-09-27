@@ -11,6 +11,7 @@ import {
   join,
 } from "node:path";
 import { ProcessCapability } from "./process-capability.js";
+import { resolveNodeExecutable } from "./node-capability.js";
 
 export interface PnpmLauncher {
   readonly executable: string;
@@ -88,7 +89,7 @@ function nativeLauncher(path: string): PnpmLauncher {
 
 function launcherFromCandidate(
   candidate: string,
-  nodeExecutable: string,
+  nodeExecutable: string | undefined,
 ): PnpmLauncher | undefined {
   if (!isFile(candidate)) {
     return undefined;
@@ -101,7 +102,9 @@ function launcherFromCandidate(
   }
 
   if ([".js", ".cjs", ".mjs"].includes(extension)) {
-    return javascriptLauncher(candidate, nodeExecutable);
+    return nodeExecutable === undefined
+      ? undefined
+      : javascriptLauncher(candidate, nodeExecutable);
   }
 
   return undefined;
@@ -161,7 +164,7 @@ function candidatePaths(
 
 export function resolvePnpmLauncher(
   environment: NodeJS.ProcessEnv = process.env,
-  nodeExecutable = process.execPath,
+  nodeExecutable = resolveNodeExecutable(environment),
 ): PnpmLauncher | undefined {
   for (const candidate of candidatePaths(environment)) {
     const launcher = launcherFromCandidate(candidate, nodeExecutable);

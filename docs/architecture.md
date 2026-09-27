@@ -263,6 +263,8 @@ active
 
 This distinction allows a capability such as pnpm to remain enabled in configuration even when its launcher is temporarily unavailable.
 
+Node executable selection follows the inherited `PATH` directly and uses the first matching `node` executable in command-search order. `process.execPath` is not used as a launcher fallback. Executable paths are treated only as locations; Junius never derives a runtime version from directory or file names. JavaScript pnpm/Playwright launchers use the same PATH-resolved Node executable.
+
 The persisted machine state is stored separately from Workspace grants.
 
 Windows default:
