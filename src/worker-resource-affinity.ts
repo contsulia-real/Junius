@@ -1,3 +1,5 @@
+import { WorkerJobAffinityHints } from "./worker-job-affinity-hints.js";
+
 export interface WorkerResourceAffinityOptions {
   readonly browserIdleMs?: number;
   readonly desktopIdleMs?: number;
@@ -26,16 +28,11 @@ interface ResourceBinding {
 
 const DEFAULT_BROWSER_RESOURCE_IDLE_MS = 10 * 60_000;
 const DEFAULT_DESKTOP_RESOURCE_IDLE_MS = 5 * 60_000;
-const DEFAULT_JOB_RESULT_RETENTION_MS = 30 * 60_000;
-
 export class WorkerResourceAffinity {
   readonly #routes = new Map<string, ResourceBinding>();
-  readonly #terminalHints = new Map<string, string>();
-  readonly #persistedHints = new Map<string, string>();
-  readonly #hintTimers = new Map<string, NodeJS.Timeout>();
+  readonly #jobHints: WorkerJobAffinityHints;
   readonly #browserIdleMs: number;
   readonly #desktopIdleMs: number;
-  readonly #jobResultRetentionMs: number;
   readonly #isWorkerAvailable: (workerId: string) => boolean;
   readonly #onAffinityReleased?: (workerId: string) => void;
 
@@ -46,9 +43,10 @@ export class WorkerResourceAffinity {
     this.#desktopIdleMs =
       options.desktopIdleMs ??
       DEFAULT_DESKTOP_RESOURCE_IDLE_MS;
-    this.#jobResultRetentionMs =
-      options.jobResultRetentionMs ??
-      DEFAULT_JOB_RESULT_RETENTION_MS;
+    this.#jobHints =
+      new WorkerJobAffinityHints(
+        options.jobResultRetentionMs,
+      );
     this.#isWorkerAvailable = options.isWorkerAvailable;
     this.#onAffinityReleased = options.onAffinityReleased;
   }
@@ -88,18 +86,12 @@ export class WorkerResourceAffinity {
 
     if (
       resourceKey.startsWith("job:") &&
-      this.#persistedHints.get(resourceKey) === workerId
+      this.#jobHints.persistedMatches(
+        resourceKey,
+        workerId,
+      )
     ) {
-      this.#deleteHint(
-        this.#persistedHints,
-        "persisted",
-        resourceKey,
-      );
-      this.#deleteHint(
-        this.#terminalHints,
-        "terminal",
-        resourceKey,
-      );
+      this.#jobHints.clear(resourceKey);
 
       const existingPersisted =
         this.#routes.get(resourceKey);
@@ -142,16 +134,15 @@ export class WorkerResourceAffinity {
 
     if (
       resourceKey.startsWith("job:") &&
-      this.#terminalHints.get(resourceKey) === workerId
-    ) {
-      this.#deleteHint(
-        this.#terminalHints,
-        "terminal",
+      this.#jobHints.terminalMatches(
         resourceKey,
-      );
+        workerId,
+      )
+    ) {
+      this.#jobHints.clearTerminal(resourceKey);
       this.#armExpiry(
         binding,
-        this.#jobResultRetentionMs,
+        this.#jobHints.retentionMs,
       );
     }
   }
@@ -165,7 +156,12 @@ export class WorkerResourceAffinity {
   markJobTerminal(workerId: string, jobId: string): void {
     const resourceKey = `job:${jobId}`;
 
-    if (this.#persistedHints.get(resourceKey) === workerId) {
+    if (
+      this.#jobHints.persistedMatches(
+        resourceKey,
+        workerId,
+      )
+    ) {
       return;
     }
 
@@ -174,23 +170,17 @@ export class WorkerResourceAffinity {
       binding === undefined ||
       binding.workerId !== workerId
     ) {
-      this.#setHint(
-        this.#terminalHints,
-        "terminal",
+      this.#jobHints.setTerminal(
         resourceKey,
         workerId,
       );
       return;
     }
 
-    this.#deleteHint(
-      this.#terminalHints,
-      "terminal",
-      resourceKey,
-    );
+    this.#jobHints.clearTerminal(resourceKey);
     this.#armExpiry(
       binding,
-      this.#jobResultRetentionMs,
+      this.#jobHints.retentionMs,
     );
   }
 
@@ -201,30 +191,20 @@ export class WorkerResourceAffinity {
     const resourceKey = `job:${jobId}`;
     const binding = this.#routes.get(resourceKey);
 
-    this.#deleteHint(
-      this.#terminalHints,
-      "terminal",
-      resourceKey,
-    );
+    this.#jobHints.clearTerminal(resourceKey);
 
     if (
       binding === undefined ||
       binding.workerId !== workerId
     ) {
-      this.#setHint(
-        this.#persistedHints,
-        "persisted",
+      this.#jobHints.setPersisted(
         resourceKey,
         workerId,
       );
       return;
     }
 
-    this.#deleteHint(
-      this.#persistedHints,
-      "persisted",
-      resourceKey,
-    );
+    this.#jobHints.clearPersisted(resourceKey);
     this.#releaseBinding(binding);
   }
 
@@ -235,29 +215,7 @@ export class WorkerResourceAffinity {
       }
     }
 
-    for (const [resourceKey, hintedWorkerId] of
-      this.#terminalHints
-    ) {
-      if (hintedWorkerId === workerId) {
-        this.#deleteHint(
-          this.#terminalHints,
-          "terminal",
-          resourceKey,
-        );
-      }
-    }
-
-    for (const [resourceKey, hintedWorkerId] of
-      this.#persistedHints
-    ) {
-      if (hintedWorkerId === workerId) {
-        this.#deleteHint(
-          this.#persistedHints,
-          "persisted",
-          resourceKey,
-        );
-      }
-    }
+    this.#jobHints.removeWorker(workerId);
   }
 
   count(workerId: string): number {
@@ -289,61 +247,13 @@ export class WorkerResourceAffinity {
   }
 
   close(): void {
-    for (const timer of this.#hintTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.#hintTimers.clear();
-
     for (const binding of this.#routes.values()) {
       if (binding.timer !== undefined) {
         clearTimeout(binding.timer);
       }
     }
     this.#routes.clear();
-    this.#terminalHints.clear();
-    this.#persistedHints.clear();
-  }
-
-  #hintTimerKey(
-    kind: "terminal" | "persisted",
-    resourceKey: string,
-  ): string {
-    return `${kind}:${resourceKey}`;
-  }
-
-  #setHint(
-    map: Map<string, string>,
-    kind: "terminal" | "persisted",
-    resourceKey: string,
-    workerId: string,
-  ): void {
-    this.#deleteHint(map, kind, resourceKey);
-    map.set(resourceKey, workerId);
-
-    const timerKey = this.#hintTimerKey(kind, resourceKey);
-    const timer = setTimeout(() => {
-      this.#hintTimers.delete(timerKey);
-      if (map.get(resourceKey) === workerId) {
-        map.delete(resourceKey);
-      }
-    }, this.#jobResultRetentionMs);
-
-    this.#hintTimers.set(timerKey, timer);
-  }
-
-  #deleteHint(
-    map: Map<string, string>,
-    kind: "terminal" | "persisted",
-    resourceKey: string,
-  ): void {
-    map.delete(resourceKey);
-
-    const timerKey = this.#hintTimerKey(kind, resourceKey);
-    const timer = this.#hintTimers.get(timerKey);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      this.#hintTimers.delete(timerKey);
-    }
+    this.#jobHints.close();
   }
 
   #idleTtl(resourceKey: string): number | undefined {
@@ -409,16 +319,7 @@ export class WorkerResourceAffinity {
     }
 
     this.#routes.delete(binding.key);
-    this.#deleteHint(
-      this.#terminalHints,
-      "terminal",
-      binding.key,
-    );
-    this.#deleteHint(
-      this.#persistedHints,
-      "persisted",
-      binding.key,
-    );
+    this.#jobHints.clear(binding.key);
     this.#onAffinityReleased?.(binding.workerId);
   }
 }
