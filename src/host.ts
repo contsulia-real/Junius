@@ -9,21 +9,14 @@ import { loadHostConfig } from "./host-config.js";
 import { sendHostJson } from "./host-http.js";
 import { hostRequestRejection } from "./host-request-security.js";
 import {
+  sourceChangeDisposition,
+  type HostWatchedArea,
+} from "./host-source-boundary.js";
+import {
   HostLatencyTraceStore,
   proxyToActiveWorker,
 } from "./reverse-proxy.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
-
-const HOST_ONLY_FILES = new Set([
-  "host-config.ts",
-  "host-http.ts",
-  "host-request-security.ts",
-  "host.ts",
-  "reverse-proxy.ts",
-  "source-check.ts",
-  "worker-process.ts",
-  "worker-supervisor.ts",
-]);
 
 function parsePositiveInteger(
   value: string | undefined,
@@ -75,6 +68,10 @@ const publicMcpOrigin =
 const publicAdminOrigin =
   `http://${config.adminHost}:${config.adminPort}`;
 
+let hostRestartRequired = false;
+let reloadTimer: NodeJS.Timeout | undefined;
+let closing = false;
+
 const supervisor = new WorkerSupervisor({
   cwd,
   publicMcpOrigin,
@@ -87,18 +84,34 @@ const supervisor = new WorkerSupervisor({
     new URL("./worker-entry.ts", import.meta.url),
   ),
   workerEntryPath: resolve(cwd, "src", "worker-entry.ts"),
+  canPromote: () => !hostRestartRequired,
 });
 
 await supervisor.startInitial();
 
 const latencyTraces = new HostLatencyTraceStore(64);
 
-let hostRestartRequired = false;
-let reloadTimer: NodeJS.Timeout | undefined;
-let closing = false;
+function markHostRestartRequired(
+  reason: string,
+): void {
+  if (hostRestartRequired) {
+    return;
+  }
+
+  hostRestartRequired = true;
+
+  if (reloadTimer !== undefined) {
+    clearTimeout(reloadTimer);
+    reloadTimer = undefined;
+  }
+
+  console.error(
+    `[host] restart required: ${reason}`,
+  );
+}
 
 function scheduleReload(reason: string): void {
-  if (closing) return;
+  if (closing || hostRestartRequired) return;
 
   if (reloadTimer !== undefined) {
     clearTimeout(reloadTimer);
@@ -106,6 +119,11 @@ function scheduleReload(reason: string): void {
 
   reloadTimer = setTimeout(() => {
     reloadTimer = undefined;
+
+    if (hostRestartRequired) {
+      return;
+    }
+
     void supervisor.reload(reason).then((result) => {
       if (result.promoted) {
         console.error(
@@ -121,51 +139,69 @@ function scheduleReload(reason: string): void {
 }
 
 function sourceChange(
-  area: "src" | "python",
+  area: HostWatchedArea,
   fileName: string | Buffer | null,
 ): void {
-  if (fileName === null) {
-    scheduleReload(`${area}_changed`);
-    return;
-  }
+  const relative =
+    fileName === null
+      ? undefined
+      : fileName
+          .toString()
+          .replaceAll("\\", "/");
 
-  const relative = fileName.toString().replaceAll("\\", "/");
-
-  if (relative.endsWith(".test.ts")) {
-    return;
-  }
-
-  if (
-    area === "src" &&
-    HOST_ONLY_FILES.has(relative)
-  ) {
-    hostRestartRequired = true;
-    console.error(
-      `[host] host-only source changed; restart required: src/${relative}`,
-    );
-    return;
-  }
-
-  if (
-    (area === "src" && relative.endsWith(".ts")) ||
-    (area === "python" && relative.endsWith(".py"))
-  ) {
-    scheduleReload(`${area}/${relative}`);
-  }
-}
-
-const watchers: FSWatcher[] = [];
-for (const area of ["src", "python"] as const) {
-  watchers.push(
-    watch(
-      resolve(cwd, area),
-      { recursive: true },
-      (_eventType, fileName) => {
-        sourceChange(area, fileName);
-      },
-    ),
+  const disposition = sourceChangeDisposition(
+    resolve(cwd, "src"),
+    area,
+    relative,
   );
+
+  if (disposition === "ignore") {
+    return;
+  }
+
+  const reason =
+    relative === undefined
+      ? `${area}_changed`
+      : `${area}/${relative}`;
+
+  if (disposition === "restart-host") {
+    markHostRestartRequired(reason);
+    return;
+  }
+
+  scheduleReload(reason);
 }
+
+const watchers: FSWatcher[] = [
+  watch(
+    resolve(cwd, "src"),
+    { recursive: true },
+    (_eventType, fileName) => {
+      sourceChange("src", fileName);
+    },
+  ),
+  watch(
+    resolve(cwd, "python"),
+    { recursive: true },
+    (_eventType, fileName) => {
+      sourceChange("python", fileName);
+    },
+  ),
+  watch(
+    cwd,
+    { recursive: false },
+    (_eventType, fileName) => {
+      sourceChange("root", fileName);
+    },
+  ),
+  watch(
+    resolve(cwd, "scripts"),
+    { recursive: false },
+    (_eventType, fileName) => {
+      sourceChange("scripts", fileName);
+    },
+  ),
+];
 
 function allowPublicRequest(
   req: Parameters<typeof hostRequestRejection>[0],

@@ -80,13 +80,31 @@ function assertRelativeWorkspacePath(input: string): string {
   return segments.length === 0 ? "." : segments.join("/");
 }
 
-function assertWritableWorkspacePath(
+function pathSegments(
   relativePath: string,
-): void {
-  const segments = relativePath
+): readonly string[] {
+  return relativePath
     .replaceAll("\\", "/")
     .split("/")
     .filter(Boolean);
+}
+
+function assertWorkspaceControlPathAllowed(
+  relativePath: string,
+): void {
+  const [first] = pathSegments(relativePath);
+  if (first?.toLowerCase() === ".junius") {
+    throw new WorkspaceFileError(
+      "invalid_path",
+      `Junius runtime/control state is reserved: ${relativePath}`,
+    );
+  }
+}
+
+function assertWritableWorkspacePath(
+  relativePath: string,
+): void {
+  const segments = pathSegments(relativePath);
 
   if (
     segments.some(
@@ -134,6 +152,7 @@ export class WorkspacePathResolver {
     readonly relativePath: string;
   }> {
     const relativePath = assertRelativeWorkspacePath(input);
+    assertWorkspaceControlPathAllowed(relativePath);
     const lexical = resolve(this.rootPath, relativePath);
 
     if (!pathInside(this.rootPath, lexical)) {
@@ -159,9 +178,13 @@ export class WorkspacePathResolver {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
 
+    const canonicalRelative =
+      relative(this.rootPath, canonical) || ".";
+    assertWorkspaceControlPathAllowed(canonicalRelative);
+
     return {
       path: canonical,
-      relativePath: relative(this.rootPath, canonical) || ".",
+      relativePath: canonicalRelative,
     };
   }
 
@@ -171,6 +194,7 @@ export class WorkspacePathResolver {
     readonly exists: boolean;
   }> {
     const relativePath = assertRelativeWorkspacePath(input);
+    assertWorkspaceControlPathAllowed(relativePath);
     assertWritableWorkspacePath(relativePath);
     const lexical = resolve(this.rootPath, relativePath);
 
@@ -183,6 +207,10 @@ export class WorkspacePathResolver {
       if (!pathInside(this.rootPath, canonical)) {
         throw new WorkspaceFileError("path_outside_workspace", input);
       }
+
+      assertWorkspaceControlPathAllowed(
+        relative(this.rootPath, canonical) || ".",
+      );
 
       const info = await lstat(lexical);
       if (info.isSymbolicLink()) {
@@ -216,6 +244,10 @@ export class WorkspacePathResolver {
     if (!pathInside(this.rootPath, canonicalAncestor)) {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
+
+    assertWorkspaceControlPathAllowed(
+      relative(this.rootPath, canonicalAncestor) || ".",
+    );
 
     return {
       path: lexical,
@@ -266,6 +298,13 @@ async function listDirectory(
     for (const entry of entries) {
       const fullPath = join(directory, entry.name);
       const rel = relative(resolver.rootPath, fullPath);
+
+      if (
+        pathSegments(rel)[0]?.toLowerCase() ===
+        ".junius"
+      ) {
+        continue;
+      }
 
       let type: LsEntry["type"] = "other";
       let size: number | undefined;

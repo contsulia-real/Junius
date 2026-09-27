@@ -132,6 +132,52 @@ test("WorkerSupervisor can boot from a release worker then reload from live sour
   }
 });
 
+test("WorkerSupervisor refuses candidate promotion when Host becomes stale", async () => {
+  const first = fakeWorker("worker-1");
+  const second = fakeWorker("worker-2");
+  let canPromote = true;
+  let spawnCount = 0;
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    validate: async () => check(true),
+    canPromote: () => canPromote,
+    spawnWorker: async () => {
+      spawnCount += 1;
+      if (spawnCount === 1) {
+        return first.worker;
+      }
+
+      canPromote = false;
+      return second.worker;
+    },
+  });
+
+  try {
+    await supervisor.startInitial();
+
+    const result = await supervisor.reload(
+      "host-became-stale",
+    );
+
+    assert.equal(result.promoted, false);
+    assert.equal(
+      result.reason,
+      "candidate_promotion_blocked",
+    );
+    assert.equal(
+      supervisor.state().activeWorkerId,
+      first.worker.id,
+    );
+    assert.equal(first.closed(), false);
+    assert.equal(second.closed(), true);
+  } finally {
+    await supervisor.close();
+  }
+});
+
 test("WorkerSupervisor promotes healthy candidate while existing session stays on old worker", async () => {
   const first = fakeWorker("worker-1");
   const second = fakeWorker("worker-2");

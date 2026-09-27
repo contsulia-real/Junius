@@ -252,6 +252,119 @@ test("Workspace writes reject symbolic or junction parent aliases inside the Wor
   }
 });
 
+test("Workspace file tools reserve the root .junius control directory", async () => {
+  const f = await fixture();
+
+  try {
+    await mkdir(
+      join(f.root, ".junius", "runtime"),
+      { recursive: true },
+    );
+    await writeFile(
+      join(
+        f.root,
+        ".junius",
+        "runtime",
+        "secret.txt",
+      ),
+      "internal\n",
+      "utf8",
+    );
+
+    for (const path of [
+      ".junius/runtime/secret.txt",
+      ".JuNiUs/runtime/secret.txt",
+    ]) {
+      await assert.rejects(
+        f.service.read("demo", [{ path }]),
+        (error: unknown) =>
+          error instanceof WorkspaceFileError &&
+          error.code === "invalid_path",
+      );
+
+      await assert.rejects(
+        f.service.write("demo", [
+          {
+            path: path.replace("secret.txt", "new.txt"),
+            content: "no\n",
+          },
+        ]),
+        (error: unknown) =>
+          error instanceof WorkspaceFileError &&
+          error.code === "invalid_path",
+      );
+    }
+
+    const listed = await f.service.ls(
+      "demo",
+      ".",
+      2,
+    );
+    assert.equal(
+      listed.some((entry) =>
+        entry.path
+          .replaceAll("\\", "/")
+          .toLowerCase()
+          .startsWith(".junius"),
+      ),
+      false,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("Workspace file tools reject aliases into the .junius control directory", async () => {
+  const f = await fixture();
+
+  try {
+    await mkdir(
+      join(f.root, ".junius", "runtime"),
+      { recursive: true },
+    );
+    await writeFile(
+      join(
+        f.root,
+        ".junius",
+        "runtime",
+        "secret.txt",
+      ),
+      "internal\n",
+      "utf8",
+    );
+    await symlink(
+      join(f.root, ".junius"),
+      join(f.root, "control-alias"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await assert.rejects(
+      f.service.read("demo", [
+        {
+          path: "control-alias/runtime/secret.txt",
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "invalid_path",
+    );
+
+    await assert.rejects(
+      f.service.write("demo", [
+        {
+          path: "control-alias/runtime/new.txt",
+          content: "no\n",
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "invalid_path",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
 test("Workspace file tools reject unregistered Workspaces", async () => {
   const manager = new WorkspaceManager();
   const service = new WorkspaceFilesService(manager);

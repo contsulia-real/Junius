@@ -804,6 +804,12 @@ export function createGitCapability(
     environment: {
       GIT_TERMINAL_PROMPT: "0",
       GCM_INTERACTIVE: "Never",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL:
+        process.platform === "win32"
+          ? "NUL"
+          : "/dev/null",
+      GIT_ATTR_NOSYSTEM: "1",
     },
   });
 }

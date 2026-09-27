@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
 export const WORKER_AUTH_HEADER =
@@ -10,9 +11,21 @@ export function workerRequestAuthorized(
   const value =
     req.headers[WORKER_AUTH_HEADER];
 
+  if (
+    typeof value !== "string" ||
+    value.length === 0
+  ) {
+    return false;
+  }
+
+  const actual = Buffer.from(value, "utf8");
+  const expected = Buffer.from(
+    expectedToken,
+    "utf8",
+  );
+
   return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value === expectedToken
+    actual.length === expected.length &&
+    timingSafeEqual(actual, expected)
   );
 }

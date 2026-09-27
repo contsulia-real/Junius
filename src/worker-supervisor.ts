@@ -59,6 +59,7 @@ export interface WorkerSupervisorOptions {
   readonly jobResultRetentionMs?: number;
   readonly mcpSessionIdleMs?: number;
   readonly maxExitedRecords?: number;
+  readonly canPromote?: () => boolean;
   readonly validate?: () => Promise<SourceCheckResult>;
   readonly spawnWorker?: () => Promise<ManagedWorker>;
   readonly spawnInitialWorker?: () => Promise<ManagedWorker>;
@@ -115,6 +116,7 @@ export class WorkerSupervisor {
   readonly #jobResultRetentionMs: number;
   readonly #mcpSessionIdleMs: number;
   readonly #maxExitedRecords: number;
+  readonly #canPromote: () => boolean;
   readonly #validate: () => Promise<SourceCheckResult>;
   readonly #spawnWorker: () => Promise<ManagedWorker>;
   readonly #spawnInitialWorker: () => Promise<ManagedWorker>;
@@ -150,6 +152,8 @@ export class WorkerSupervisor {
           DEFAULT_MAX_EXITED_RECORDS,
       ),
     );
+    this.#canPromote =
+      options.canPromote ?? (() => true);
     this.#validate =
       options.validate ??
       (() =>
@@ -617,6 +621,15 @@ export class WorkerSupervisor {
       };
     }
 
+    if (!this.#canPromote()) {
+      this.#lastFailure =
+        "candidate_promotion_blocked";
+      return {
+        promoted: false,
+        reason: this.#lastFailure,
+      };
+    }
+
     let candidate: ManagedWorker;
     try {
       candidate = await this.#spawnWorker();
@@ -624,6 +637,16 @@ export class WorkerSupervisor {
       const message =
         error instanceof Error ? error.message : String(error);
       this.#lastFailure = `candidate_startup_failed: ${message}`;
+      return {
+        promoted: false,
+        reason: this.#lastFailure,
+      };
+    }
+
+    if (!this.#canPromote()) {
+      await candidate.close().catch(() => {});
+      this.#lastFailure =
+        "candidate_promotion_blocked";
       return {
         promoted: false,
         reason: this.#lastFailure,

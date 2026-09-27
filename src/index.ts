@@ -8,6 +8,7 @@ import {
   toWebRequest,
   writeWebResponse,
 } from "./http-bridge.js";
+import { hostRequestRejection } from "./host-request-security.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
 import {
@@ -107,6 +108,15 @@ const adminOrigin = `http://${config.adminHost}:${config.adminPort}`;
 const adminToken = randomBytes(32).toString("base64url");
 
 const mcpHttpServer = createHttpServer((req, res) => {
+  const rejection = hostRequestRejection(
+    req,
+    mcpOrigin,
+  );
+  if (rejection !== undefined) {
+    sendJson(res, 403, { error: rejection });
+    return;
+  }
+
   void (async () => {
     const request = toWebRequest(req, mcpOrigin);
     const url = new URL(request.url);

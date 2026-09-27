@@ -45,7 +45,7 @@ Optional environment variables:
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
-`pnpm dev` and `pnpm start` are manual lifecycle commands. They enter a tiny live launcher (`scripts/host-launcher.mjs`) that prefers the previously validated bootstrap copy at `.junius/runtime/bootstrap/host-bootstrap.mjs`; only when no validated bootstrap exists yet does it run the live `scripts/host-bootstrap.mjs`. The bootstrap then selects which validated Host release to launch. Junius does not autonomously start or restart its own MCP service. The Host owns the public MCP/admin ports and runs the mutable Local Agent implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap or last-known-good startup protection.
+`pnpm dev` and `pnpm start` are manual lifecycle commands. They enter a tiny live launcher (`scripts/host-launcher.mjs`) that prefers the previously validated bootstrap copy at `.junius/runtime/bootstrap/host-bootstrap.mjs`; only when no validated bootstrap exists yet does it run the live `scripts/host-bootstrap.mjs`. The bootstrap then selects which validated Host release to launch. Junius does not autonomously start or restart its own MCP service. The Host owns the public MCP/admin ports and runs the mutable Local Agent implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap or last-known-good startup protection. Its MCP HTTP entry still enforces the same exact loopback Host/Origin request guard as the supervised Host, so the emergency path does not bypass localhost browser-request protection.
 
 ## Host / Worker runtime
 
@@ -475,7 +475,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 139 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 146 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

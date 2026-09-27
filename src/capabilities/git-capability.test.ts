@@ -336,6 +336,71 @@ test("git preflight does not borrow a parent repository", async () => {
   }
 });
 
+test("git capability isolates system and global executable config", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-git-config-env-"),
+  );
+
+  try {
+    await writeGitConfig(
+      root,
+      [
+        "[core]",
+        "\trepositoryformatversion = 0",
+        "",
+      ].join("\n"),
+    );
+
+    const capability = createGitCapability(
+      {
+        executable:
+          process.platform === "win32"
+            ? "C:\\Windows\\System32\\where.exe"
+            : "/usr/bin/true",
+        fixedArgs: [],
+      },
+      {
+        ...process.env,
+        GIT_CONFIG_NOSYSTEM: "0",
+        GIT_CONFIG_GLOBAL: "attacker-config",
+        GIT_ATTR_NOSYSTEM: "0",
+      },
+    )!;
+
+    const prepared = capability.prepareProcess(
+      ["status", "--short"],
+      { cwd: root },
+    );
+
+    assert.equal(prepared.ok, true);
+    if (prepared.ok) {
+      assert.equal(
+        prepared.process.env.GIT_CONFIG_NOSYSTEM,
+        "1",
+      );
+      assert.equal(
+        prepared.process.env.GIT_CONFIG_GLOBAL,
+        process.platform === "win32"
+          ? "NUL"
+          : "/dev/null",
+      );
+      assert.equal(
+        prepared.process.env.GIT_ATTR_NOSYSTEM,
+        "1",
+      );
+      assert.equal(
+        prepared.process.env.GIT_TERMINAL_PROMPT,
+        "0",
+      );
+    }
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("git launcher follows PATH order", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-git-"));
   const first = join(root, "first");
