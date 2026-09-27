@@ -1005,7 +1005,7 @@ export function createMcpServer(
               type: "text" as const,
               text: JSON.stringify({
                 ok: true,
-                job: jobs.get(job),
+                job: await jobs.get(job),
               }),
             },
           ],
@@ -1090,7 +1090,7 @@ export function createMcpServer(
               type: "text" as const,
               text: JSON.stringify({
                 ok: true,
-                output: jobs.readOutput(
+                output: await jobs.readOutput(
                   job,
                   stream,
                   offset,

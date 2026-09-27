@@ -10,6 +10,10 @@ import {
 } from "./http-bridge.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { RunCommandService } from "./run-command.js";
+import {
+  JobHistoryStore,
+  resolveJobHistoryPath,
+} from "./job-history-store.js";
 import { JobManager } from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
@@ -81,7 +85,13 @@ if (persistedWorkspaces === undefined) {
 
 const runCommandService = new RunCommandService(registry, workspaceManager);
 const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
-const jobManager = new JobManager(runCommandService);
+const jobManager = new JobManager(
+  runCommandService,
+  undefined,
+  new JobHistoryStore(
+    resolveJobHistoryPath(),
+  ),
+);
 const mcpRuntime = await createMcpRuntime(
   runCommandService,
   workspaceFilesService,

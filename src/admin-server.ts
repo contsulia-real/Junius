@@ -249,7 +249,7 @@ export async function handleAdminRequest(
       })),
       machineCapabilities: machineCapabilities.list(),
       workspaces: workspaceAdminState(workspaces, machineCapabilities),
-      jobs: jobs.list(),
+      jobs: await jobs.list(),
       adminToken,
       browser: playwrightCli.state(),
       desktop: desktop.state(),
@@ -448,7 +448,7 @@ export async function handleAdminRequest(
           : "stdout";
 
       sendJson(res, 200, {
-        output: jobs.readOutput(
+        output: await jobs.readOutput(
           segments[1],
           stream,
           0,

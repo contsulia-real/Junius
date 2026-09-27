@@ -437,7 +437,7 @@ Captured stdout and stderr are bounded to 4 Mi characters per stream. The job it
 
 `cancel_job` performs best-effort termination. On Windows Junius invokes `taskkill.exe /T /F` directly with `shell: false` to terminate the target process tree. Other platforms currently terminate the direct child with SIGTERM and then SIGKILL if necessary.
 
-Job state is currently process-local. Restarting Junius clears the Job Manager registry; v1 does not attempt to reattach to processes from a previous Junius instance.
+Running Job control remains process-local and Junius does not attempt PID-based reattachment after an abrupt Worker/Host loss. Terminal Job history is persisted by default under `.junius/runtime/jobs/<job-id>/` (or under `<JUNIUS_RUNTIME_ROOT>/jobs/<job-id>/` when the runtime root is overridden) with separate `meta.json`, `stdout.txt`, and `stderr.txt` files. A later Worker or manually restarted Junius instance can still `get_job`, `wait_job`, `read_job_output`, list, or idempotently `cancel_job` for those completed/cancelled historical Jobs. Normal Worker shutdown cancels running Jobs and waits for their terminal history to flush before exit.
 
 Job Manager v1 is implemented and black-box verified through ChatGPT.
 
@@ -463,7 +463,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 102 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 105 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

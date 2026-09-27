@@ -399,7 +399,9 @@ The current ProcessCapability provides:
 
 Synchronous ProcessCapability timeout and output-limit termination use the shared process-termination primitive also used by Job Manager. On Windows, the primitive invokes `%SystemRoot%\\System32\\taskkill.exe /PID <pid> /T /F` directly with `shell: false` and waits for termination before the synchronous result is returned, providing descendant process-tree termination for those forced-stop paths. Other platforms currently terminate only the direct child with SIGTERM and then SIGKILL fallback.
 
-Long-running processes use the implemented Job Manager described below.
+Long-running processes use the Job Manager. Running Job control stays with the Worker that owns the live child process and is not reconstructed from a PID after an abrupt process loss. Terminal Jobs are persisted independently from Worker lifetime under `.junius/runtime/jobs/<job-id>/`. Each Job directory contains a small `meta.json` plus separate `stdout.txt` and `stderr.txt` files, so Job listing/status reads do not load captured output. Terminal writes use a temporary per-Job directory and rename it into place only after metadata and both streams are complete. New Workers lazy-load this history when an in-memory Job ID is absent; live in-memory state always wins for IDs owned by the current Worker. Normal Worker shutdown cancels running Jobs and waits for pending terminal-history writes before closing.
+
+This persistence is intentionally terminal-history recovery, not process reattachment. An abrupt crash before a running Job reaches and persists a terminal state can still lose that Job's control record, and Junius does not assume that a reused OS PID belongs to the old Job.
 
 ## Latency tracing
 

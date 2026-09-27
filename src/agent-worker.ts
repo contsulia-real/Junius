@@ -14,6 +14,10 @@ import {
   writeWebResponse,
 } from "./http-bridge.js";
 import {
+  JobHistoryStore,
+  resolveJobHistoryPath,
+} from "./job-history-store.js";
+import {
   JobManager,
   type JobSnapshot,
 } from "./job-manager.js";
@@ -140,6 +144,9 @@ export async function startAgentWorker(
   const jobs = new JobManager(
     commands,
     options.onJobTerminal,
+    new JobHistoryStore(
+      resolveJobHistoryPath(),
+    ),
   );
   const mcpRuntime = await createMcpRuntime(
     commands,

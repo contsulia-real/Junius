@@ -2,6 +2,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { isProcessPreparableCapability } from "./capabilities/types.js";
+import {
+  JobHistoryStore,
+  type PersistedJobMetadata,
+  type PersistedJobRecord,
+} from "./job-history-store.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { RunCommandService } from "./run-command.js";
 
@@ -158,13 +163,79 @@ function snapshot(record: JobRecord): JobSnapshot {
   };
 }
 
+function persistedSnapshot(
+  record: PersistedJobMetadata,
+): JobSnapshot {
+  return {
+    id: record.id,
+    workspace: record.workspace,
+    key: record.key,
+    status: record.status,
+    pid: record.pid,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+    ...(record.exitCode === undefined
+      ? {}
+      : { exitCode: record.exitCode }),
+    ...(record.signal === undefined
+      ? {}
+      : { signal: record.signal }),
+    ...(record.message === undefined
+      ? {}
+      : { message: record.message }),
+    stdoutChars: record.stdoutChars,
+    stderrChars: record.stderrChars,
+    stdoutTruncated: record.stdoutTruncated,
+    stderrTruncated: record.stderrTruncated,
+  };
+}
+
+function persistedRecord(
+  record: JobRecord,
+): PersistedJobRecord | undefined {
+  if (
+    record.status === "running" ||
+    record.endedAt === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    id: record.id,
+    workspace: record.workspace,
+    key: record.key,
+    status: record.status,
+    pid: record.child.pid ?? null,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+    ...(record.exitCode === undefined
+      ? {}
+      : { exitCode: record.exitCode }),
+    ...(record.signal === undefined
+      ? {}
+      : { signal: record.signal }),
+    ...(record.message === undefined
+      ? {}
+      : { message: record.message }),
+    stdoutChars: record.stdout.length,
+    stderrChars: record.stderr.length,
+    stdout: record.stdout,
+    stderr: record.stderr,
+    stdoutTruncated: record.stdoutTruncated,
+    stderrTruncated: record.stderrTruncated,
+  };
+}
+
 
 export class JobManager {
   readonly #jobs = new Map<string, JobRecord>();
+  readonly #pendingPersistence = new Set<Promise<void>>();
 
   constructor(
     private readonly commands: RunCommandService,
     private readonly onTerminal?: (job: JobSnapshot) => void,
+    private readonly history?: JobHistoryStore,
   ) {}
 
   start(
@@ -294,6 +365,7 @@ export class JobManager {
       record.signal = signal;
       record.message = message;
       record.resolveCompletion();
+      this.#persistTerminal(record);
 
       try {
         this.onTerminal?.(snapshot(record));
@@ -333,23 +405,46 @@ export class JobManager {
     return snapshot(record);
   }
 
-  list(): readonly JobSnapshot[] {
-    return [...this.#jobs.values()]
-      .map(snapshot)
-      .sort((left, right) =>
-        right.startedAt.localeCompare(left.startedAt),
-      );
+  async list(): Promise<readonly JobSnapshot[]> {
+    const merged = new Map<string, JobSnapshot>();
+
+    if (this.history !== undefined) {
+      for (const record of await this.history.listMetadata()) {
+        merged.set(record.id, persistedSnapshot(record));
+      }
+    }
+
+    for (const record of this.#jobs.values()) {
+      merged.set(record.id, snapshot(record));
+    }
+
+    return [...merged.values()].sort((left, right) =>
+      right.startedAt.localeCompare(left.startedAt),
+    );
   }
 
-  get(id: string): JobSnapshot {
-    return snapshot(this.#require(id));
+  async get(id: string): Promise<JobSnapshot> {
+    const record = this.#jobs.get(id);
+    if (record !== undefined) {
+      return snapshot(record);
+    }
+
+    return persistedSnapshot(
+      await this.#loadPersistedMetadata(id),
+    );
   }
 
   async wait(
     id: string,
     timeoutMs = DEFAULT_WAIT_MS,
   ): Promise<JobSnapshot> {
-    const record = this.#require(id);
+    const record = this.#jobs.get(id);
+    if (record === undefined) {
+      return persistedSnapshot(
+        await this.#loadPersistedMetadata(id),
+      );
+    }
+
     if (terminal(record.status)) {
       return snapshot(record);
     }
@@ -364,12 +459,12 @@ export class JobManager {
     return snapshot(record);
   }
 
-  readOutput(
+  async readOutput(
     id: string,
     stream: "stdout" | "stderr",
     offset = 0,
     limit = DEFAULT_READ_CHARS,
-  ): {
+  ): Promise<{
     readonly job: JobSnapshot;
     readonly stream: "stdout" | "stderr";
     readonly offset: number;
@@ -377,31 +472,68 @@ export class JobManager {
     readonly content: string;
     readonly eof: boolean;
     readonly truncated: boolean;
-  } {
-    const record = this.#require(id);
-    const text = stream === "stdout" ? record.stdout : record.stderr;
-    const truncated =
-      stream === "stdout"
-        ? record.stdoutTruncated
-        : record.stderrTruncated;
+  }> {
+    const live = this.#jobs.get(id);
 
-    const safeOffset = Math.max(0, Math.min(offset, text.length));
-    const safeLimit = Math.max(1, Math.min(limit, MAX_READ_CHARS));
-    const nextOffset = Math.min(text.length, safeOffset + safeLimit);
+    let job: JobSnapshot;
+    let text: string;
+    let truncated: boolean;
+    let isTerminal: boolean;
+
+    if (live !== undefined) {
+      job = snapshot(live);
+      text = stream === "stdout" ? live.stdout : live.stderr;
+      truncated =
+        stream === "stdout"
+          ? live.stdoutTruncated
+          : live.stderrTruncated;
+      isTerminal = terminal(live.status);
+    } else {
+      const persisted = await this.#loadPersistedRecord(id);
+      job = persistedSnapshot(persisted);
+      text =
+        stream === "stdout"
+          ? persisted.stdout
+          : persisted.stderr;
+      truncated =
+        stream === "stdout"
+          ? persisted.stdoutTruncated
+          : persisted.stderrTruncated;
+      isTerminal = true;
+    }
+
+    const safeOffset = Math.max(
+      0,
+      Math.min(offset, text.length),
+    );
+    const safeLimit = Math.max(
+      1,
+      Math.min(limit, MAX_READ_CHARS),
+    );
+    const nextOffset = Math.min(
+      text.length,
+      safeOffset + safeLimit,
+    );
 
     return {
-      job: snapshot(record),
+      job,
       stream,
       offset: safeOffset,
       nextOffset,
       content: text.slice(safeOffset, nextOffset),
-      eof: terminal(record.status) && nextOffset >= text.length,
+      eof: isTerminal && nextOffset >= text.length,
       truncated,
     };
   }
 
   async cancel(id: string): Promise<JobSnapshot> {
-    const record = this.#require(id);
+    const record = this.#jobs.get(id);
+    if (record === undefined) {
+      return persistedSnapshot(
+        await this.#loadPersistedMetadata(id),
+      );
+    }
+
     if (terminal(record.status)) {
       return snapshot(record);
     }
@@ -422,17 +554,62 @@ export class JobManager {
     await Promise.allSettled(
       running.map((record) => this.cancel(record.id)),
     );
+
+    await Promise.allSettled([
+      ...this.#pendingPersistence,
+    ]);
   }
 
-  #require(id: string): JobRecord {
-    const record = this.#jobs.get(id);
-    if (record === undefined) {
-      throw new JobManagerError(
-        "job_not_found",
-        `Job is not registered in this Junius process: ${id}`,
-      );
+  #persistTerminal(record: JobRecord): void {
+    if (this.history === undefined) {
+      return;
     }
 
-    return record;
+    const persisted = persistedRecord(record);
+    if (persisted === undefined) {
+      return;
+    }
+
+    const task = this.history.save(persisted).catch(
+      (error: unknown) => {
+        console.error(
+          `[job-history ${record.id}]`,
+          error,
+        );
+      },
+    );
+
+    this.#pendingPersistence.add(task);
+    void task.finally(() => {
+      this.#pendingPersistence.delete(task);
+    });
+  }
+
+  async #loadPersistedMetadata(
+    id: string,
+  ): Promise<PersistedJobMetadata> {
+    const record = await this.history?.loadMetadata(id);
+    if (record !== undefined) {
+      return record;
+    }
+
+    throw new JobManagerError(
+      "job_not_found",
+      `Job is not registered in this Junius process or terminal history: ${id}`,
+    );
+  }
+
+  async #loadPersistedRecord(
+    id: string,
+  ): Promise<PersistedJobRecord> {
+    const record = await this.history?.load(id);
+    if (record !== undefined) {
+      return record;
+    }
+
+    throw new JobManagerError(
+      "job_not_found",
+      `Job is not registered in this Junius process or terminal history: ${id}`,
+    );
   }
 }
