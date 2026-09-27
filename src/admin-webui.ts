@@ -302,7 +302,17 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   }
 
   async function api(path, options) {
-    var response = await fetch(path, options || {});
+    var requestOptions = Object.assign({}, options || {});
+    var method = String(requestOptions.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      requestOptions.headers = Object.assign(
+        {},
+        requestOptions.headers || {},
+        { "x-junius-admin-token": data && data.adminToken ? data.adminToken : "" }
+      );
+    }
+
+    var response = await fetch(path, requestOptions);
     var body = await response.json().catch(function () { return {}; });
     if (!response.ok) {
       throw new Error(body.error || body.message || ("HTTP " + response.status));
@@ -335,8 +345,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       [data.workspaces.length, "工作区"],
       [data.machineCapabilities.filter(function (capability) { return capability.active; }).length, "已激活机器能力"],
       [running, "运行中任务"],
-      [data.browser.available ? "就绪" : "缺失", "浏览器"],
-      [data.desktop.available ? "就绪" : "缺失", "桌面"]
+      [data.browser.active ? "已启用" : (data.browser.available ? "已禁用" : "缺失"), "浏览器"],
+      [data.desktop.active ? "已启用" : (data.desktop.available ? "已禁用" : "缺失"), "桌面"]
     ];
     document.getElementById("summary").innerHTML = cards.map(function (card) {
       return '<div class="summary-card"><div class="value">' + esc(card[0]) +
@@ -347,11 +357,11 @@ export const ADMIN_DASHBOARD_JS = String.raw`
       '<div class="detail"><div class="key">管理地址</div><div class="value">' +
       esc(location.origin) + '</div></div>' +
       '<div class="detail"><div class="key">浏览器适配器</div><div class="value">' +
-      badge(data.browser.available ? "available" : "unavailable") + '</div></div>' +
+      badge(data.browser.active ? "available" : "unavailable") + '</div></div>' +
       '<div class="detail"><div class="key">浏览器状态目录</div><div class="value">' +
       esc(data.browser.statePath) + '</div></div>' +
       '<div class="detail"><div class="key">桌面 Computer Use</div><div class="value">' +
-      badge(data.desktop.available ? "available" : "unavailable") + '</div></div>' +
+      badge(data.desktop.active ? "available" : "unavailable") + '</div></div>' +
       '<div class="detail"><div class="key">MCP 暴露范围</div><div class="value">管理 WebUI 仅限本机访问</div></div>';
   }
 
@@ -401,10 +411,25 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   }
 
   function capabilityOptions() {
-    return data.registeredCapabilities.map(function (capability) {
-      return '<option value="' + esc(capability.key) + '">' +
-        esc(capability.key) + '</option>';
-    }).join("");
+    return data.machineCapabilities
+      .filter(function (capability) { return capability.scope === "workspace"; })
+      .map(function (capability) {
+        return '<option value="' + esc(capability.key) + '">' +
+          esc(capability.key) +
+          (capability.enabled && capability.available ? "" : "（当前不可执行）") +
+          '</option>';
+      }).join("");
+  }
+
+  function grantValidityHtml(rule) {
+    if (rule.valid !== false) return "";
+    var labels = {
+      machine_capability_not_known: "未知机器能力",
+      capability_not_workspace_scoped: "不是工作区能力",
+      arguments_outside_machine_policy: "超出机器策略"
+    };
+    return ' <span class="badge danger">当前无效：' +
+      esc(labels[rule.reason] || rule.reason || "不兼容") + '</span>';
   }
 
   function renderWorkspaceGrants(workspace) {
@@ -418,7 +443,8 @@ export const ADMIN_DASHBOARD_JS = String.raw`
         return '<div class="rule-row">' +
           '<div class="rule-copy">' +
             '<div class="rule-label">' + esc(presentation.label) +
-              ' <span class="badge">' + esc(rule.mode) + '</span></div>' +
+              ' <span class="badge">' + esc(rule.mode) + '</span>' +
+              grantValidityHtml(rule) + '</div>' +
             '<code class="rule-command">' + esc(presentation.command) + '</code>' +
           '</div>' +
           '<button class="button secondary" data-remove-rule="' + esc(workspace.id) +
@@ -444,7 +470,7 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   function renderWorkspacePermissionForm(workspace) {
     var options = capabilityOptions();
     if (!options) {
-      return '<div class="empty">当前没有可授权的已激活机器能力。</div>';
+      return '<div class="empty">当前没有可配置的工作区能力。</div>';
     }
 
     return '<form class="form-row workspace-permission-form" data-workspace-permission-form="' +
@@ -519,8 +545,13 @@ export const ADMIN_DASHBOARD_JS = String.raw`
         })
         .map(function (workspace) { return workspace.id; });
 
+      var scopeLabel = capability.scope === "workspace"
+        ? "工作区作用域"
+        : "机器作用域";
+
       return '<div class="item"><div class="item-main">' +
-        '<div class="item-title">' + esc(capability.key) + '</div>' +
+        '<div class="item-title">' + esc(capability.key) +
+        ' <span class="badge">' + esc(scopeLabel) + '</span></div>' +
         '<div class="item-meta">' + esc(capability.description) + '</div>' +
         '<div class="item-meta">状态：' +
         (capability.enabled ? '<span class="badge success">已启用</span>' : '<span class="badge danger">已禁用</span>') +
@@ -529,7 +560,11 @@ export const ADMIN_DASHBOARD_JS = String.raw`
         '</div>' +
         '<div class="item-meta">启动器：' + esc(launcher) + '</div>' +
         '<div class="item-meta">机器策略：<span class="rule">' + (policy || '<code>无</code>') + '</span></div>' +
-        '<div class="item-meta">工作区授权：' + esc(users.length ? users.join(", ") : "无") + '</div>' +
+        '<div class="item-meta">' +
+        (capability.scope === "workspace"
+          ? "工作区授权：" + esc(users.length ? users.join(", ") : "无")
+          : "授权方式：机器级启用状态，不使用工作区授权") +
+        '</div>' +
         '</div><div class="item-actions">' +
         '<button class="button ' + (capability.enabled ? 'danger' : '') +
         '" data-toggle-capability="' + esc(capability.key) +
@@ -564,7 +599,9 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   function renderBrowser() {
     document.getElementById("browser-details").innerHTML =
       '<div class="detail"><div class="key">playwright-cli</div><div class="value">' +
-      badge(data.browser.available ? "available" : "unavailable") + '</div></div>' +
+      badge(data.browser.active ? "available" : "unavailable") + '</div></div>' +
+      '<div class="detail"><div class="key">机器级开关</div><div class="value">' +
+      (data.browser.enabled ? "已启用" : "已禁用") + '</div></div>' +
       '<div class="detail"><div class="key">运行状态目录</div><div class="value">' +
       esc(data.browser.statePath) + '</div></div>' +
       '<div class="detail"><div class="key">默认窗口模式</div><div class="value">可见窗口（headed）</div></div>' +
@@ -574,7 +611,9 @@ export const ADMIN_DASHBOARD_JS = String.raw`
   function renderDesktop() {
     document.getElementById("desktop-details").innerHTML =
       '<div class="detail"><div class="key">Computer Use</div><div class="value">' +
-      badge(data.desktop.available ? "available" : "unavailable") + '</div></div>' +
+      badge(data.desktop.active ? "available" : "unavailable") + '</div></div>' +
+      '<div class="detail"><div class="key">机器级开关</div><div class="value">' +
+      (data.desktop.enabled ? "已启用" : "已禁用") + '</div></div>' +
       '<div class="detail"><div class="key">Python</div><div class="value">' +
       esc(data.desktop.pythonExecutable || "未解析") + '</div></div>' +
       '<div class="detail"><div class="key">Helper</div><div class="value">' +

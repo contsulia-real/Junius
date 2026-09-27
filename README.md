@@ -4,9 +4,9 @@ Architecture: [docs/architecture.md](docs/architecture.md)
 
 Junius is a Local Agent that lets ChatGPT use local-computer capabilities through MCP under user-controlled authorization.
 
-Its scope is broader than command execution: local files, processes, jobs, and browser automation are Local Agent capabilities. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
+Its scope is broader than command execution: local files, processes, jobs, browser automation, and Windows desktop computer use are Local Agent capabilities. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
 
-Junius's user-facing management interface is a local WebUI rather than a desktop Dashboard. This Dashboard choice is separate from any future decision about desktop-automation capabilities.
+Junius's user-facing management interface is a local WebUI rather than a desktop Dashboard. Desktop computer use is an independent Local Agent capability and is already implemented; it does not imply a desktop-native management UI.
 
 The current implementation does not provide an OS security sandbox.
 
@@ -16,6 +16,7 @@ The current implementation does not provide an OS security sandbox.
 - pnpm 12.6.0
 - OpenAI Secure MCP Tunnel `tunnel-client`
 - `playwright-cli` / `@playwright/cli` for browser capability
+- Windows desktop capability: the project `.venv` with Python plus `pywinauto`, `PyAutoGUI`, Pillow, and Windows bindings
 
 ## Run
 
@@ -42,6 +43,8 @@ Optional environment variables:
 - `JUNIUS_PLAYWRIGHT_CLI_PATH`
 - `JUNIUS_BROWSER_STATE_PATH`
 - `JUNIUS_GIT_PATH`
+- `JUNIUS_PYTHON_PATH`
+- `JUNIUS_DESKTOP_HELPER_PATH`
 
 The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
 
@@ -56,6 +59,7 @@ read
 write
 rg
 playwright_cli
+desktop
 start_job
 get_job
 wait_job
@@ -80,7 +84,7 @@ ChatGPT
 
 There is no global active Workspace. Multiple Workspaces can execute concurrently.
 
-A Workspace grant and the machine capability policy are both required. The effective permission is their intersection.
+Workspace-scoped process capabilities (`node`, `pnpm`, and `git`) require both a Workspace grant and the machine capability policy; the effective permission is their intersection. Browser and desktop are machine-scoped capabilities: they do not belong to a Workspace and are controlled by their persisted machine-level enablement plus runtime availability.
 
 A Workspace ID is not a filesystem path. The model cannot provide an executable path or a raw shell command line.
 
@@ -208,8 +212,16 @@ A Workspace grant can only narrow a machine capability. It cannot expand the mac
 Inspect all registered Workspaces and machine capabilities:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8788/state |
-  ConvertTo-Json -Depth 20
+$state = Invoke-RestMethod http://127.0.0.1:8788/state
+$state | ConvertTo-Json -Depth 20
+```
+
+Mutation requests require the current local admin token returned by `/state`. The browser WebUI adds it automatically. For direct PowerShell calls:
+
+```powershell
+$headers = @{
+  "X-Junius-Admin-Token" = $state.adminToken
+}
 ```
 
 Register a Workspace:
@@ -222,6 +234,7 @@ $body = @{
 
 Invoke-RestMethod `
   -Method Post `
+  -Headers $headers `
   -ContentType "application/json" `
   -Body $body `
   http://127.0.0.1:8788/workspaces
@@ -239,6 +252,7 @@ $body = @{
 
 Invoke-RestMethod `
   -Method Post `
+  -Headers $headers `
   -ContentType "application/json" `
   -Body $body `
   http://127.0.0.1:8788/workspaces/weave/grants/pnpm
@@ -248,6 +262,7 @@ Revoke one capability grant:
 
 ```powershell
 Invoke-RestMethod -Method Delete `
+  -Headers $headers `
   http://127.0.0.1:8788/workspaces/weave/grants/pnpm
 ```
 
@@ -255,10 +270,11 @@ Remove a Workspace:
 
 ```powershell
 Invoke-RestMethod -Method Delete `
+  -Headers $headers `
   http://127.0.0.1:8788/workspaces/weave
 ```
 
-The local admin API is the backend for the Junius WebUI. The WebUI remains local-only and is not exposed through the Secure MCP Tunnel.
+The admin server validates its configured localhost Host header, rejects cross-origin mutation requests, requires the per-process admin token for mutations, and requires application/json for JSON request bodies. The WebUI remains local-only and is not exposed through the Secure MCP Tunnel.
 
 ## Workspace state persistence
 
@@ -311,7 +327,7 @@ Machine Capability v1 is implemented and locally validated.
 
 Authorization UX v1 is implemented and locally validated.
 
-The next capability milestone is Desktop Automation v1.
+Desktop Computer Use v1 is implemented and locally validated with UI Automation plus screenshot/mouse/keyboard fallback.
 
 OS-level sandboxing is not part of the current execution implementation.
 
@@ -417,7 +433,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm typecheck && pnpm test
 ```
 
-The observed test run completed with 32 tests passed, 0 failed, 0 cancelled, and 0 skipped.
+The current full check completes with 68 tests passed, 0 failed, 0 cancelled, and 0 skipped, including a real Windows Python desktop-helper integration test when the local desktop environment is installed.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -434,8 +450,27 @@ playwright_cli
 
 The tool accepts a named browser session, one whitelisted `playwright-cli` command, and that command's validated arguments.
 
-The current allowlist covers ordinary browser navigation and interaction:
+The current allowlist covers ordinary browser navigation and interaction, including navigation, snapshots, ref-based element actions, keyboard/mouse input, dialogs, tabs, and close. It intentionally does not expose arbitrary evaluation, CDP attachment, storage mutation, request interception, or arbitrary CLI commands.
+
+Browser sessions are named, headed, and persistent by default. Runtime browser state lives in Junius's own state directory rather than a project Workspace or the user's normal browser profile.
+
+Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants.
+
+## Desktop Computer Use
+
+Junius exposes Windows desktop automation through the stable `desktop` MCP tool.
+
+The preferred path is semantic Windows UI Automation:
 
 ```text
-open
-goto
+windows -> inspect -> element refs -> invoke / set_value / focus
+```
+
+For games and custom-rendered interfaces where UI Automation is insufficient, Junius falls back to screenshots plus bounded mouse and keyboard actions.
+
+Desktop element refs are scoped to a named desktop session and are rebuilt by `inspect`. Screenshots may target the full screen or one native window. When a window handle is supplied for a mouse action, coordinates are window-relative and must remain inside that window's rectangle.
+
+Text input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, so non-ASCII input is supported without relying on clipboard mutation.
+
+Desktop is machine-scoped like browser. It has persisted `enabled`, runtime `available`, and derived `active` state and does not use Workspace grants.
+

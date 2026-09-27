@@ -60,6 +60,7 @@ export type PlaywrightCliCommand =
   (typeof PLAYWRIGHT_CLI_COMMANDS)[number];
 
 export type PlaywrightCliErrorCode =
+  | "playwright_cli_disabled"
   | "playwright_cli_not_available"
   | "invalid_session"
   | "command_not_allowed"
@@ -446,6 +447,7 @@ export class PlaywrightCliService {
   readonly #launcher: PlaywrightCliLauncher | undefined;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #statePath: string;
+  #enabled = true;
 
   constructor(
     environment: NodeJS.ProcessEnv = process.env,
@@ -459,16 +461,32 @@ export class PlaywrightCliService {
     );
   }
 
+  get enabled(): boolean {
+    return this.#enabled;
+  }
+
   get available(): boolean {
     return this.#launcher !== undefined;
   }
 
+  get active(): boolean {
+    return this.#enabled && this.available;
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.#enabled = enabled;
+  }
+
   state(): {
+    readonly enabled: boolean;
     readonly available: boolean;
+    readonly active: boolean;
     readonly statePath: string;
   } {
     return {
+      enabled: this.enabled,
       available: this.available,
+      active: this.active,
       statePath: this.#statePath,
     };
   }
@@ -496,6 +514,13 @@ export class PlaywrightCliService {
       throw new PlaywrightCliError(
         "arguments_not_allowed",
         `Arguments are not allowed for playwright-cli command ${command}.`,
+      );
+    }
+
+    if (!this.#enabled) {
+      throw new PlaywrightCliError(
+        "playwright_cli_disabled",
+        "Browser computer use is disabled by the Junius machine capability policy.",
       );
     }
 

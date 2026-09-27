@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { handleAdminRequest } from "./admin-server.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
@@ -21,13 +22,22 @@ import { WorkspaceStateStore } from "./workspace-state-store.js";
 
 const config = await loadRuntimeConfig();
 const registry = new CapabilityRegistry();
+
+const playwrightCliService = new PlaywrightCliService();
+const desktopComputerUseService = new DesktopComputerUseService();
+
 const machineCapabilityStateStore = new MachineCapabilityStateStore(
   config.machineCapabilityStatePath,
 );
 const machineCapabilityManager = await MachineCapabilityManager.create(
   registry,
   machineCapabilityStateStore,
+  {
+    browser: playwrightCliService,
+    desktop: desktopComputerUseService,
+  },
 );
+
 const workspaceStateStore = new WorkspaceStateStore(
   config.workspaceStatePath,
 );
@@ -72,8 +82,6 @@ if (persistedWorkspaces === undefined) {
 const runCommandService = new RunCommandService(registry, workspaceManager);
 const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
 const jobManager = new JobManager(runCommandService);
-const playwrightCliService = new PlaywrightCliService();
-const desktopComputerUseService = new DesktopComputerUseService();
 const mcpRuntime = await createMcpRuntime(
   runCommandService,
   workspaceFilesService,
@@ -84,6 +92,7 @@ const mcpRuntime = await createMcpRuntime(
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
 const adminOrigin = `http://${config.adminHost}:${config.adminPort}`;
+const adminToken = randomBytes(32).toString("base64url");
 
 const mcpHttpServer = createHttpServer((req, res) => {
   void (async () => {
@@ -121,6 +130,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     playwrightCliService,
     desktopComputerUseService,
     adminOrigin,
+    adminToken,
   ).catch((error: unknown) => {
     console.error("[admin http]", error);
 

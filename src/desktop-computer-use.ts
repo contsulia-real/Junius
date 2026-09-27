@@ -33,6 +33,7 @@ export const DESKTOP_COMMANDS = [
 export type DesktopCommand = (typeof DESKTOP_COMMANDS)[number];
 
 export type DesktopComputerUseErrorCode =
+  | "desktop_disabled"
   | "desktop_not_available"
   | "invalid_session"
   | "command_not_allowed"
@@ -251,6 +252,7 @@ export class DesktopComputerUseService {
   readonly #helperPath: string;
   readonly #platform: NodeJS.Platform;
   readonly #sessions = new Map<string, DesktopSessionState>();
+  #enabled = true;
 
   constructor(options: DesktopComputerUseOptions = {}) {
     this.#environment = {
@@ -270,6 +272,10 @@ export class DesktopComputerUseService {
     );
   }
 
+  get enabled(): boolean {
+    return this.#enabled;
+  }
+
   get available(): boolean {
     return (
       this.#platform === "win32" &&
@@ -278,13 +284,25 @@ export class DesktopComputerUseService {
     );
   }
 
+  get active(): boolean {
+    return this.#enabled && this.available;
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.#enabled = enabled;
+  }
+
   state(): {
+    readonly enabled: boolean;
     readonly available: boolean;
+    readonly active: boolean;
     readonly helperPath: string;
     readonly pythonExecutable?: string;
   } {
     return {
+      enabled: this.enabled,
       available: this.available,
+      active: this.active,
       helperPath: this.#helperPath,
       ...(this.#pythonExecutable === undefined
         ? {}
@@ -311,6 +329,13 @@ export class DesktopComputerUseService {
       throw new DesktopComputerUseError(
         "arguments_not_allowed",
         `Arguments are not allowed for desktop command ${request.command}.`,
+      );
+    }
+
+    if (!this.#enabled) {
+      throw new DesktopComputerUseError(
+        "desktop_disabled",
+        "Desktop computer use is disabled by the Junius machine capability policy.",
       );
     }
 

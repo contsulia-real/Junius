@@ -137,8 +137,28 @@ test("playwright-cli exposes local WebUI status", async () => {
   const f = await fixture();
   try {
     const state = f.service.state();
+    assert.equal(state.enabled, true);
     assert.equal(state.available, true);
+    assert.equal(state.active, true);
     assert.equal(state.statePath, f.root);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli rejects execution when machine capability is disabled", async () => {
+  const f = await fixture();
+  try {
+    f.service.setEnabled(false);
+
+    await assert.rejects(
+      f.service.run("browser", "snapshot", []),
+      (error: unknown) =>
+        error instanceof PlaywrightCliError &&
+        error.code === "playwright_cli_disabled",
+    );
+
+    assert.equal(f.service.state().active, false);
   } finally {
     await f.dispose();
   }

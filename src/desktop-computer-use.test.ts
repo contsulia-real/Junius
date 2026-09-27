@@ -236,3 +236,45 @@ test("desktop adapter validates command-specific arguments", async () => {
     await f.dispose();
   }
 });
+
+test("desktop rejects execution when machine capability is disabled", async () => {
+  const f = await fixture();
+  try {
+    f.service.setEnabled(false);
+
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "windows",
+      }),
+      (error: unknown) =>
+        error instanceof DesktopComputerUseError &&
+        error.code === "desktop_disabled",
+    );
+
+    assert.equal(f.service.state().enabled, false);
+    assert.equal(f.service.state().active, false);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("desktop real Python helper can enumerate Windows when installed", async (t) => {
+  const service = new DesktopComputerUseService();
+
+  if (!service.available) {
+    t.skip("Junius desktop Python environment is not installed.");
+    return;
+  }
+
+  const execution = await service.run({
+    session: "integration",
+    command: "windows",
+  });
+  const result = execution.result as {
+    windows?: unknown;
+  };
+
+  assert.equal(Array.isArray(result.windows), true);
+  assert.equal(service.state().active, true);
+});

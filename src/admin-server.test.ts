@@ -22,25 +22,6 @@ async function fixture() {
   const statePath = join(root, "workspace-state.json");
   const registry = new CapabilityRegistry();
 
-  const machineStore = new MachineCapabilityStateStore(
-    join(root, "machine-capability-state.json"),
-  );
-  const machineCapabilities = await MachineCapabilityManager.create(
-    registry,
-    machineStore,
-    {
-      ...process.env,
-      PATH: "",
-      npm_execpath: undefined,
-      PNPM_HOME: undefined,
-    },
-    process.execPath,
-  );
-
-  const workspaces = new WorkspaceManager();
-  const store = new WorkspaceStateStore(statePath);
-  const commands = new RunCommandService(registry, workspaces);
-  const jobs = new JobManager(commands);
   const browser = new PlaywrightCliService({
     ...process.env,
     PATH: "",
@@ -54,7 +35,29 @@ async function fixture() {
     platform: "win32",
   });
 
+  const machineStore = new MachineCapabilityStateStore(
+    join(root, "machine-capability-state.json"),
+  );
+  const machineCapabilities = await MachineCapabilityManager.create(
+    registry,
+    machineStore,
+    { browser, desktop },
+    {
+      ...process.env,
+      PATH: "",
+      npm_execpath: undefined,
+      PNPM_HOME: undefined,
+    },
+    process.execPath,
+  );
+
+  const workspaces = new WorkspaceManager();
+  const store = new WorkspaceStateStore(statePath);
+  const commands = new RunCommandService(registry, workspaces);
+  const jobs = new JobManager(commands);
+
   let origin = "";
+  const adminToken = "test-admin-token";
   const server = createServer((req, res) => {
     void handleAdminRequest(
       req,
@@ -67,6 +70,7 @@ async function fixture() {
       browser,
       desktop,
       origin,
+      adminToken,
     );
   });
 
@@ -79,6 +83,14 @@ async function fixture() {
   return {
     root,
     origin,
+    workspaces,
+    mutationHeaders(json = true) {
+      return {
+        ...(json ? { "content-type": "application/json" } : {}),
+        "x-junius-admin-token": adminToken,
+        origin,
+      };
+    },
     async dispose() {
       server.close();
       await once(server, "close");
@@ -112,9 +124,17 @@ test("admin server serves the local WebUI and runtime state", async () => {
       }[];
       workspaces: unknown[];
       jobs: unknown[];
-      browser: { available: boolean; statePath: string };
-      desktop: {
+      adminToken: string;
+      browser: {
+        enabled: boolean;
         available: boolean;
+        active: boolean;
+        statePath: string;
+      };
+      desktop: {
+        enabled: boolean;
+        available: boolean;
+        active: boolean;
         helperPath: string;
         pythonExecutable?: string;
       };
@@ -150,13 +170,30 @@ test("admin server serves the local WebUI and runtime state", async () => {
           available: false,
           active: false,
         },
+        {
+          key: "browser",
+          enabled: true,
+          available: false,
+          active: false,
+        },
+        {
+          key: "desktop",
+          enabled: true,
+          available: false,
+          active: false,
+        },
       ],
     );
     assert.deepEqual(body.workspaces, []);
     assert.deepEqual(body.jobs, []);
+    assert.equal(body.adminToken, "test-admin-token");
+    assert.equal(body.browser.enabled, true);
     assert.equal(body.browser.available, false);
+    assert.equal(body.browser.active, false);
     assert.equal(body.browser.statePath, join(f.root, "browser"));
+    assert.equal(body.desktop.enabled, true);
     assert.equal(body.desktop.available, false);
+    assert.equal(body.desktop.active, false);
     assert.match(
       body.desktop.helperPath,
       /missing-desktop-helper\.py$/u,
@@ -182,9 +219,7 @@ test("admin WebUI backend keeps Workspace mutation API working", async () => {
 
     const created = await fetch(f.origin + "/workspaces", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
+      headers: f.mutationHeaders(),
       body: JSON.stringify({
         id: "demo",
         rootPath: workspaceRoot,
@@ -211,9 +246,7 @@ test("admin WebUI backend can persistently disable a machine capability", async 
   try {
     const disabled = await fetch(f.origin + "/capabilities/node", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
+      headers: f.mutationHeaders(),
       body: JSON.stringify({ enabled: false }),
     });
 
@@ -240,6 +273,8 @@ test("admin WebUI backend can persistently disable a machine capability", async 
         { key: "node", enabled: false, active: false },
         { key: "pnpm", enabled: true, active: false },
         { key: "git", enabled: true, active: false },
+        { key: "browser", enabled: true, active: false },
+        { key: "desktop", enabled: true, active: false },
       ],
     );
   } finally {
@@ -260,7 +295,7 @@ test("disabling a machine capability preserves Workspace grants", async () => {
       (
         await fetch(f.origin + "/workspaces", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: f.mutationHeaders(),
           body: JSON.stringify({
             id: "demo",
             rootPath: workspaceRoot,
@@ -274,7 +309,7 @@ test("disabling a machine capability preserves Workspace grants", async () => {
       (
         await fetch(f.origin + "/workspaces/demo/grants/node", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: f.mutationHeaders(),
           body: JSON.stringify({
             arguments: [
               { mode: "exact", args: ["--version"] },
@@ -289,7 +324,7 @@ test("disabling a machine capability preserves Workspace grants", async () => {
       (
         await fetch(f.origin + "/capabilities/node", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: f.mutationHeaders(),
           body: JSON.stringify({ enabled: false }),
         })
       ).status,
@@ -311,7 +346,7 @@ test("disabling a machine capability preserves Workspace grants", async () => {
       {
         key: "node",
         arguments: [
-          { mode: "exact", args: ["--version"] },
+          { mode: "exact", args: ["--version"], valid: true },
         ],
       },
     ]);
@@ -333,7 +368,7 @@ test("Workspace grant API preserves exact and prefix authorization semantics", a
       (
         await fetch(f.origin + "/workspaces", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: f.mutationHeaders(),
           body: JSON.stringify({
             id: "authux",
             rootPath: workspaceRoot,
@@ -347,7 +382,7 @@ test("Workspace grant API preserves exact and prefix authorization semantics", a
       (
         await fetch(f.origin + "/workspaces/authux/grants/node", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: f.mutationHeaders(),
           body: JSON.stringify({
             arguments: [
               { mode: "exact", args: ["--version"] },
@@ -381,11 +416,225 @@ test("Workspace grant API preserves exact and prefix authorization semantics", a
       {
         key: "node",
         arguments: [
-          { mode: "exact", args: ["--version"] },
-          { mode: "prefix", args: ["-p"] },
+          { mode: "exact", args: ["--version"], valid: true },
+          { mode: "prefix", args: ["-p"], valid: true },
         ],
       },
     ]);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("admin mutation API requires its local token and JSON bodies", async () => {
+  const f = await fixture();
+  try {
+    const noToken = await fetch(f.origin + "/capabilities/node", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: f.origin,
+      },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(noToken.status, 403);
+    assert.equal(
+      (await noToken.json() as { error: string }).error,
+      "admin_token_required",
+    );
+
+    const wrongOrigin = await fetch(f.origin + "/capabilities/node", {
+      method: "POST",
+      headers: {
+        ...f.mutationHeaders(),
+        origin: "https://example.invalid",
+      },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(wrongOrigin.status, 403);
+    assert.equal(
+      (await wrongOrigin.json() as { error: string }).error,
+      "admin_origin_not_allowed",
+    );
+
+    const textBody = await fetch(f.origin + "/capabilities/node", {
+      method: "POST",
+      headers: {
+        ...f.mutationHeaders(false),
+        "content-type": "text/plain",
+      },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(textBody.status, 400);
+    assert.equal(
+      (await textBody.json() as { error: string }).error,
+      "application_json_required",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("Workspace grant API rejects rules outside machine policy", async () => {
+  const f = await fixture();
+  try {
+    const workspaceRoot = join(f.root, "workspace-invalid-grant");
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(workspaceRoot, { recursive: true }),
+    );
+
+    assert.equal(
+      (
+        await fetch(f.origin + "/workspaces", {
+          method: "POST",
+          headers: f.mutationHeaders(),
+          body: JSON.stringify({
+            id: "invalid-grant",
+            rootPath: workspaceRoot,
+          }),
+        })
+      ).status,
+      201,
+    );
+
+    const response = await fetch(
+      f.origin + "/workspaces/invalid-grant/grants/pnpm",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          arguments: [
+            { mode: "exact", args: ["install"] },
+          ],
+        }),
+      },
+    );
+
+    assert.equal(response.status, 400);
+    assert.equal(
+      (await response.json() as { error: string }).error,
+      "arguments_outside_machine_policy",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("admin state preserves and marks historical invalid Workspace grants", async () => {
+  const f = await fixture();
+  try {
+    const workspaceRoot = join(f.root, "workspace-historical-grant");
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(workspaceRoot, { recursive: true }),
+    );
+    const profile = await f.workspaces.register(
+      "historical",
+      workspaceRoot,
+    );
+    profile.setGrant({
+      key: "pnpm",
+      arguments: [
+        { mode: "exact", args: ["install"] },
+      ],
+    });
+
+    const state = await fetch(f.origin + "/state");
+    const body = await state.json() as {
+      workspaces: {
+        id: string;
+        grants: {
+          key: string;
+          arguments: {
+            mode: string;
+            args: string[];
+            valid: boolean;
+            reason?: string;
+          }[];
+        }[];
+      }[];
+    };
+
+    const workspace = body.workspaces.find(
+      (item) => item.id === "historical",
+    );
+    assert.deepEqual(workspace?.grants, [
+      {
+        key: "pnpm",
+        arguments: [
+          {
+            mode: "exact",
+            args: ["install"],
+            valid: false,
+            reason: "arguments_outside_machine_policy",
+          },
+        ],
+      },
+    ]);
+
+    const preserveWhileEditing = await fetch(
+      f.origin + "/workspaces/historical/grants/pnpm",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          arguments: [
+            { mode: "exact", args: ["install"] },
+            { mode: "exact", args: ["run", "check"] },
+          ],
+        }),
+      },
+    );
+    assert.equal(preserveWhileEditing.status, 200);
+
+    const removeHistoricalInvalid = await fetch(
+      f.origin + "/workspaces/historical/grants/pnpm",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          arguments: [
+            { mode: "exact", args: ["run", "check"] },
+          ],
+        }),
+      },
+    );
+    assert.equal(removeHistoricalInvalid.status, 200);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("admin can disable machine-scoped browser capability", async () => {
+  const f = await fixture();
+  try {
+    const disabled = await fetch(f.origin + "/capabilities/browser", {
+      method: "POST",
+      headers: f.mutationHeaders(),
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(disabled.status, 200);
+
+    const state = await fetch(f.origin + "/state");
+    const body = await state.json() as {
+      browser: {
+        enabled: boolean;
+        active: boolean;
+      };
+      machineCapabilities: {
+        key: string;
+        enabled: boolean;
+        active: boolean;
+      }[];
+    };
+
+    assert.equal(body.browser.enabled, false);
+    assert.equal(body.browser.active, false);
+    assert.equal(
+      body.machineCapabilities.find(
+        (capability) => capability.key === "browser",
+      )?.enabled,
+      false,
+    );
   } finally {
     await f.dispose();
   }

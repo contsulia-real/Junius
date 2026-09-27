@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import io
 import json
 import sys
+from ctypes import wintypes
 from typing import Any
 
 import pyautogui
@@ -13,6 +15,33 @@ pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.03
 
 MAX_INSPECT_NODES = 500
+
+INPUT_KEYBOARD = 1
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
+ULONG_PTR = wintypes.WPARAM
+
+
+class KeyboardInput(ctypes.Structure):
+    _fields_ = [
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ULONG_PTR),
+    ]
+
+
+class InputUnion(ctypes.Union):
+    _fields_ = [("ki", KeyboardInput)]
+
+
+class Input(ctypes.Structure):
+    _anonymous_ = ("union",)
+    _fields_ = [
+        ("type", wintypes.DWORD),
+        ("union", InputUnion),
+    ]
 
 
 class DesktopHelperError(Exception):
@@ -250,7 +279,55 @@ def point(request: dict[str, Any]) -> tuple[int, int]:
         return x, y
 
     rect = window_wrapper(int(handle), backend="win32").rectangle()
+    width = int(rect.width())
+    height = int(rect.height())
+
+    if x < 0 or y < 0 or x >= width or y >= height:
+        raise DesktopHelperError(
+            "point_outside_window",
+            (
+                "Window-relative coordinates are outside the target window: "
+                f"({x}, {y}) not within 0..{max(0, width - 1)}, "
+                f"0..{max(0, height - 1)}."
+            ),
+        )
+
     return int(rect.left) + x, int(rect.top) + y
+
+
+def type_unicode(text: str) -> None:
+    if not text:
+        return
+
+    utf16 = text.encode("utf-16-le")
+    units = [
+        int.from_bytes(utf16[index:index + 2], "little")
+        for index in range(0, len(utf16), 2)
+    ]
+
+    for unit in units:
+        for flags in (
+            KEYEVENTF_UNICODE,
+            KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+        ):
+            keyboard = KeyboardInput(
+                wVk=0,
+                wScan=unit,
+                dwFlags=flags,
+                time=0,
+                dwExtraInfo=0,
+            )
+            event = Input(type=INPUT_KEYBOARD, ki=keyboard)
+            sent = ctypes.windll.user32.SendInput(
+                1,
+                ctypes.byref(event),
+                ctypes.sizeof(Input),
+            )
+            if sent != 1:
+                raise DesktopHelperError(
+                    "unicode_input_failed",
+                    "Windows SendInput failed while typing Unicode text.",
+                )
 
 
 def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -308,7 +385,7 @@ def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
 
         if command == "type":
             text = str(request["text"])
-            pyautogui.write(text, interval=0)
+            type_unicode(text)
             return {"characters": len(text)}
 
         if command == "focus_window":
@@ -316,6 +393,8 @@ def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
             window_wrapper(handle, backend="win32").set_focus()
             return {"handle": handle}
 
+    except DesktopHelperError:
+        raise
     except Exception as error:
         raise DesktopHelperError(
             "desktop_action_failed",

@@ -15,6 +15,58 @@ import { WorkspaceStateStore } from "./workspace-state-store.js";
 import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function assertAdminHost(
+  req: IncomingMessage,
+  origin: string,
+): void {
+  const expectedHost = new URL(origin).host;
+  if (req.headers.host !== expectedHost) {
+    throw new Error("admin_host_not_allowed");
+  }
+}
+
+function assertMutationAuthorized(
+  req: IncomingMessage,
+  origin: string,
+  adminToken: string,
+): void {
+  const requestOrigin = req.headers.origin;
+  if (requestOrigin !== undefined && requestOrigin !== origin) {
+    throw new Error("admin_origin_not_allowed");
+  }
+
+  if (req.headers["x-junius-admin-token"] !== adminToken) {
+    throw new Error("admin_token_required");
+  }
+}
+
+function assertJsonContentType(req: IncomingMessage): void {
+  const contentType = req.headers["content-type"] ?? "";
+  if (contentType.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+    throw new Error("application_json_required");
+  }
+}
+
+function workspaceAdminState(
+  workspaces: WorkspaceManager,
+  machineCapabilities: MachineCapabilityManager,
+) {
+  return workspaces.list().map((workspace) => ({
+    ...workspace,
+    grants: workspace.grants.map((grant) => ({
+      ...grant,
+      arguments: grant.arguments.map((rule) => ({
+        ...rule,
+        ...machineCapabilities.workspaceGrantCompatibility(
+          grant.key,
+          rule,
+        ),
+      })),
+    })),
+  }));
+}
 
 function sendText(
   res: ServerResponse,
@@ -30,6 +82,8 @@ function sendText(
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  assertJsonContentType(req);
+
   const chunks: Buffer[] = [];
   let total = 0;
 
@@ -137,8 +191,22 @@ export async function handleAdminRequest(
   playwrightCli: PlaywrightCliService,
   desktop: DesktopComputerUseService,
   origin: string,
+  adminToken: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", origin);
+
+  try {
+    assertAdminHost(req, origin);
+    if (MUTATING_METHODS.has(req.method ?? "")) {
+      assertMutationAuthorized(req, origin, adminToken);
+    }
+  } catch (error) {
+    sendJson(res, 403, {
+      error:
+        error instanceof Error ? error.message : "admin_request_forbidden",
+    });
+    return;
+  }
 
   if (req.method === "GET" && url.pathname === "/") {
     sendText(
@@ -180,8 +248,9 @@ export async function handleAdminRequest(
         description: capability.description,
       })),
       machineCapabilities: machineCapabilities.list(),
-      workspaces: workspaces.list(),
+      workspaces: workspaceAdminState(workspaces, machineCapabilities),
       jobs: jobs.list(),
+      adminToken,
       browser: playwrightCli.state(),
       desktop: desktop.state(),
     });
@@ -298,14 +367,6 @@ export async function handleAdminRequest(
       return;
     }
 
-    if (!registry.has(key)) {
-      sendJson(res, 400, {
-        error: "capability_not_registered",
-        key,
-      });
-      return;
-    }
-
     if (req.method === "DELETE") {
       profile.revoke(key);
       await workspaceStateStore.save(workspaces);
@@ -328,9 +389,34 @@ export async function handleAdminRequest(
           throw new Error("arguments_required");
         }
 
+        const argumentGrants = parseArgumentGrants(body.arguments);
+        const existingGrant = profile.grants().find(
+          (grant) => grant.key === key,
+        );
+
+        for (const grant of argumentGrants) {
+          const compatibility =
+            machineCapabilities.workspaceGrantCompatibility(key, grant);
+          const alreadyPersisted =
+            existingGrant?.arguments.some(
+              (existing) =>
+                existing.mode === grant.mode &&
+                existing.args.length === grant.args.length &&
+                existing.args.every(
+                  (arg, index) => arg === grant.args[index],
+                ),
+            ) ?? false;
+
+          if (!compatibility.valid && !alreadyPersisted) {
+            throw new Error(
+              compatibility.reason ?? "arguments_outside_machine_policy",
+            );
+          }
+        }
+
         profile.setGrant({
           key,
-          arguments: parseArgumentGrants(body.arguments),
+          arguments: argumentGrants,
         });
         await workspaceStateStore.save(workspaces);
 

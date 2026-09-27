@@ -8,8 +8,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { CapabilityRegistry } from "./capabilities/registry.js";
+import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
-import { MachineCapabilityManager } from "./machine-capabilities.js";
+import {
+  MachineCapabilityManager,
+  type MachineCapabilityServices,
+} from "./machine-capabilities.js";
+import { PlaywrightCliService } from "./playwright-cli.js";
+
+function services(root: string): MachineCapabilityServices {
+  return {
+    browser: new PlaywrightCliService({
+      ...process.env,
+      PATH: "",
+      npm_execpath: undefined,
+      JUNIUS_PLAYWRIGHT_CLI_PATH: undefined,
+      PLAYWRIGHT_CLI_HOME: undefined,
+      JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
+    }),
+    desktop: new DesktopComputerUseService({
+      helperPath: join(root, "missing-desktop-helper.py"),
+      pythonExecutable: join(root, "missing-python.exe"),
+      platform: "win32",
+    }),
+  };
+}
 
 test("MachineCapabilityManager registers available built-ins by default", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
@@ -34,6 +57,7 @@ test("MachineCapabilityManager registers available built-ins by default", async 
     const manager = await MachineCapabilityManager.create(
       registry,
       store,
+      services(root),
       {
         ...process.env,
         PATH: "",
@@ -51,6 +75,7 @@ test("MachineCapabilityManager registers available built-ins by default", async 
     assert.deepEqual(
       manager.list().map((capability) => ({
         key: capability.key,
+        scope: capability.scope,
         enabled: capability.enabled,
         available: capability.available,
         active: capability.active,
@@ -58,21 +83,38 @@ test("MachineCapabilityManager registers available built-ins by default", async 
       [
         {
           key: "node",
+          scope: "workspace",
           enabled: true,
           available: true,
           active: true,
         },
         {
           key: "pnpm",
+          scope: "workspace",
           enabled: true,
           available: true,
           active: true,
         },
         {
           key: "git",
+          scope: "workspace",
           enabled: true,
           available: true,
           active: true,
+        },
+        {
+          key: "browser",
+          scope: "machine",
+          enabled: true,
+          available: false,
+          active: false,
+        },
+        {
+          key: "desktop",
+          scope: "machine",
+          enabled: true,
+          available: false,
+          active: false,
         },
       ],
     );
@@ -88,9 +130,11 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
   try {
     const firstRegistry = new CapabilityRegistry();
     const firstStore = new MachineCapabilityStateStore(statePath);
+    const firstServices = services(root);
     const first = await MachineCapabilityManager.create(
       firstRegistry,
       firstStore,
+      firstServices,
       {
         ...process.env,
         PATH: "",
@@ -102,14 +146,18 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
     );
 
     await first.setEnabled("node", false);
+    await first.setEnabled("browser", false);
 
     assert.equal(firstRegistry.has("node"), false);
+    assert.equal(firstServices.browser.enabled, false);
 
     const secondRegistry = new CapabilityRegistry();
     const secondStore = new MachineCapabilityStateStore(statePath);
+    const secondServices = services(root);
     const second = await MachineCapabilityManager.create(
       secondRegistry,
       secondStore,
+      secondServices,
       {
         ...process.env,
         PATH: "",
@@ -123,11 +171,17 @@ test("MachineCapabilityManager persists disabled state across restart", async ()
     const node = second.list().find(
       (capability) => capability.key === "node",
     );
+    const browser = second.list().find(
+      (capability) => capability.key === "browser",
+    );
 
     assert.equal(node?.enabled, false);
     assert.equal(node?.available, true);
     assert.equal(node?.active, false);
     assert.equal(secondRegistry.has("node"), false);
+    assert.equal(browser?.enabled, false);
+    assert.equal(browser?.active, false);
+    assert.equal(secondServices.browser.enabled, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -144,6 +198,7 @@ test("MachineCapabilityManager keeps unavailable launchers distinct from disable
     const manager = await MachineCapabilityManager.create(
       registry,
       store,
+      services(root),
       {
         ...process.env,
         PATH: "",
@@ -172,6 +227,63 @@ test("MachineCapabilityManager keeps unavailable launchers distinct from disable
   }
 });
 
+test("MachineCapabilityManager validates Workspace grants against machine policy", async () => {
+  const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
+
+  try {
+    const manager = await MachineCapabilityManager.create(
+      new CapabilityRegistry(),
+      new MachineCapabilityStateStore(join(root, "state.json")),
+      services(root),
+      {
+        ...process.env,
+        PATH: "",
+        npm_execpath: undefined,
+        PNPM_HOME: undefined,
+        JUNIUS_GIT_PATH: undefined,
+      },
+      process.execPath,
+    );
+
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("pnpm", {
+        mode: "exact",
+        args: ["run", "check"],
+      }),
+      { valid: true },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("pnpm", {
+        mode: "exact",
+        args: ["install"],
+      }),
+      {
+        valid: false,
+        reason: "arguments_outside_machine_policy",
+      },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("git", {
+        mode: "prefix",
+        args: ["remote"],
+      }),
+      { valid: true },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("browser", {
+        mode: "exact",
+        args: ["open"],
+      }),
+      {
+        valid: false,
+        reason: "capability_not_workspace_scoped",
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("MachineCapabilityManager rejects unknown capability keys", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
 
@@ -179,6 +291,7 @@ test("MachineCapabilityManager rejects unknown capability keys", async () => {
     const manager = await MachineCapabilityManager.create(
       new CapabilityRegistry(),
       new MachineCapabilityStateStore(join(root, "state.json")),
+      services(root),
       {
         ...process.env,
         PATH: "",

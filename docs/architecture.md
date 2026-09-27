@@ -4,22 +4,22 @@
 
 Junius is a **Local Agent** that lets ChatGPT use capabilities of the user's local computer through MCP under explicit user-controlled authorization.
 
-Local files, processes, jobs, and browser automation are Local Agent capabilities. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
+Local files, processes, jobs, browser automation, and Windows desktop computer use are Local Agent capabilities. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
 
-Junius's user-facing management surface is a local WebUI rather than a desktop Dashboard. This UI choice is independent of whether desktop-automation capabilities are added later.
+Junius's user-facing management surface is a local WebUI rather than a desktop Dashboard. Desktop computer use is a separate Local Agent capability and is already implemented.
 
 ```text
 Junius
 = Local Agent
 
 current capabilities
-= files + processes + jobs + browser
+= files + processes + jobs + browser + desktop computer use
 
 user-facing management
 = local WebUI
 
-desktop automation capability
-= separate product/capability decision
+desktop computer use
+= machine-scoped capability, separate from the management UI
 
 Workspace / Capability Registry / grants
 = authorization and routing mechanisms
@@ -51,6 +51,7 @@ read(workspace, ...)
 write(workspace, ...)
 rg(workspace, ...)
 playwright_cli(session, command, args)
+desktop(session, command, ...)
 start_job(workspace, key, args)
 get_job(job)
 wait_job(job, timeout_ms)
@@ -191,12 +192,17 @@ Workspace grants remain required and can only narrow this machine-level Git poli
 
 Built-in process capabilities have persistent machine-level enablement state.
 
-Current managed keys:
+Current managed keys and scopes:
 
 ```text
-node
-pnpm
-git
+workspace-scoped
+  node
+  pnpm
+  git
+
+machine-scoped
+  browser
+  desktop
 ```
 
 For each known key, Junius distinguishes:
@@ -209,7 +215,7 @@ available
 = adapter/launcher can currently be resolved
 
 active
-= capability is currently present in the live Capability Registry
+= enabled and currently usable; process capabilities are present in the live Capability Registry, while browser/desktop pass their service-level execution gate
 ```
 
 This distinction allows a capability such as pnpm to remain enabled in configuration even when its launcher is temporarily unavailable.
@@ -230,7 +236,7 @@ JUNIUS_MACHINE_CAPABILITY_STATE_PATH
 
 Machine Capability v1 only controls known built-in adapters. It does not allow the WebUI to register arbitrary executable paths, arbitrary argument policies, or raw shell commands.
 
-Disabling an active capability unregisters it immediately. Workspace grants referencing that key are intentionally preserved rather than rewritten. Therefore the effective authorization becomes unavailable while disabled and returns if the capability is re-enabled.
+Disabling an active Workspace-scoped process capability unregisters it immediately. Workspace grants referencing that key are intentionally preserved rather than rewritten. Browser and desktop keep their stable MCP surfaces but reject execution in their service layer while disabled. Re-enabling restores execution when the underlying runtime is available.
 
 Disabling a capability prevents new synchronous commands and jobs from starting through that capability. It does not terminate jobs that were already started.
 
@@ -412,4 +418,52 @@ Windows default:
 ```
 
 Non-Windows uses the corresponding XDG/local state directory.
+
+Browser is machine-scoped. Its MCP tool remains stable, while `PlaywrightCliService` enforces the persisted machine `enabled` gate before launching the CLI. `active` therefore means both enabled and runtime-available.
+
+## Desktop Computer Use
+
+Desktop computer use is also a first-class, machine-scoped Local Agent capability and is independent of Workspace routing.
+
+```text
+ChatGPT
+-> desktop MCP tool
+-> DesktopComputerUseService
+-> python/desktop_helper.py
+-> Windows UI Automation / screenshot / mouse / keyboard
+```
+
+The semantic path is preferred:
+
+```text
+windows
+-> inspect(handle)
+-> session-local refs such as d3
+-> invoke / set_value / focus
+```
+
+`inspect` maps helper-internal element paths to session-local refs in Node. A new inspect refreshes those refs for that named desktop session.
+
+When semantic UI Automation is not useful, the capability can take screenshots and perform coordinate mouse/keyboard operations. If a window handle is supplied, mouse coordinates are relative to that window and the helper rejects coordinates outside the window rectangle before moving or clicking.
+
+Text input uses Windows Unicode `SendInput` keyboard events rather than `pyautogui.write`. This supports arbitrary Unicode text without mutating the clipboard.
+
+The Python helper is intentionally short-lived: each desktop action launches one helper process with `shell: false`, exchanges one JSON request/response over stdio, and exits. This keeps helper state out of Python; named-session refs remain owned by the Node service.
+
+Desktop machine state uses the same persisted `enabled` / runtime `available` / derived `active` model as browser. A disabled desktop capability keeps the stable MCP surface but rejects actions before launching the helper.
+
+## Local WebUI security
+
+The admin WebUI binds to the configured localhost address and is not routed through the Secure MCP Tunnel.
+
+The admin HTTP layer additionally enforces:
+
+- the configured local `Host` value;
+- same-origin mutation requests when an `Origin` header is present;
+- a per-process random admin token on all mutation requests;
+- `application/json` for mutation endpoints that accept JSON bodies.
+
+`GET /state` returns the current admin token to same-origin WebUI code. Browser same-origin policy prevents an unrelated website from reading that token, while the custom mutation header also forces cross-origin script requests through preflight. Direct local clients may read `/state` and explicitly supply the token.
+
+Workspace grant mutation validates new rules against the machine policy even when the capability is currently disabled or unavailable. Historical rules that no longer intersect the machine policy are preserved and marked invalid in admin state rather than silently deleted; they may be retained while editing so users can remove them incrementally.
 

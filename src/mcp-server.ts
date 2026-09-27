@@ -171,7 +171,7 @@ export function createMcpServer(
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Agent",
-    version: "0.9.0",
+    version: "1.0.0",
   });
 
   server.registerTool(
