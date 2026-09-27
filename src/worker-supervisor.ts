@@ -6,6 +6,7 @@ import {
 } from "./worker-process.js";
 import { WorkerAffinityRegistry } from "./worker-affinity-registry.js";
 import { reloadWorkerConfiguration } from "./worker-configuration-reload.js";
+import { prepareReloadCandidate } from "./worker-reload-candidate.js";
 
 type WorkerStatus = "active" | "retiring" | "exited";
 
@@ -394,97 +395,28 @@ export class WorkerSupervisor {
   }
 
   async #reloadOnce(): Promise<ReloadResult> {
-    if (!this.#canPromote()) {
-      this.#lastFailure =
-        "candidate_promotion_blocked";
+    const prepared = await prepareReloadCandidate({
+      canPromote: this.#canPromote,
+      validate: this.#validate,
+      spawnWorker: this.#spawnWorker,
+      reloadWorkerConfiguration:
+        this.#reloadWorkerConfiguration,
+      configurationEpoch: () => this.#configurationEpoch,
+    });
+
+    if (prepared.check !== undefined) {
+      this.#lastCheck = prepared.check;
+    }
+
+    if (!prepared.ok) {
+      this.#lastFailure = prepared.reason;
       return {
         promoted: false,
-        reason: this.#lastFailure,
+        reason: prepared.reason,
       };
     }
 
-    let check: SourceCheckResult;
-    try {
-      check = await this.#validate();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-      this.#lastFailure = `source_check_failed: ${message}`;
-      return {
-        promoted: false,
-        reason: this.#lastFailure,
-      };
-    }
-
-    this.#lastCheck = check;
-
-    if (!check.ok) {
-      this.#lastFailure =
-        `source_check_failed: exit=${String(check.exitCode)} signal=${String(check.signal)}`;
-      return {
-        promoted: false,
-        reason: this.#lastFailure,
-      };
-    }
-
-    if (!this.#canPromote()) {
-      this.#lastFailure =
-        "candidate_promotion_blocked";
-      return {
-        promoted: false,
-        reason: this.#lastFailure,
-      };
-    }
-
-    const configurationEpochBeforeSpawn =
-      this.#configurationEpoch;
-
-    let candidate: ManagedWorker;
-    try {
-      candidate = await this.#spawnWorker();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-      this.#lastFailure = `candidate_startup_failed: ${message}`;
-      return {
-        promoted: false,
-        reason: this.#lastFailure,
-      };
-    }
-
-    if (!this.#canPromote()) {
-      await candidate.close().catch(() => {});
-      this.#lastFailure =
-        "candidate_promotion_blocked";
-      return {
-        promoted: false,
-        reason: this.#lastFailure,
-      };
-    }
-
-    if (
-      configurationEpochBeforeSpawn !==
-      this.#configurationEpoch
-    ) {
-      try {
-        let observedEpoch: number;
-        do {
-          observedEpoch = this.#configurationEpoch;
-          await this.#reloadWorkerConfiguration(candidate);
-        } while (observedEpoch !== this.#configurationEpoch);
-      } catch (error) {
-        await candidate.close().catch(() => {});
-        const message =
-          error instanceof Error ? error.message : String(error);
-        this.#lastFailure =
-          `candidate_configuration_sync_failed: ${message}`;
-        return {
-          promoted: false,
-          reason: this.#lastFailure,
-        };
-      }
-    }
-
+    const candidate = prepared.candidate;
     const previousId = this.#activeWorkerId;
     this.#register(candidate, "active");
     this.#activeWorkerId = candidate.id;
@@ -495,7 +427,10 @@ export class WorkerSupervisor {
       previousId !== candidate.id
     ) {
       const previous = this.#records.get(previousId);
-      if (previous !== undefined && previous.status !== "exited") {
+      if (
+        previous !== undefined &&
+        previous.status !== "exited"
+      ) {
         previous.status = "retiring";
         previous.retiredAt = new Date().toISOString();
         this.#affinity.retireWorker(
