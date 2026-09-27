@@ -103,7 +103,7 @@ run_command(workspace, key, args)
 
 `list_workspaces` exposes registered Workspace IDs, canonical roots, and their current command grants.
 
-`ls`, `read`, `write`, and `rg` are built-in Workspace file operations. Registering a Workspace defines the filesystem scope available to these built-in tools. Their paths are always Workspace-relative and are resolved by Junius rather than passed to a shell.
+`ls`, `read`, `write`, and `rg` are built-in Workspace file operations. Registering a Workspace defines the filesystem scope available to these built-in tools. Their paths are always Workspace-relative and are resolved by Junius rather than passed to a shell. `.junius` runtime/control state and `.git` metadata at any depth are reserved from this generic file surface; Git metadata is accessed only through the Git capability. Recursive `ls` skips these control directories, and `rg` appends Junius protection globs after user globs so a later user include pattern cannot re-enable reserved or configured protected paths.
 
 `workspace_batch` is a read-only orchestration surface over `ls`, `read`, and `rg`. It does not add new filesystem authority. Up to 16 known read operations execute concurrently in one MCP round trip; expected file errors are returned per operation instead of aborting unrelated operations, and bounded result budgets prevent batch amplification.
 

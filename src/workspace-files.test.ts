@@ -449,6 +449,173 @@ test("Workspace file tools protect configured internal state paths", async () =>
   }
 });
 
+test("rg cannot re-include protected .junius state with user globs", async () => {
+  const f = await fixture();
+
+  try {
+    await mkdir(join(f.root, ".junius"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(f.root, ".junius", "secret.txt"),
+      "needle\n",
+      "utf8",
+    );
+    await writeFile(
+      join(f.root, "public.txt"),
+      "needle\n",
+      "utf8",
+    );
+
+    const matches = await f.service.rg("demo", {
+      query: "needle",
+      path: ".",
+      globs: [".junius/**", "**"],
+      hidden: true,
+      fixedStrings: true,
+      caseSensitive: true,
+      maxResults: 20,
+    });
+
+    assert.deepEqual(
+      matches.map((match) =>
+        match.path.replaceAll("\\", "/"),
+      ),
+      ["public.txt"],
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("rg does not follow Workspace symlinks or junctions outside the root", async () => {
+  const f = await fixture();
+  const outside = await mkdtemp(
+    join(tmpdir(), "junius-rg-outside-"),
+  );
+
+  try {
+    await writeFile(
+      join(outside, "secret.txt"),
+      "outside-needle\n",
+      "utf8",
+    );
+    await symlink(
+      outside,
+      join(f.root, "external"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    const matches = await f.service.rg("demo", {
+      query: "outside-needle",
+      path: ".",
+      hidden: true,
+      fixedStrings: true,
+      caseSensitive: true,
+      maxResults: 20,
+    });
+
+    assert.deepEqual(matches, []);
+  } finally {
+    await f.dispose();
+    await rm(outside, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("Workspace file tools reserve Git metadata at every depth", async () => {
+  const f = await fixture();
+
+  try {
+    await mkdir(join(f.root, ".git"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(f.root, ".git", "config"),
+      "needle-git\n",
+      "utf8",
+    );
+    await mkdir(
+      join(f.root, "nested", ".git"),
+      { recursive: true },
+    );
+    await writeFile(
+      join(f.root, "nested", ".git", "config"),
+      "needle-git\n",
+      "utf8",
+    );
+
+    for (const path of [
+      ".git/config",
+      "nested/.git/config",
+    ]) {
+      await assert.rejects(
+        f.service.read("demo", [{ path }]),
+        (error: unknown) =>
+          error instanceof WorkspaceFileError &&
+          error.code === "invalid_path",
+      );
+    }
+
+    const listed = await f.service.ls("demo", ".", 4);
+    assert.equal(
+      listed.some((entry) =>
+        entry.path
+          .replaceAll("\\", "/")
+          .split("/")
+          .some((segment) => segment.toLowerCase() === ".git"),
+      ),
+      false,
+    );
+
+    const matches = await f.service.rg("demo", {
+      query: "needle-git",
+      path: ".",
+      globs: ["**/.git/**", "**"],
+      hidden: true,
+      fixedStrings: true,
+      caseSensitive: true,
+      maxResults: 20,
+    });
+    assert.deepEqual(matches, []);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("Workspace file tools reject aliases into Git metadata", async () => {
+  const f = await fixture();
+
+  try {
+    await mkdir(join(f.root, ".git"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(f.root, ".git", "config"),
+      "secret\n",
+      "utf8",
+    );
+    await symlink(
+      join(f.root, ".git"),
+      join(f.root, "git-alias"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    await assert.rejects(
+      f.service.read("demo", [
+        { path: "git-alias/config" },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "invalid_path",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
 test("Workspace file tools reject unregistered Workspaces", async () => {
   const manager = new WorkspaceManager();
   const service = new WorkspaceFilesService(manager);

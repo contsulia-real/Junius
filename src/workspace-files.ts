@@ -92,11 +92,24 @@ function pathSegments(
 function assertWorkspaceControlPathAllowed(
   relativePath: string,
 ): void {
-  const [first] = pathSegments(relativePath);
+  const segments = pathSegments(relativePath);
+  const [first] = segments;
+
   if (first?.toLowerCase() === ".junius") {
     throw new WorkspaceFileError(
       "invalid_path",
       `Junius runtime/control state is reserved: ${relativePath}`,
+    );
+  }
+
+  if (
+    segments.some(
+      (segment) => segment.toLowerCase() === ".git",
+    )
+  ) {
+    throw new WorkspaceFileError(
+      "invalid_path",
+      `Git metadata is reserved for the Git capability: ${relativePath}`,
     );
   }
 }
@@ -200,7 +213,14 @@ export class WorkspacePathResolver {
   }
 
   exclusionGlobs(): readonly string[] {
-    const globs = ["!.junius", "!.junius/**"];
+    const globs = [
+      "!.junius",
+      "!.junius/**",
+      "!.git",
+      "!.git/**",
+      "!**/.git",
+      "!**/.git/**",
+    ];
 
     for (const protectedPath of this.protectedPaths) {
       if (!pathInside(this.rootPath, protectedPath)) {
@@ -385,6 +405,10 @@ async function listDirectory(
       if (
         pathSegments(rel)[0]?.toLowerCase() ===
           ".junius" ||
+        pathSegments(rel).some(
+          (segment) =>
+            segment.toLowerCase() === ".git",
+        ) ||
         resolver.isProtectedPath(fullPath)
       ) {
         continue;
@@ -1104,8 +1128,8 @@ async function runRg(
   if (options.hidden) args.push("--hidden");
 
   for (const glob of [
-    ...resolver.exclusionGlobs(),
     ...options.globs,
+    ...resolver.exclusionGlobs(),
   ]) {
     args.push("-g", glob);
   }
