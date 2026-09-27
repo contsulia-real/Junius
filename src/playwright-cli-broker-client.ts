@@ -64,6 +64,13 @@ export class PlaywrightCliBrokerClient {
   #buffer = "";
   #nextId = 1;
   #pending = new Map<number, Pending>();
+  #ready = false;
+  #readyPromise: Promise<void> | undefined;
+  #readyResolve: (() => void) | undefined;
+  #readyReject:
+    | ((error: PlaywrightCliBrokerError) => void)
+    | undefined;
+  #readyTimer: NodeJS.Timeout | undefined;
   #disabled = false;
   #closing = false;
 
@@ -87,6 +94,22 @@ export class PlaywrightCliBrokerClient {
 
   get available(): boolean {
     return !this.#disabled;
+  }
+
+  get ready(): boolean {
+    return this.#ready;
+  }
+
+  async prewarm(): Promise<void> {
+    if (this.#disabled || this.#closing) {
+      throw new PlaywrightCliBrokerError(
+        "broker_unavailable",
+        "Playwright CLI broker is unavailable.",
+      );
+    }
+
+    this.#ensureChild();
+    await this.#readyPromise;
   }
 
   async run(
@@ -117,7 +140,7 @@ export class PlaywrightCliBrokerClient {
               "broker_timeout",
               `Playwright CLI broker exceeded ${this.#timeoutMs} ms.`,
             ),
-            true,
+            false,
           );
         }, this.#timeoutMs);
 
@@ -137,7 +160,7 @@ export class PlaywrightCliBrokerClient {
               "broker_protocol_error",
               error.message,
             ),
-            true,
+            false,
           );
         });
       },
@@ -149,12 +172,12 @@ export class PlaywrightCliBrokerClient {
     const child = this.#child;
     this.#child = undefined;
 
-    this.#rejectAll(
-      new PlaywrightCliBrokerError(
-        "broker_unavailable",
-        "Playwright CLI broker closed.",
-      ),
+    const closingError = new PlaywrightCliBrokerError(
+      "broker_unavailable",
+      "Playwright CLI broker closed.",
     );
+    this.#rejectReady(closingError);
+    this.#rejectAll(closingError);
 
     if (
       child === undefined ||
@@ -190,6 +213,23 @@ export class PlaywrightCliBrokerClient {
     }
 
     this.#buffer = "";
+    this.#ready = false;
+    this.#readyPromise = new Promise<void>(
+      (resolvePromise, reject) => {
+        this.#readyResolve = resolvePromise;
+        this.#readyReject = reject;
+      },
+    );
+    void this.#readyPromise.catch(() => {});
+    this.#readyTimer = setTimeout(() => {
+      this.#fail(
+        new PlaywrightCliBrokerError(
+          "broker_timeout",
+          `Playwright CLI broker did not become ready within ${this.#timeoutMs} ms.`,
+        ),
+        true,
+      );
+    }, this.#timeoutMs);
 
     const child = spawn(
       this.#nodeExecutable,
@@ -224,7 +264,7 @@ export class PlaywrightCliBrokerClient {
             "broker_output_limit",
             `Playwright CLI broker output exceeded ${MAX_OUTPUT_BYTES} bytes.`,
           ),
-          true,
+          !this.#ready,
         );
         return;
       }
@@ -248,7 +288,7 @@ export class PlaywrightCliBrokerClient {
           "broker_spawn_failed",
           error.message,
         ),
-        true,
+        !this.#ready,
       );
     });
 
@@ -256,7 +296,10 @@ export class PlaywrightCliBrokerClient {
       if (this.#child !== child) return;
       this.#child = undefined;
 
-      if (this.#pending.size === 0) {
+      if (
+        this.#pending.size === 0 &&
+        this.#ready
+      ) {
         return;
       }
 
@@ -266,7 +309,7 @@ export class PlaywrightCliBrokerClient {
           stderr ||
             `Playwright CLI broker exited with code ${String(exitCode)} signal ${String(signal)}.`,
         ),
-        true,
+        !this.#ready,
       );
     });
 
@@ -291,7 +334,7 @@ export class PlaywrightCliBrokerClient {
             "broker_protocol_error",
             "Playwright CLI broker returned invalid JSON.",
           ),
-          true,
+          !this.#ready,
         );
         return;
       }
@@ -312,7 +355,7 @@ export class PlaywrightCliBrokerClient {
             "broker_protocol_error",
             "Playwright CLI broker returned an invalid response.",
           ),
-          true,
+          !this.#ready,
         );
         return;
       }
@@ -328,15 +371,19 @@ export class PlaywrightCliBrokerClient {
 
       if (pending === undefined) {
         if (response.id === 0) {
-          this.#fail(
-            new PlaywrightCliBrokerError(
-              "broker_unavailable",
-              response.message ??
-                response.stderr ??
-                "Playwright CLI broker failed to initialize.",
-            ),
-            true,
-          );
+          if (response.exitCode === 0) {
+            this.#markReady();
+          } else {
+            this.#fail(
+              new PlaywrightCliBrokerError(
+                "broker_unavailable",
+                response.message ||
+                  response.stderr ||
+                  "Playwright CLI broker failed to initialize.",
+              ),
+              true,
+            );
+          }
         }
         continue;
       }
@@ -354,6 +401,31 @@ export class PlaywrightCliBrokerClient {
     }
   }
 
+  #markReady(): void {
+    if (this.#ready) return;
+
+    this.#ready = true;
+    if (this.#readyTimer !== undefined) {
+      clearTimeout(this.#readyTimer);
+      this.#readyTimer = undefined;
+    }
+    this.#readyResolve?.();
+    this.#readyResolve = undefined;
+    this.#readyReject = undefined;
+  }
+
+  #rejectReady(error: PlaywrightCliBrokerError): void {
+    if (this.#readyTimer !== undefined) {
+      clearTimeout(this.#readyTimer);
+      this.#readyTimer = undefined;
+    }
+    this.#readyReject?.(error);
+    this.#readyResolve = undefined;
+    this.#readyReject = undefined;
+    this.#readyPromise = undefined;
+    this.#ready = false;
+  }
+
   #fail(
     error: PlaywrightCliBrokerError,
     disable: boolean,
@@ -365,6 +437,7 @@ export class PlaywrightCliBrokerClient {
       this.#disabled = true;
     }
 
+    this.#rejectReady(error);
     this.#rejectAll(error);
 
     if (

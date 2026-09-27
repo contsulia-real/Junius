@@ -91,6 +91,14 @@ function writeEnvelope(id, request) {
 }
 
 if (process.argv.includes("--server")) {
+  process.stdout.write(
+    JSON.stringify({
+      id: 0,
+      ok: true,
+      result: { ready: true }
+    }) + "\\n"
+  );
+
   let buffer = "";
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk) => {
@@ -310,9 +318,13 @@ test("desktop rejects execution when machine capability is disabled", async () =
   }
 });
 
-test("desktop reuses one persistent helper process across actions", async () => {
+test("desktop prewarms and reuses one persistent helper process across actions", async () => {
   const f = await fixture();
   try {
+    await f.service.prewarm();
+    assert.equal(f.service.state().helperRunning, true);
+    assert.equal(f.service.state().helperReady, true);
+
     const first = await f.service.run({
       session: "desktop",
       command: "windows",

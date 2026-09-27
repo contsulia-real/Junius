@@ -67,6 +67,13 @@ export class DesktopHelperClient {
   #stderr = "";
   #nextId = 1;
   #pending = new Map<number, PendingRequest>();
+  #ready = false;
+  #readyPromise: Promise<void> | undefined;
+  #readyResolve: (() => void) | undefined;
+  #readyReject:
+    | ((error: DesktopHelperClientError) => void)
+    | undefined;
+  #readyTimer: NodeJS.Timeout | undefined;
   #closing = false;
 
   constructor(options: DesktopHelperClientOptions) {
@@ -82,6 +89,22 @@ export class DesktopHelperClient {
       this.#child.exitCode === null &&
       this.#child.signalCode === null
     );
+  }
+
+  get ready(): boolean {
+    return this.#ready;
+  }
+
+  async prewarm(): Promise<void> {
+    if (this.#closing) {
+      throw new DesktopHelperClientError(
+        "helper_failed",
+        "Desktop helper client is closing.",
+      );
+    }
+
+    this.#ensureChild();
+    await this.#readyPromise;
   }
 
   request(
@@ -147,6 +170,7 @@ export class DesktopHelperClient {
       "helper_failed",
       "Desktop helper client closed.",
     );
+    this.#rejectReady(error);
     this.#rejectAll(error);
 
     if (
@@ -185,6 +209,22 @@ export class DesktopHelperClient {
     this.#stdoutDecoder = new StringDecoder("utf8");
     this.#stdoutBuffer = "";
     this.#stderr = "";
+    this.#ready = false;
+    this.#readyPromise = new Promise<void>(
+      (resolvePromise, reject) => {
+        this.#readyResolve = resolvePromise;
+        this.#readyReject = reject;
+      },
+    );
+    void this.#readyPromise.catch(() => {});
+    this.#readyTimer = setTimeout(() => {
+      this.#terminateWithError(
+        new DesktopHelperClientError(
+          "process_timeout",
+          `Desktop helper did not become ready within ${this.#timeoutMs} ms.`,
+        ),
+      );
+    }, this.#timeoutMs);
 
     const child = spawn(
       this.#pythonExecutable,
@@ -226,17 +266,20 @@ export class DesktopHelperClient {
         this.#stdoutBuffer += tail;
       }
 
-      if (this.#pending.size === 0) {
+      if (
+        this.#pending.size === 0 &&
+        this.#ready
+      ) {
         return;
       }
 
-      this.#rejectAll(
-        new DesktopHelperClientError(
-          "helper_failed",
-          this.#stderr ||
-            `Desktop helper server exited with code ${String(exitCode)} signal ${String(signal)}.`,
-        ),
+      const error = new DesktopHelperClientError(
+        "helper_failed",
+        this.#stderr ||
+          `Desktop helper server exited with code ${String(exitCode)} signal ${String(signal)}.`,
       );
+      this.#rejectReady(error);
+      this.#rejectAll(error);
     });
 
     return child;
@@ -315,6 +358,15 @@ export class DesktopHelperClient {
     const pending = this.#pending.get(record.id);
 
     if (pending === undefined) {
+      if (
+        record.id === 0 &&
+        record.ok === true &&
+        typeof record.result === "object" &&
+        record.result !== null &&
+        (record.result as { ready?: unknown }).ready === true
+      ) {
+        this.#markReady();
+      }
       return;
     }
 
@@ -334,12 +386,38 @@ export class DesktopHelperClient {
     });
   }
 
+  #markReady(): void {
+    if (this.#ready) return;
+
+    this.#ready = true;
+    if (this.#readyTimer !== undefined) {
+      clearTimeout(this.#readyTimer);
+      this.#readyTimer = undefined;
+    }
+    this.#readyResolve?.();
+    this.#readyResolve = undefined;
+    this.#readyReject = undefined;
+  }
+
+  #rejectReady(error: DesktopHelperClientError): void {
+    if (this.#readyTimer !== undefined) {
+      clearTimeout(this.#readyTimer);
+      this.#readyTimer = undefined;
+    }
+    this.#readyReject?.(error);
+    this.#readyResolve = undefined;
+    this.#readyReject = undefined;
+    this.#readyPromise = undefined;
+    this.#ready = false;
+  }
+
   #terminateWithError(
     error: DesktopHelperClientError,
   ): void {
     const child = this.#child;
     this.#child = undefined;
 
+    this.#rejectReady(error);
     this.#rejectAll(error);
 
     if (

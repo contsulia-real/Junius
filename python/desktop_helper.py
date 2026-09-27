@@ -515,6 +515,18 @@ def one_shot_main() -> None:
 
 
 def server_main() -> None:
+    write_response(
+        {
+            "id": 0,
+            "ok": True,
+            "result": {
+                "ready": True,
+            },
+        }
+    )
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
     for raw_line in sys.stdin:
         raw = raw_line.strip()
         if not raw:

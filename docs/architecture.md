@@ -424,7 +424,7 @@ Junius deliberately keeps this adapter thin. It does not reimplement Playwright'
 
 The preferred transport is a persistent Worker-local broker. The broker runs under plain Node, loads the installed `playwright-cli.js` entry's own `program` module once, and serializes repeated command invocations through that client. The browser/session daemon remains Playwright-owned. This removes repeated Node/CLI client startup from ordinary browser actions without creating a second browser-control protocol.
 
-Because Playwright's CLI client module location is version-dependent, the broker reads the installed CLI entry to discover its actual `program` require specifier and canonicalizes the pnpm-linked entry with `realpath` before module resolution. Broker failure is non-fatal: `PlaywrightCliService` disables the failed broker instance for that Worker and falls back to the original `shell: false` CLI spawn path.
+Because Playwright's CLI client module location is version-dependent, the broker reads the installed CLI entry to discover its actual `program` require specifier and canonicalizes the pnpm-linked entry with `realpath` before module resolution. The Worker prewarms this broker after becoming ready but does not start a headed browser until an actual browser command. Broker failure is non-fatal: initialization failure disables the incompatible broker for that Worker, while a runtime failure after readiness only resets the broker. The failed command falls back to the original `shell: false` CLI spawn path, and the next browser command may create a fresh broker.
 
 ### MCP surface
 

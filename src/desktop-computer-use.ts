@@ -294,6 +294,7 @@ export class DesktopComputerUseService {
     readonly helperPath: string;
     readonly pythonExecutable?: string;
     readonly helperRunning: boolean;
+    readonly helperReady: boolean;
   } {
     return {
       enabled: this.enabled,
@@ -301,10 +302,23 @@ export class DesktopComputerUseService {
       active: this.active,
       helperPath: this.#helperPath,
       helperRunning: this.#helperClient?.running ?? false,
+      helperReady: this.#helperClient?.ready ?? false,
       ...(this.#pythonExecutable === undefined
         ? {}
         : { pythonExecutable: this.#pythonExecutable }),
     };
+  }
+
+  async prewarm(): Promise<void> {
+    if (!this.active || this.#helperClient === undefined) {
+      return;
+    }
+
+    try {
+      await this.#helperClient.prewarm();
+    } catch {
+      // Prewarming is opportunistic. A real request can retry lazily.
+    }
   }
 
   async run(request: DesktopRunRequest): Promise<DesktopExecution> {
@@ -339,7 +353,7 @@ export class DesktopComputerUseService {
     if (!this.available || this.#pythonExecutable === undefined) {
       throw new DesktopComputerUseError(
         "desktop_not_available",
-        "Desktop computer use requires Windows, a Python interpreter on PATH, and python/desktop_helper.py.",
+        "Desktop computer use requires Windows, Junius's project-local .venv Python, and python/desktop_helper.py.",
       );
     }
 

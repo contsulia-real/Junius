@@ -246,6 +246,14 @@ export async function startAgentWorker(
 
   let closed = false;
 
+  setImmediate(() => {
+    if (closed) return;
+    void Promise.allSettled([
+      browser.prewarm(),
+      desktop.prewarm(),
+    ]);
+  });
+
   return {
     workerId,
     mcpPort,

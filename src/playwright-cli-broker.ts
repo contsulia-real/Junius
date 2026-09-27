@@ -354,6 +354,14 @@ async function main(): Promise<void> {
     return;
   }
 
+  writeProtocol({
+    id: 0,
+    ok: true,
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+  });
+
   let buffer = "";
   let queue = Promise.resolve();
 

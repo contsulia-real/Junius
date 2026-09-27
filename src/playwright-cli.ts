@@ -502,6 +502,7 @@ export class PlaywrightCliService {
     readonly statePath: string;
     readonly transport: "broker" | "spawn";
     readonly brokerRunning: boolean;
+    readonly brokerReady: boolean;
     readonly brokerError?: string;
     readonly launcher?: {
       readonly executable: string;
@@ -519,6 +520,7 @@ export class PlaywrightCliService {
           ? "broker"
           : "spawn",
       brokerRunning: this.#broker?.running ?? false,
+      brokerReady: this.#broker?.ready ?? false,
       ...(this.#brokerError === undefined
         ? {}
         : { brokerError: this.#brokerError }),
@@ -534,6 +536,28 @@ export class PlaywrightCliService {
             },
           }),
     };
+  }
+
+  async prewarm(): Promise<void> {
+    if (
+      !this.active ||
+      this.#broker?.available !== true
+    ) {
+      return;
+    }
+
+    await mkdir(this.#statePath, { recursive: true });
+
+    try {
+      await this.#broker.prewarm();
+      this.#brokerError = undefined;
+    } catch (error) {
+      if (error instanceof PlaywrightCliBrokerError) {
+        this.#brokerError = `${error.code}: ${error.message}`;
+        return;
+      }
+      throw error;
+    }
   }
 
   async run(
@@ -599,6 +623,8 @@ export class PlaywrightCliService {
               `playwright-cli exited with code ${String(response.exitCode)}.`,
           );
         }
+
+        this.#brokerError = undefined;
 
         return {
           session,
