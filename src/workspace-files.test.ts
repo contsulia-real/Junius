@@ -365,6 +365,90 @@ test("Workspace file tools reject aliases into the .junius control directory", a
   }
 });
 
+test("Workspace file tools protect configured internal state paths", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-files-protected-"),
+  );
+  const protectedRoot = join(root, "runtime-state");
+  const publicPath = join(root, "public.txt");
+
+  await mkdir(protectedRoot, { recursive: true });
+  await writeFile(
+    join(protectedRoot, "secret.txt"),
+    "needle\n",
+    "utf8",
+  );
+  await writeFile(
+    publicPath,
+    "needle\n",
+    "utf8",
+  );
+
+  const manager = new WorkspaceManager([
+    {
+      id: "demo",
+      profile: new WorkspaceProfile(root),
+    },
+  ]);
+  const service = new WorkspaceFilesService(
+    manager,
+    [protectedRoot],
+  );
+
+  try {
+    await assert.rejects(
+      service.read("demo", [
+        { path: "runtime-state/secret.txt" },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "invalid_path",
+    );
+
+    await assert.rejects(
+      service.write("demo", [
+        {
+          path: "runtime-state/new.txt",
+          content: "no\n",
+        },
+      ]),
+      (error: unknown) =>
+        error instanceof WorkspaceFileError &&
+        error.code === "invalid_path",
+    );
+
+    const listed = await service.ls("demo", ".", 2);
+    assert.equal(
+      listed.some((entry) =>
+        entry.path
+          .replaceAll("\\", "/")
+          .startsWith("runtime-state"),
+      ),
+      false,
+    );
+
+    const matches = await service.rg("demo", {
+      query: "needle",
+      path: ".",
+      hidden: true,
+      fixedStrings: true,
+      caseSensitive: true,
+      maxResults: 20,
+    });
+    assert.deepEqual(
+      matches.map((match) =>
+        match.path.replaceAll("\\", "/"),
+      ),
+      ["public.txt"],
+    );
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("Workspace file tools reject unregistered Workspaces", async () => {
   const manager = new WorkspaceManager();
   const service = new WorkspaceFilesService(manager);

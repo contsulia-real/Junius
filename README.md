@@ -135,7 +135,7 @@ The current process adapter:
 
 Git receives an additional repository preflight before both synchronous execution and background Job startup. Junius requires repository metadata to be self-contained under the selected Workspace root, rejects `.git` symlink/junction/worktree indirection outside that root, rejects repository-local executable/config-extension settings such as credential helpers, SSH command overrides, filters, and includes, and validates configured fetch/push remote URLs before network operations.
 
-Workspace reads reject links that resolve outside the Workspace. Workspace writes also reject symbolic/junction parent aliases even when they ultimately resolve back inside the Workspace, and transactional commits revalidate the write parent immediately before installation to narrow path-replacement races.
+Workspace reads reject links that resolve outside the Workspace. Workspace writes also reject symbolic/junction parent aliases even when they ultimately resolve back inside the Workspace, and transactional commits revalidate the write parent immediately before installation to narrow path-replacement races. The root `.junius/` control directory is reserved from Workspace file tools. Production also protects the effective Junius runtime root, Workspace-state file, machine-capability-state file, and Browser state/profile root when any of those configured paths fall inside a registered Workspace; `ls` hides them and `rg` excludes them before scanning.
 
 It also inherits the Junius host environment. Therefore an authorized project script can observe environment variables available to Junius.
 
@@ -475,7 +475,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 pnpm check:bootstrap && pnpm typecheck && pnpm test
 ```
 
-The current full check covers 146 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 149 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 

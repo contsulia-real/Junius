@@ -801,6 +801,12 @@ export function createGitCapability(
       ),
     timeoutMs: 300_000,
     maxOutputBytes: 1024 * 1024,
+    inheritedEnvironment: environment,
+    inheritedEnvironmentDenyPrefixes: ["GIT_"],
+    inheritedEnvironmentDenyNames: [
+      "SSH_ASKPASS",
+      "SSH_ASKPASS_REQUIRE",
+    ],
     environment: {
       GIT_TERMINAL_PROMPT: "0",
       GCM_INTERACTIVE: "Never",

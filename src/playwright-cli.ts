@@ -213,8 +213,8 @@ function targetFromWindowsCmdShim(
   }
 }
 
-function defaultBrowserStatePath(
-  environment: NodeJS.ProcessEnv,
+export function resolveBrowserStatePath(
+  environment: NodeJS.ProcessEnv = process.env,
 ): string {
   if (environment.JUNIUS_BROWSER_STATE_PATH) {
     return environment.JUNIUS_BROWSER_STATE_PATH;
@@ -513,7 +513,7 @@ export class PlaywrightCliService {
       options.maxSessions,
       DEFAULT_MAX_SESSIONS,
     );
-    this.#statePath = defaultBrowserStatePath(environment);
+    this.#statePath = resolveBrowserStatePath(environment);
     this.#launcher = resolvePlaywrightCliLauncher(
       environment,
       nodeExecutable,

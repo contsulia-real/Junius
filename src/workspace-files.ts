@@ -23,7 +23,7 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, realpathSync } from "node:fs";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 const MAX_READ_FILES = 16;
@@ -145,7 +145,81 @@ async function findExistingAncestor(path: string): Promise<string> {
 }
 
 export class WorkspacePathResolver {
-  constructor(readonly rootPath: string) {}
+  readonly protectedPaths: readonly string[];
+
+  constructor(
+    readonly rootPath: string,
+    protectedPaths: readonly string[] = [],
+  ) {
+    const normalized = new Set<string>();
+    for (const path of protectedPaths) {
+      const lexical = resolve(path);
+      normalized.add(lexical);
+      try {
+        normalized.add(realpathSync(lexical));
+      } catch {
+        // Missing protected paths remain guarded lexically.
+      }
+    }
+    this.protectedPaths = [...normalized];
+  }
+
+  isProtectedPath(candidate: string): boolean {
+    const resolvedCandidate = resolve(candidate);
+    const comparableCandidate =
+      process.platform === "win32"
+        ? resolvedCandidate.toLowerCase()
+        : resolvedCandidate;
+
+    for (const protectedPath of this.protectedPaths) {
+      const comparableRoot =
+        process.platform === "win32"
+          ? protectedPath.toLowerCase()
+          : protectedPath;
+
+      if (
+        pathInside(
+          comparableRoot,
+          comparableCandidate,
+        )
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  assertNotProtected(candidate: string): void {
+    if (this.isProtectedPath(candidate)) {
+      throw new WorkspaceFileError(
+        "invalid_path",
+        `Junius protected state is not accessible through Workspace files: ${candidate}`,
+      );
+    }
+  }
+
+  exclusionGlobs(): readonly string[] {
+    const globs = ["!.junius", "!.junius/**"];
+
+    for (const protectedPath of this.protectedPaths) {
+      if (!pathInside(this.rootPath, protectedPath)) {
+        continue;
+      }
+
+      const rel = relative(
+        this.rootPath,
+        protectedPath,
+      ).replaceAll("\\", "/");
+      if (!rel || rel === ".") {
+        continue;
+      }
+
+      globs.push(`!${rel}`, `!${rel}/**`);
+    }
+
+    return globs;
+  }
 
   async existing(input: string): Promise<{
     readonly path: string;
@@ -158,6 +232,7 @@ export class WorkspacePathResolver {
     if (!pathInside(this.rootPath, lexical)) {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
+    this.assertNotProtected(lexical);
 
     let canonical: string;
     try {
@@ -178,6 +253,7 @@ export class WorkspacePathResolver {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
 
+    this.assertNotProtected(canonical);
     const canonicalRelative =
       relative(this.rootPath, canonical) || ".";
     assertWorkspaceControlPathAllowed(canonicalRelative);
@@ -201,6 +277,7 @@ export class WorkspacePathResolver {
     if (!pathInside(this.rootPath, lexical)) {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
+    this.assertNotProtected(lexical);
 
     try {
       const canonical = await realpath(lexical);
@@ -208,6 +285,7 @@ export class WorkspacePathResolver {
         throw new WorkspaceFileError("path_outside_workspace", input);
       }
 
+      this.assertNotProtected(canonical);
       assertWorkspaceControlPathAllowed(
         relative(this.rootPath, canonical) || ".",
       );
@@ -245,6 +323,7 @@ export class WorkspacePathResolver {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
 
+    this.assertNotProtected(canonicalAncestor);
     assertWorkspaceControlPathAllowed(
       relative(this.rootPath, canonicalAncestor) || ".",
     );
@@ -260,6 +339,7 @@ export class WorkspacePathResolver {
 function getResolver(
   manager: WorkspaceManager,
   workspace: string,
+  protectedPaths: readonly string[] = [],
 ): WorkspacePathResolver {
   const profile = manager.get(workspace);
   if (profile === undefined) {
@@ -269,7 +349,10 @@ function getResolver(
     );
   }
 
-  return new WorkspacePathResolver(profile.rootPath);
+  return new WorkspacePathResolver(
+    profile.rootPath,
+    protectedPaths,
+  );
 }
 
 export interface LsEntry {
@@ -301,7 +384,8 @@ async function listDirectory(
 
       if (
         pathSegments(rel)[0]?.toLowerCase() ===
-        ".junius"
+          ".junius" ||
+        resolver.isProtectedPath(fullPath)
       ) {
         continue;
       }
@@ -1019,7 +1103,10 @@ async function runRg(
   if (options.fixedStrings) args.push("-F");
   if (options.hidden) args.push("--hidden");
 
-  for (const glob of options.globs) {
+  for (const glob of [
+    ...resolver.exclusionGlobs(),
+    ...options.globs,
+  ]) {
     args.push("-g", glob);
   }
 
@@ -1112,14 +1199,25 @@ async function runRg(
 }
 
 export class WorkspaceFilesService {
-  constructor(private readonly manager: WorkspaceManager) {}
+  constructor(
+    private readonly manager: WorkspaceManager,
+    private readonly protectedPaths: readonly string[] = [],
+  ) {}
 
   async ls(
     workspace: string,
     path = ".",
     depth = 1,
   ): Promise<readonly LsEntry[]> {
-    return listDirectory(getResolver(this.manager, workspace), path, depth);
+    return listDirectory(
+      getResolver(
+        this.manager,
+        workspace,
+        this.protectedPaths,
+      ),
+      path,
+      depth,
+    );
   }
 
   async read(
@@ -1133,7 +1231,11 @@ export class WorkspaceFilesService {
       );
     }
 
-    const resolver = getResolver(this.manager, workspace);
+    const resolver = getResolver(
+      this.manager,
+      workspace,
+      this.protectedPaths,
+    );
     return Promise.all(files.map((file) => readTextFile(resolver, file)));
   }
 
@@ -1149,7 +1251,11 @@ export class WorkspaceFilesService {
     }
 
     return transactionalWrite(
-      getResolver(this.manager, workspace),
+      getResolver(
+        this.manager,
+        workspace,
+        this.protectedPaths,
+      ),
       files,
     );
   }
@@ -1168,14 +1274,21 @@ export class WorkspaceFilesService {
   ): Promise<readonly RgMatch[]> {
     const maxResults = Math.max(1, Math.min(options.maxResults ?? 100, 500));
 
-    return runRg(getResolver(this.manager, workspace), {
+    return runRg(
+      getResolver(
+        this.manager,
+        workspace,
+        this.protectedPaths,
+      ),
+      {
       query: options.query,
       path: options.path ?? ".",
       globs: options.globs ?? [],
       caseSensitive: options.caseSensitive ?? true,
       fixedStrings: options.fixedStrings ?? false,
       hidden: options.hidden ?? false,
-      maxResults,
-    });
+        maxResults,
+      },
+    );
   }
 }

@@ -17,6 +17,7 @@ import {
   JobHistoryStore,
   resolveJobHistoryPath,
   resolveJobHistoryRetention,
+  resolveJuniusRuntimeRoot,
 } from "./job-history-store.js";
 import {
   JobManager,
@@ -25,7 +26,10 @@ import {
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
-import { PlaywrightCliService } from "./playwright-cli.js";
+import {
+  PlaywrightCliService,
+  resolveBrowserStatePath,
+} from "./playwright-cli.js";
 import { RunCommandService } from "./run-command.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
@@ -156,7 +160,15 @@ export async function startAgentWorker(
   }
 
   const commands = new RunCommandService(registry, workspaces);
-  const files = new WorkspaceFilesService(workspaces);
+  const files = new WorkspaceFilesService(
+    workspaces,
+    [
+      resolveJuniusRuntimeRoot(),
+      config.workspaceStatePath,
+      config.machineCapabilityStatePath,
+      resolveBrowserStatePath(),
+    ],
+  );
   const jobs = new JobManager(
     commands,
     options.onJobTerminal,

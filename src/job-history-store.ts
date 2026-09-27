@@ -105,18 +105,30 @@ export function resolveJobHistoryRetention(
   };
 }
 
-export function resolveJobHistoryPath(
+export function resolveJuniusRuntimeRoot(
   environment: NodeJS.ProcessEnv = process.env,
   cwd = process.cwd(),
 ): string {
   const projectRoot =
     environment.JUNIUS_PROJECT_ROOT ?? cwd;
-  const runtimeRoot = resolve(
+
+  return resolve(
     environment.JUNIUS_RUNTIME_ROOT ??
       join(projectRoot, ".junius", "runtime"),
   );
+}
 
-  return join(runtimeRoot, "jobs");
+export function resolveJobHistoryPath(
+  environment: NodeJS.ProcessEnv = process.env,
+  cwd = process.cwd(),
+): string {
+  return join(
+    resolveJuniusRuntimeRoot(
+      environment,
+      cwd,
+    ),
+    "jobs",
+  );
 }
 
 function parseMetadata(

@@ -364,6 +364,13 @@ test("git capability isolates system and global executable config", async () => 
         GIT_CONFIG_NOSYSTEM: "0",
         GIT_CONFIG_GLOBAL: "attacker-config",
         GIT_ATTR_NOSYSTEM: "0",
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_VALUE_0: "!powershell -Command calc",
+        GIT_SSH_COMMAND: "powershell -Command calc",
+        GIT_EXTERNAL_DIFF: "powershell -Command calc",
+        SSH_ASKPASS: "C:\\evil\\askpass.exe",
+        SSH_ASKPASS_REQUIRE: "force",
       },
     )!;
 
@@ -391,6 +398,34 @@ test("git capability isolates system and global executable config", async () => 
       assert.equal(
         prepared.process.env.GIT_TERMINAL_PROMPT,
         "0",
+      );
+      assert.equal(
+        prepared.process.env.GIT_CONFIG_COUNT,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.GIT_CONFIG_KEY_0,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.GIT_CONFIG_VALUE_0,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.GIT_SSH_COMMAND,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.GIT_EXTERNAL_DIFF,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.SSH_ASKPASS,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.SSH_ASKPASS_REQUIRE,
+        undefined,
       );
     }
   } finally {

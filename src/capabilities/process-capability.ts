@@ -30,6 +30,9 @@ export interface ProcessCapabilityOptions {
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly inheritedEnvironment?: NodeJS.ProcessEnv;
+  readonly inheritedEnvironmentDenyPrefixes?: readonly string[];
+  readonly inheritedEnvironmentDenyNames?: readonly string[];
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -57,6 +60,9 @@ export class ProcessCapability implements Capability {
   readonly #timeoutMs: number;
   readonly #maxOutputBytes: number;
   readonly #environment: NodeJS.ProcessEnv;
+  readonly #inheritedEnvironment: NodeJS.ProcessEnv;
+  readonly #inheritedEnvironmentDenyPrefixes: readonly string[];
+  readonly #inheritedEnvironmentDenyNames: ReadonlySet<string>;
 
   constructor(options: ProcessCapabilityOptions) {
     this.key = options.key;
@@ -70,6 +76,13 @@ export class ProcessCapability implements Capability {
     this.#maxOutputBytes =
       options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     this.#environment = options.environment ?? {};
+    this.#inheritedEnvironment =
+      options.inheritedEnvironment ?? process.env;
+    this.#inheritedEnvironmentDenyPrefixes =
+      options.inheritedEnvironmentDenyPrefixes ?? [];
+    this.#inheritedEnvironmentDenyNames = new Set(
+      options.inheritedEnvironmentDenyNames ?? [],
+    );
   }
 
   prepareProcess(
@@ -115,6 +128,19 @@ export class ProcessCapability implements Capability {
       };
     }
 
+    const inheritedEnvironment: NodeJS.ProcessEnv = {};
+    for (const [name, value] of Object.entries(this.#inheritedEnvironment)) {
+      if (
+        this.#inheritedEnvironmentDenyNames.has(name) ||
+        this.#inheritedEnvironmentDenyPrefixes.some(
+          (prefix) => name.startsWith(prefix),
+        )
+      ) {
+        continue;
+      }
+      inheritedEnvironment[name] = value;
+    }
+
     return {
       ok: true,
       process: {
@@ -122,7 +148,7 @@ export class ProcessCapability implements Capability {
         args: [...this.#fixedArgs, ...args],
         cwd: context.cwd,
         env: {
-          ...process.env,
+          ...inheritedEnvironment,
           ...this.#environment,
         },
         windowsHide: true,

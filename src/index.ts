@@ -15,11 +15,15 @@ import {
   JobHistoryStore,
   resolveJobHistoryPath,
   resolveJobHistoryRetention,
+  resolveJuniusRuntimeRoot,
 } from "./job-history-store.js";
 import { JobManager } from "./job-manager.js";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 import { MachineCapabilityManager } from "./machine-capabilities.js";
-import { PlaywrightCliService } from "./playwright-cli.js";
+import {
+  PlaywrightCliService,
+  resolveBrowserStatePath,
+} from "./playwright-cli.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
@@ -86,7 +90,16 @@ if (persistedWorkspaces === undefined) {
 }
 
 const runCommandService = new RunCommandService(registry, workspaceManager);
-const workspaceFilesService = new WorkspaceFilesService(workspaceManager);
+const workspaceFilesService =
+  new WorkspaceFilesService(
+    workspaceManager,
+    [
+      resolveJuniusRuntimeRoot(),
+      config.workspaceStatePath,
+      config.machineCapabilityStatePath,
+      resolveBrowserStatePath(),
+    ],
+  );
 const jobManager = new JobManager(
   runCommandService,
   undefined,
