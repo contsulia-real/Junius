@@ -79,9 +79,11 @@ export class ProcessCapability implements Capability {
     this.#inheritedEnvironment =
       options.inheritedEnvironment ?? process.env;
     this.#inheritedEnvironmentDenyPrefixes =
-      options.inheritedEnvironmentDenyPrefixes ?? [];
+      (options.inheritedEnvironmentDenyPrefixes ?? [])
+        .map((prefix) => prefix.toUpperCase());
     this.#inheritedEnvironmentDenyNames = new Set(
-      options.inheritedEnvironmentDenyNames ?? [],
+      (options.inheritedEnvironmentDenyNames ?? [])
+        .map((name) => name.toUpperCase()),
     );
   }
 
@@ -130,10 +132,11 @@ export class ProcessCapability implements Capability {
 
     const inheritedEnvironment: NodeJS.ProcessEnv = {};
     for (const [name, value] of Object.entries(this.#inheritedEnvironment)) {
+      const normalizedName = name.toUpperCase();
       if (
-        this.#inheritedEnvironmentDenyNames.has(name) ||
+        this.#inheritedEnvironmentDenyNames.has(normalizedName) ||
         this.#inheritedEnvironmentDenyPrefixes.some(
-          (prefix) => name.startsWith(prefix),
+          (prefix) => normalizedName.startsWith(prefix),
         )
       ) {
         continue;

@@ -371,6 +371,10 @@ test("git capability isolates system and global executable config", async () => 
         GIT_EXTERNAL_DIFF: "powershell -Command calc",
         SSH_ASKPASS: "C:\\evil\\askpass.exe",
         SSH_ASKPASS_REQUIRE: "force",
+        git_config_count: "1",
+        git_config_key_0: "core.sshCommand",
+        git_config_value_0: "powershell -Command calc",
+        ssh_askpass: "C:\\evil\\lower-askpass.exe",
       },
     )!;
 
@@ -425,6 +429,22 @@ test("git capability isolates system and global executable config", async () => 
       );
       assert.equal(
         prepared.process.env.SSH_ASKPASS_REQUIRE,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.git_config_count,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.git_config_key_0,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.git_config_value_0,
+        undefined,
+      );
+      assert.equal(
+        prepared.process.env.ssh_askpass,
         undefined,
       );
     }

@@ -26,6 +26,16 @@ export function hostRequestRejection(
     return "host_not_allowed";
   }
 
+  const fetchSite = singleHeader(
+    req.headers["sec-fetch-site"],
+  );
+  if (
+    fetchSite === "cross-site" ||
+    fetchSite === "same-site"
+  ) {
+    return "origin_not_allowed";
+  }
+
   const origin = req.headers.origin;
   if (
     origin !== undefined &&

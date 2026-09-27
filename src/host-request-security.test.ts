@@ -27,6 +27,18 @@ test("host request security accepts exact loopback Host with absent or matching 
       request({
         host: "127.0.0.1:8787",
         origin,
+        "sec-fetch-site": "same-origin",
+      }),
+      origin,
+    ),
+    undefined,
+  );
+
+  assert.equal(
+    hostRequestRejection(
+      request({
+        host: "127.0.0.1:8787",
+        "sec-fetch-site": "none",
       }),
       origin,
     ),
@@ -57,4 +69,17 @@ test("host request security rejects hostile Host and Origin", () => {
     ),
     "origin_not_allowed",
   );
+
+  for (const fetchSite of ["cross-site", "same-site"]) {
+    assert.equal(
+      hostRequestRejection(
+        request({
+          host: "127.0.0.1:8787",
+          "sec-fetch-site": fetchSite,
+        }),
+        origin,
+      ),
+      "origin_not_allowed",
+    );
+  }
 });

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import {
@@ -47,6 +48,23 @@ function assertAdminHost(
   }
 }
 
+function secretMatches(
+  value: string | string[] | undefined,
+  expected: string,
+): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const actual = Buffer.from(value, "utf8");
+  const expectedBytes = Buffer.from(expected, "utf8");
+
+  return (
+    actual.length === expectedBytes.length &&
+    timingSafeEqual(actual, expectedBytes)
+  );
+}
+
 function assertMutationAuthorized(
   req: IncomingMessage,
   origin: string,
@@ -57,7 +75,12 @@ function assertMutationAuthorized(
     throw new Error("admin_origin_not_allowed");
   }
 
-  if (req.headers["x-junius-admin-token"] !== adminToken) {
+  if (
+    !secretMatches(
+      req.headers["x-junius-admin-token"],
+      adminToken,
+    )
+  ) {
     throw new Error("admin_token_required");
   }
 }
