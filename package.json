@@ -1,8 +1,8 @@
 {
-  "name": "Junius",
-  "version": "1.0.0",
-  "description": "Junius Local Agent",
-  "main": "index.js",
+  "name": "junius",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local MCP capability service for ChatGPT",
   "scripts": {
     "dev": "node scripts/host-launcher.mjs",
     "start": "node scripts/host-launcher.mjs",
@@ -13,9 +13,22 @@
     "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs",
     "check": "node scripts/source-validation.mjs begin && pnpm check:bootstrap && pnpm typecheck && pnpm test && node scripts/source-validation.mjs commit"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "mcp",
+    "chatgpt",
+    "automation",
+    "computer-use",
+    "local-tools"
+  ],
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/contsulia-real/Junius.git"
+  },
+  "bugs": {
+    "url": "https://github.com/contsulia-real/Junius/issues"
+  },
+  "homepage": "https://github.com/contsulia-real/Junius#readme",
   "engines": {
     "node": ">=20"
   },

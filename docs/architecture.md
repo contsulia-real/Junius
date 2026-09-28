@@ -2,24 +2,26 @@
 
 ## Positioning
 
-Junius is a **Local Agent** that lets ChatGPT use capabilities of the user's local computer through MCP under explicit user-controlled authorization.
+Junius is a **local MCP capability service for ChatGPT chat**. It exposes controlled local-computer capabilities through MCP under explicit user-controlled authorization.
 
-Local files, processes, jobs, browser automation, and Windows desktop computer use are Local Agent capabilities. Junius is not defined by its current command adapter, Workspace model, or authorization mechanism.
-
-Junius's user-facing management surface is a local WebUI rather than a desktop Dashboard. Desktop computer use is a separate Local Agent capability and is already implemented.
+Junius is not the reasoning or autonomous-agent layer. ChatGPT decides what to do through the conversation; Junius defines what local capabilities are available, whether a requested action is authorized, and how that action is executed and supervised on the local machine.
 
 ```text
+ChatGPT
+= reasoning + planning + conversation
+
+MCP
+= capability protocol
+
 Junius
-= Local Agent
+= local capability service
+= authorization + execution + lifecycle + audit
 
 current capabilities
 = files + processes + jobs + browser + desktop computer use
 
 user-facing management
 = local WebUI
-
-desktop computer use
-= machine-scoped capability, separate from the management UI
 
 Workspace / Capability Registry / grants
 = authorization and routing mechanisms
@@ -42,7 +44,7 @@ That policy controls which registered executable may run, which argument shapes 
 
 ## Stable Host / replaceable Worker
 
-Junius separates the stable public service from the mutable Agent implementation.
+Junius separates the stable public service from the mutable Worker implementation.
 
 ```text
 public 127.0.0.1:8787 / :8788
@@ -127,8 +129,8 @@ Each Workspace has:
 Example:
 
 ```text
-default -> C:\Users\Why23\RustroverProjects\Junius
-weave   -> C:\Users\Why23\RustroverProjects\Weave
+default -> C:\Projects\Junius
+weave   -> C:\Projects\Weave
 ```
 
 Two ChatGPT conversations may invoke different Workspaces at the same time. No activation or Workspace switching step exists.
@@ -440,7 +442,7 @@ This tracing path is deliberately outside tool result payloads and does not requ
 
 ## Browser capability
 
-Browser automation is a first-class Local Agent capability and is not attached to a Workspace.
+Browser automation is a first-class machine-scoped Junius capability and is not attached to a Workspace.
 
 ```text
 ChatGPT
@@ -517,7 +519,7 @@ Task completion is still explicit, but abandoned named browser sessions are boun
 
 ### Local runtime files
 
-playwright-cli may generate runtime files such as snapshots relative to its working directory. Junius therefore runs it from a dedicated Local Agent state directory rather than a project Workspace.
+playwright-cli may generate runtime files such as snapshots relative to its working directory. Junius therefore runs it from a dedicated Junius state directory rather than a project Workspace.
 
 Windows default:
 
@@ -531,7 +533,7 @@ Browser is machine-scoped. Its MCP tool remains stable, while `PlaywrightCliServ
 
 ## Desktop Computer Use
 
-Desktop computer use is also a first-class, machine-scoped Local Agent capability and is independent of Workspace routing.
+Desktop computer use is also a first-class, machine-scoped Junius capability and is independent of Workspace routing.
 
 ```text
 ChatGPT

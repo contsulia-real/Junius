@@ -22,7 +22,7 @@ export function createMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "Junius",
-    title: "Junius Local Agent",
+    title: "Junius Local Capabilities",
     version: "1.0.0",
   });
 

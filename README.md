@@ -1,36 +1,59 @@
 # Junius
 
-Architecture: [docs/architecture.md](docs/architecture.md)
+**Local capabilities for ChatGPT over MCP.**
 
-Junius is a Local Agent that lets ChatGPT use local-computer capabilities through MCP under user-controlled authorization.
+Junius is a local MCP capability service for ChatGPT chat. It exposes controlled access to local files, processes, background jobs, browser automation, and Windows desktop interaction while keeping authorization and execution on the user's machine.
 
-Its scope is broader than command execution: local files, processes, jobs, browser automation, and Windows desktop computer use are Local Agent capabilities. Authorization, Workspaces, and capability policies are implementation mechanisms of the Local Agent, not the product definition.
+ChatGPT provides the reasoning, planning, and conversational layer. Junius does not run its own autonomous agent loop: it provides the MCP tools, authorization model, local execution, process lifecycle, audit trail, and management surface that let ChatGPT act on the local environment.
 
-Junius's user-facing management interface is a local WebUI rather than a desktop Dashboard. Desktop computer use is an independent Local Agent capability and is already implemented; it does not imply a desktop-native management UI.
+> [!WARNING]
+> Junius is **not an OS security sandbox**. An authorized executable runs with the permissions of the operating-system user that started Junius. Read the [Security boundary](#security-boundary) before granting capabilities to untrusted Workspaces.
 
-The current implementation does not provide an OS security sandbox.
+Architecture: [docs/architecture.md](docs/architecture.md) · Security policy: [SECURITY.md](SECURITY.md)
+
+## What it exposes
+
+- Workspace-scoped file access with bounded `ls`, `read`, `write`, `rg`, and transactional batch operations.
+- Explicitly authorized local process capabilities such as Node, pnpm, Git, and user-defined executables.
+- Background Jobs with persisted history and Windows crash containment.
+- Browser computer use through a bounded Playwright CLI adapter.
+- Windows desktop computer use through screenshots plus bounded mouse and keyboard actions.
+- A local-only WebUI for Workspaces, capabilities, Jobs, Audit, Browser, and Desktop state.
+
+Junius is currently developed and fully validated on Windows. Some process/file/browser paths are portable, but Windows desktop control and Windows Job Object crash containment are platform-specific.
 
 ## Requirements
 
 - Node.js 20+
 - pnpm 12.6.0
-- OpenAI Secure MCP Tunnel `tunnel-client`
-- `playwright-cli` / `@playwright/cli` for browser capability
-- Windows desktop capability: the project `.venv` with Python plus `PyAutoGUI`, Pillow, and Windows bindings
+- OpenAI Secure MCP Tunnel `tunnel-client` for connecting the local MCP endpoint to ChatGPT
+- `playwright-cli` / `@playwright/cli` for the Browser capability
+- Optional Windows Desktop capability: Python with the packages in [requirements-desktop.txt](requirements-desktop.txt)
 
-## Run
+## Quick start
 
 ```powershell
+git clone https://github.com/contsulia-real/Junius.git
+cd Junius
 pnpm install
-pnpm check
+pnpm run check
 pnpm dev
+```
+
+For Windows Desktop computer use:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
 ```
 
 Default local endpoints:
 
 - MCP: `http://127.0.0.1:8787/mcp`
-- Local WebUI Dashboard: `http://127.0.0.1:8788/`
-- Local admin state API: `http://127.0.0.1:8788/state`
+- Local WebUI: `http://127.0.0.1:8788/`
+- Local admin state: `http://127.0.0.1:8788/state`
+
+To use Junius from ChatGPT, route only the MCP endpoint through OpenAI Secure MCP Tunnel (`tunnel-client`) and point the tunnel at `http://127.0.0.1:8787/mcp`. The management WebUI and admin API remain loopback-only and are not routed through the tunnel.
 
 Optional environment variables:
 
@@ -46,13 +69,11 @@ Optional environment variables:
 - `JUNIUS_AUDIT_MAX_ENTRIES`
 - `JUNIUS_AUDIT_MAX_AGE_MS`
 
-The Secure MCP Tunnel routes only the MCP endpoint. The admin surface remains local.
-
-`pnpm dev` and `pnpm start` are manual lifecycle commands. They enter a tiny live launcher (`scripts/host-launcher.mjs`) that prefers the previously validated bootstrap copy at `.junius/runtime/bootstrap/host-bootstrap.mjs`; only when no validated bootstrap exists yet does it run the live `scripts/host-bootstrap.mjs`. The bootstrap then selects which validated Host release to launch. Junius does not autonomously start or restart its own MCP service. The Host owns the public MCP/admin ports and runs the mutable Local Agent implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap or last-known-good startup protection. Its MCP HTTP entry still enforces the same exact loopback Host/Origin request guard as the supervised Host, so the emergency path does not bypass localhost browser-request protection.
+`pnpm dev` and `pnpm start` are manual lifecycle commands. They enter a tiny live launcher (`scripts/host-launcher.mjs`) that prefers the previously validated bootstrap copy at `.junius/runtime/bootstrap/host-bootstrap.mjs`; only when no validated bootstrap exists yet does it run the live `scripts/host-bootstrap.mjs`. The bootstrap then selects which validated Host release to launch. Junius does not autonomously start or restart its own MCP service. The Host owns the public MCP/admin ports and runs the mutable capability-service implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap or last-known-good startup protection. Its MCP HTTP entry still enforces the same exact loopback Host/Origin request guard as the supervised Host, so the emergency path does not bypass localhost browser-request protection.
 
 ## Host / Worker runtime
 
-The public service no longer runs directly inside the mutable Agent process:
+The public service no longer runs directly inside the mutable Worker implementation:
 
 ```text
 ChatGPT / WebUI
@@ -292,7 +313,7 @@ Register a Workspace:
 ```powershell
 $body = @{
   id = "weave"
-  rootPath = "C:\\Users\\Why23\\RustroverProjects\\Weave"
+  rootPath = "C:\\Projects\\Weave"
 } | ConvertTo-Json
 
 Invoke-RestMethod `
@@ -382,7 +403,7 @@ Startup behavior:
 
 ## Current direction
 
-Junius remains a general Local Agent. The current file/process tools are the first local capabilities, not the boundary of the product.
+Junius remains a general local MCP capability service. The current file/process tools are part of the capability surface, not the boundary of the project.
 
 The local WebUI Dashboard v1 is implemented and locally validated.
 
@@ -444,7 +465,7 @@ Verified behavior:
 - A request to read the parent directory of the registered Workspace was rejected by the built-in file-tool path boundary.
 - Multi-Workspace command routing continued to work for Junius and Weave.
 
-This validates the intended Local Agent interaction model for the first file/process capability set.
+This validates the intended ChatGPT-to-Junius MCP interaction model for the first file/process capability set.
 
 
 
