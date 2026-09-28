@@ -1,5 +1,5 @@
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const REF_PATTERN = /^e\\d+$/u;
+const REF_PATTERN = /^e\d+$/u;
 
 export const PLAYWRIGHT_CLI_COMMANDS = [
   "open",
