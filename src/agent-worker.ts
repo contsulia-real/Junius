@@ -33,12 +33,10 @@ import {
 import { RunCommandService } from "./run-command.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
-import { WorkspaceManager } from "./workspace-manager.js";
-import { WorkspaceProfile } from "./workspace-profile.js";
+import { createAgentWorkerWorkspaceRuntime } from "./agent-worker-workspaces.js";
 import {
   workerRequestAuthorized,
 } from "./worker-auth.js";
-import { WorkspaceStateStore } from "./workspace-state-store.js";
 
 export interface AgentWorkerOptions {
   readonly config: RuntimeConfig;
@@ -119,63 +117,16 @@ export async function startAgentWorker(
     { browser, desktop },
   );
 
-  const workspaceStateStore = new WorkspaceStateStore(
-    config.workspaceStatePath,
-  );
-  const persistedWorkspaces = await workspaceStateStore.load();
-
-  let workspaces: WorkspaceManager;
-
-  if (persistedWorkspaces === undefined) {
-    const initialWorkspaceProfile = new WorkspaceProfile(
-      config.workspaceRoot,
-      [
-        {
-          key: "node",
-          arguments: [
-            { mode: "exact", args: ["--version"] },
-            { mode: "exact", args: ["-p", "process.platform"] },
-          ],
-        },
-      ],
+  const workspaceRuntime =
+    await createAgentWorkerWorkspaceRuntime(
+      config,
+      machineCapabilities,
     );
-
-    workspaces = new WorkspaceManager([
-      {
-        id: config.workspaceId,
-        profile: initialWorkspaceProfile,
-      },
-    ]);
-
-    await workspaceStateStore.save(workspaces);
-  } else {
-    workspaces = new WorkspaceManager(
-      persistedWorkspaces.map((workspace) => ({
-        id: workspace.id,
-        profile: new WorkspaceProfile(
-          workspace.rootPath,
-          workspace.grants,
-        ),
-      })),
-    );
-  }
-
-  let configurationReloadQueue: Promise<void> = Promise.resolve();
-
-  const reloadConfiguration = (): Promise<void> => {
-    const operation = configurationReloadQueue.then(async () => {
-      const persisted = await workspaceStateStore.load();
-      if (persisted === undefined) {
-        throw new Error("workspace_state_missing");
-      }
-
-      workspaces.replace(persisted);
-      await machineCapabilities.reload();
-    });
-
-    configurationReloadQueue = operation.catch(() => undefined);
-    return operation;
-  };
+  const {
+    workspaces,
+    stateStore: workspaceStateStore,
+    reloadConfiguration,
+  } = workspaceRuntime;
 
   const commands = new RunCommandService(registry, workspaces);
   const files = new WorkspaceFilesService(
