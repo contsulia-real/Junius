@@ -545,6 +545,8 @@ ChatGPT
 
 Desktop perception is screenshot-only. `windows` exposes bounded top-level native window metadata, `screenshot` captures either the full screen or one window, and input actions operate through screen coordinates or window-relative coordinates. The helper rejects window-relative points outside the target window before moving or clicking.
 
+Every valid Desktop action also refreshes a local activity-indicator lease. The persistent Python helper owns a native Win32 topmost, non-activating banner reading **“ChatGPT 正通过 Junius 操作电脑”**; it remains visible until 8 seconds after the most recent Desktop action. The window attempts `WDA_EXCLUDEFROMCAPTURE` so it stays visible to the local user without becoming part of screenshot perception. Capture exclusion is best-effort, but indicator creation is not: if the helper cannot create the indicator window, the requested Desktop action fails rather than proceeding without user-visible disclosure.
+
 Top-level window enumeration, rectangle lookup, and `focus_window` use Win32 APIs directly. No accessibility tree is inspected and no semantic element refs are created.
 
 Direct `type` input uses Windows Unicode `SendInput` keyboard events rather than `pyautogui.write`, but application-level input stacks can reject injected Unicode events. Desktop therefore keeps text entry primitives orthogonal: `clipboard_read` / `clipboard_write` expose Unicode clipboard text, while `key_macro` executes up to 128 ordered key press/down/up steps locally. A macro always releases keys that it pressed down and did not explicitly release, even if a later step fails. Higher-level paste behavior is composed by the caller rather than encoded as a dedicated Desktop action.

@@ -681,13 +681,26 @@ test("desktop real Python helper supports screenshot-only perception when instal
           "screenshot",
       });
 
+    const listedWindows =
+      (
+        windows.result as {
+          windows?: Array<{
+            title?: string;
+            visible?: boolean;
+          }>;
+        }
+      ).windows;
+
     assert.equal(
-      Array.isArray(
-        (
-          windows.result as {
-            windows?: unknown;
-          }
-        ).windows,
+      Array.isArray(listedWindows),
+      true,
+    );
+    assert.equal(
+      listedWindows?.some(
+        (window) =>
+          window.title ===
+            "ChatGPT 正通过 Junius 操作电脑" &&
+          window.visible === true,
       ),
       true,
     );
