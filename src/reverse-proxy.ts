@@ -27,14 +27,14 @@ export function proxyToActiveWorker(
 
   if (
     kind === "mcp" &&
-    req.method === "POST" &&
-    requestSessionId === undefined
+    req.method === "POST"
   ) {
     void proxyModernMcp(
       req,
       res,
       supervisor,
       traces,
+      requestSessionId,
     );
     return;
   }

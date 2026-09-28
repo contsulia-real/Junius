@@ -19,14 +19,26 @@ export const workspacePathSchema = z
 
 export const runCommandInputSchema = z.object({
   workspace: stableIdSchema.describe(
-    "Registered Junius Workspace ID. This is an ID managed by Junius, not a filesystem path.",
+    "Registered Junius Workspace ID. It selects the process working directory.",
   ),
-  key: stableIdSchema.describe("Registered Junius capability key."),
+  executable: z
+    .string()
+    .min(1)
+    .max(4_096)
+    .describe(
+      "Executable name or path to launch directly. Junius does not apply an executable allowlist.",
+    ),
   args: z
-    .array(z.string().max(4_096))
-    .max(128)
+    .array(
+      z.string().max(
+        65_536,
+      ),
+    )
+    .max(256)
     .default([])
-    .describe("Argument vector passed to the registered capability adapter."),
+    .describe(
+      "Argument vector passed directly to the executable.",
+    ),
 });
 
 export function formatRunCommandResult(
@@ -36,7 +48,8 @@ export function formatRunCommandResult(
     return JSON.stringify({
       ok: false,
       workspace: result.workspace,
-      key: result.key,
+      executable: result.executable,
+      args: result.args,
       code: result.code,
       message: result.message,
       ...(result.execution === undefined
@@ -56,7 +69,8 @@ export function formatRunCommandResult(
   return JSON.stringify({
     ok: true,
     workspace: result.workspace,
-    key: result.key,
+    executable: result.executable,
+    args: result.args,
     execution: {
       exitCode: result.execution.exitCode,
       stdout: result.execution.stdout,

@@ -36,7 +36,6 @@ export interface DesktopKeyMacroStep {
 }
 
 export type DesktopComputerUseErrorCode =
-  | "desktop_disabled"
   | "desktop_not_available"
   | "invalid_session"
   | "command_not_allowed"

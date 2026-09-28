@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import type { RunCommandService } from "./run-command.js";
 import type { WorkspaceFilesService } from "./workspace-files.js";
+import type { WorkspaceRegistryService } from "./workspace-registry.js";
 import type { JobManager } from "./job-manager.js";
 import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { DesktopComputerUseService } from "./desktop-computer-use.js";
@@ -15,6 +16,7 @@ export { formatRunCommandResult } from "./mcp-tool-shared.js";
 
 export function createMcpServer(
   commands: RunCommandService,
+  workspaces: WorkspaceRegistryService,
   files: WorkspaceFilesService,
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
@@ -23,11 +25,11 @@ export function createMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "Junius",
-    title: "Junius Local Capabilities",
+    title: "Junius Local Computer",
     version: JUNIUS_VERSION,
   });
 
-  registerWorkspaceTools(server, commands, files);
+  registerWorkspaceTools(server, workspaces, files);
   registerComputerTools(
     server,
     playwrightCli,

@@ -10,7 +10,6 @@ export interface RuntimeConfig {
   readonly workspaceId: string;
   readonly workspaceRoot: string;
   readonly workspaceStatePath: string;
-  readonly machineCapabilityStatePath: string;
 }
 
 function defaultJuniusStatePath(
@@ -24,57 +23,91 @@ function defaultJuniusStatePath(
   if (process.platform === "win32") {
     const localAppData =
       process.env.LOCALAPPDATA ??
-      join(homedir(), "AppData", "Local");
+      join(
+        homedir(),
+        "AppData",
+        "Local",
+      );
 
-    return join(localAppData, "Junius", fileName);
+    return join(
+      localAppData,
+      "Junius",
+      fileName,
+    );
   }
 
   const stateRoot =
     process.env.XDG_STATE_HOME ??
-    join(homedir(), ".local", "state");
+    join(
+      homedir(),
+      ".local",
+      "state",
+    );
 
-  return join(stateRoot, "Junius", fileName);
+  return join(
+    stateRoot,
+    "Junius",
+    fileName,
+  );
 }
 
 function defaultWorkspaceStatePath(): string {
   return defaultJuniusStatePath(
-    process.env.JUNIUS_WORKSPACE_STATE_PATH,
+    process.env
+      .JUNIUS_WORKSPACE_STATE_PATH,
     "workspace-state.json",
   );
 }
 
-function defaultMachineCapabilityStatePath(): string {
-  return defaultJuniusStatePath(
-    process.env.JUNIUS_MACHINE_CAPABILITY_STATE_PATH,
-    "machine-capability-state.json",
-  );
-}
-
-function parsePort(value: string | undefined, fallback: number): number {
+function parsePort(
+  value: string | undefined,
+  fallback: number,
+): number {
   if (value === undefined) {
     return fallback;
   }
 
   const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`Invalid port: ${value}`);
+  if (
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65_535
+  ) {
+    throw new Error(
+      `Invalid port: ${value}`,
+    );
   }
 
   return port;
 }
 
-export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
+export async function loadRuntimeConfig():
+  Promise<RuntimeConfig> {
   const requestedWorkspaceRoot =
-    process.env.JUNIUS_WORKSPACE_ROOT ?? process.cwd();
+    process.env
+      .JUNIUS_WORKSPACE_ROOT ??
+    process.cwd();
 
   return {
     mcpHost: "127.0.0.1",
-    mcpPort: parsePort(process.env.JUNIUS_MCP_PORT, 8787),
+    mcpPort: parsePort(
+      process.env.JUNIUS_MCP_PORT,
+      8787,
+    ),
     adminHost: "127.0.0.1",
-    adminPort: parsePort(process.env.JUNIUS_ADMIN_PORT, 8788),
-    workspaceId: process.env.JUNIUS_WORKSPACE_ID ?? "default",
-    workspaceRoot: await realpath(requestedWorkspaceRoot),
-    workspaceStatePath: defaultWorkspaceStatePath(),
-    machineCapabilityStatePath: defaultMachineCapabilityStatePath(),
+    adminPort: parsePort(
+      process.env.JUNIUS_ADMIN_PORT,
+      8788,
+    ),
+    workspaceId:
+      process.env
+        .JUNIUS_WORKSPACE_ID ??
+      "default",
+    workspaceRoot:
+      await realpath(
+        requestedWorkspaceRoot,
+      ),
+    workspaceStatePath:
+      defaultWorkspaceStatePath(),
   };
 }

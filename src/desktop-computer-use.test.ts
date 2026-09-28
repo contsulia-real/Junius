@@ -441,62 +441,6 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
   }
 });
 
-test("desktop disable stops helper and supports re-enable", async () => {
-  const f = await fixture();
-
-  try {
-    await f.service.run({
-      session: "desktop",
-      command: "windows",
-    });
-    assert.equal(
-      f.service.state()
-        .helperRunning,
-      true,
-    );
-
-    await f.service.setEnabled(
-      false,
-    );
-    assert.equal(
-      f.service.state().enabled,
-      false,
-    );
-    assert.equal(
-      f.service.state()
-        .helperRunning,
-      false,
-    );
-
-    await assert.rejects(
-      f.service.run({
-        session: "desktop",
-        command: "windows",
-      }),
-      (error: unknown) =>
-        error instanceof
-          DesktopComputerUseError &&
-        error.code ===
-          "desktop_disabled",
-    );
-
-    await f.service.setEnabled(
-      true,
-    );
-    const resumed =
-      await f.service.run({
-        session: "desktop",
-        command: "windows",
-      });
-    assert.equal(
-      resumed.command,
-      "windows",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
 test("desktop prewarms and reuses one persistent helper process across screenshot-era actions", async () => {
   const f = await fixture();
   try {
@@ -925,7 +869,7 @@ test("desktop real Python helper supports screenshot-only perception when instal
       "string",
     );
     assert.equal(
-      service.state().active,
+      service.state().available,
       true,
     );
     assert.equal(

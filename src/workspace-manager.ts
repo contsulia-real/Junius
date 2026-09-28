@@ -1,19 +1,17 @@
 import { realpath } from "node:fs/promises";
-import {
-  WorkspaceProfile,
-  type WorkspaceCapabilityGrant,
-} from "./workspace-profile.js";
+import { WorkspaceProfile } from "./workspace-profile.js";
 
-const WORKSPACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const WORKSPACE_ID_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface WorkspaceState {
   readonly id: string;
   readonly rootPath: string;
-  readonly grants: readonly WorkspaceCapabilityGrant[];
 }
 
 export class WorkspaceManager {
-  readonly #profiles = new Map<string, WorkspaceProfile>();
+  readonly #profiles =
+    new Map<string, WorkspaceProfile>();
 
   constructor(
     initialWorkspaces: readonly {
@@ -21,12 +19,20 @@ export class WorkspaceManager {
       readonly profile: WorkspaceProfile;
     }[] = [],
   ) {
-    for (const workspace of initialWorkspaces) {
-      this.registerProfile(workspace.id, workspace.profile);
+    for (
+      const workspace of
+      initialWorkspaces
+    ) {
+      this.#registerProfile(
+        workspace.id,
+        workspace.profile,
+      );
     }
   }
 
-  get(id: string): WorkspaceProfile | undefined {
+  get(
+    id: string,
+  ): WorkspaceProfile | undefined {
     return this.#profiles.get(id);
   }
 
@@ -39,88 +45,165 @@ export class WorkspaceManager {
       .map(([id, profile]) => ({
         id,
         rootPath: profile.rootPath,
-        grants: profile.grants(),
       }))
-      .sort((left, right) => left.id.localeCompare(right.id));
+      .sort((left, right) =>
+        left.id.localeCompare(right.id),
+      );
   }
 
-  replace(states: readonly WorkspaceState[]): void {
-    const replacement = new WorkspaceManager(
-      states.map((workspace) => ({
-        id: workspace.id,
-        profile: new WorkspaceProfile(
-          workspace.rootPath,
-          workspace.grants,
-        ),
-      })),
-    );
+  replace(
+    states: readonly WorkspaceState[],
+  ): void {
+    const replacement =
+      new WorkspaceManager(
+        states.map((workspace) => ({
+          id: workspace.id,
+          profile:
+            new WorkspaceProfile(
+              workspace.rootPath,
+            ),
+        })),
+      );
 
     this.#profiles.clear();
-    for (const [id, profile] of replacement.#profiles) {
-      this.#profiles.set(id, profile);
+    for (
+      const [id, profile] of
+      replacement.#profiles
+    ) {
+      this.#profiles.set(
+        id,
+        profile,
+      );
     }
   }
 
   async register(
     id: string,
     rootPath: string,
-  ): Promise<WorkspaceProfile> {
+  ): Promise<WorkspaceState> {
     this.#assertValidId(id);
 
-    const existing = this.#profiles.get(id);
-    if (existing !== undefined) {
-      throw new Error(`workspace_id_already_registered: ${id}`);
+    if (this.#profiles.has(id)) {
+      throw new Error(
+        `workspace_id_already_registered: ${id}`,
+      );
     }
 
-    const canonicalRoot = await realpath(rootPath);
+    const canonicalRoot =
+      await realpath(rootPath);
 
-    for (const [existingId, profile] of this.#profiles) {
-      if (samePath(profile.rootPath, canonicalRoot)) {
+    for (
+      const [
+        existingId,
+        profile,
+      ] of this.#profiles
+    ) {
+      if (
+        samePath(
+          profile.rootPath,
+          canonicalRoot,
+        )
+      ) {
         throw new Error(
           `workspace_root_already_registered: ${existingId}`,
         );
       }
     }
 
-    const profile = new WorkspaceProfile(canonicalRoot);
-    this.#profiles.set(id, profile);
-    return profile;
+    const profile =
+      new WorkspaceProfile(
+        canonicalRoot,
+      );
+    this.#profiles.set(
+      id,
+      profile,
+    );
+
+    return {
+      id,
+      rootPath:
+        profile.rootPath,
+    };
   }
 
-  remove(id: string): boolean {
-    return this.#profiles.delete(id);
+  remove(
+    id: string,
+  ): WorkspaceState | undefined {
+    const profile =
+      this.#profiles.get(id);
+    if (profile === undefined) {
+      return undefined;
+    }
+
+    this.#profiles.delete(id);
+    return {
+      id,
+      rootPath:
+        profile.rootPath,
+    };
   }
 
-  private registerProfile(
+  #registerProfile(
     id: string,
     profile: WorkspaceProfile,
   ): void {
     this.#assertValidId(id);
 
     if (this.#profiles.has(id)) {
-      throw new Error(`workspace_id_already_registered: ${id}`);
+      throw new Error(
+        `workspace_id_already_registered: ${id}`,
+      );
     }
 
-    for (const [existingId, existing] of this.#profiles) {
-      if (samePath(existing.rootPath, profile.rootPath)) {
+    for (
+      const [
+        existingId,
+        existing,
+      ] of this.#profiles
+    ) {
+      if (
+        samePath(
+          existing.rootPath,
+          profile.rootPath,
+        )
+      ) {
         throw new Error(
           `workspace_root_already_registered: ${existingId}`,
         );
       }
     }
 
-    this.#profiles.set(id, profile);
+    this.#profiles.set(
+      id,
+      profile,
+    );
   }
 
-  #assertValidId(id: string): void {
-    if (!WORKSPACE_ID_PATTERN.test(id)) {
-      throw new Error(`invalid_workspace_id: ${id}`);
+  #assertValidId(
+    id: string,
+  ): void {
+    if (
+      !WORKSPACE_ID_PATTERN.test(id)
+    ) {
+      throw new Error(
+        `invalid_workspace_id: ${id}`,
+      );
     }
   }
 }
 
-function samePath(left: string, right: string): boolean {
+function samePath(
+  left: string,
+  right: string,
+): boolean {
   return process.platform === "win32"
-    ? left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0
+    ? left.localeCompare(
+        right,
+        undefined,
+        {
+          sensitivity:
+            "accent",
+        },
+      ) === 0
     : left === right;
 }

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { environmentForSpawn } from "./execution-environment.js";
 import { terminateProcessTree } from "./process-termination.js";
-import type { PreparedProcess } from "./capabilities/types.js";
+import type { PreparedProcess } from "./process-types.js";
 
 const READY_PREFIX =
   "@@JUNIUS_JOB_READY@@:";

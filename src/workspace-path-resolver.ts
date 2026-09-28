@@ -59,7 +59,7 @@ function assertWorkspaceControlPathAllowed(
   ) {
     throw new WorkspaceFileError(
       "invalid_path",
-      `Git metadata is reserved for the Git capability: ${relativePath}`,
+      `Git metadata is reserved from generic Workspace file tools: ${relativePath}`,
     );
   }
 }

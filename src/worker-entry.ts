@@ -37,17 +37,12 @@ try {
   const publicMcpOrigin =
     process.env.JUNIUS_PUBLIC_MCP_ORIGIN ??
     `http://${config.mcpHost}:${config.mcpPort}`;
-  const publicAdminOrigin =
-    process.env.JUNIUS_PUBLIC_ADMIN_ORIGIN ??
-    `http://${config.adminHost}:${config.adminPort}`;
-
   worker = await startAgentWorker({
     config,
     workerId,
     mcpListenPort: 0,
     adminListenPort: 0,
     publicMcpOrigin,
-    publicAdminOrigin,
     internalToken,
     onJobTerminal: (job) => {
       process.send?.({

@@ -93,7 +93,7 @@ async function waitForHealth(
   );
 }
 
-test("Junius Host owns public ports and proxies admin state to its active worker", async () => {
+test("Junius Host exposes MCP plus private health and supervisor control without a public management UI", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-host-integration-"));
   const mcpPort = await freePort();
   const adminPort = await freePort();
@@ -117,10 +117,6 @@ test("Junius Host owns public ports and proxies admin state to its active worker
         JUNIUS_WORKSPACE_STATE_PATH: join(
           root,
           "workspace-state.json",
-        ),
-        JUNIUS_MACHINE_CAPABILITY_STATE_PATH: join(
-          root,
-          "machine-capability-state.json",
         ),
         JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
         JUNIUS_WORKER_ROLLBACK_MS: "10000",
@@ -195,19 +191,13 @@ test("Junius Host owns public ports and proxies admin state to its active worker
       "origin_not_allowed",
     );
 
-    const stateResponse = await fetch(adminOrigin + "/state");
-    assert.equal(stateResponse.status, 200);
-
-    const state = await stateResponse.json() as {
-      machineCapabilities?: unknown[];
-      workspaces?: { id: string }[];
-    };
-
-    assert.equal(
-      Array.isArray(state.machineCapabilities),
-      true,
+    const stateResponse = await fetch(
+      adminOrigin + "/state",
     );
-    assert.equal(state.workspaces?.[0]?.id, "host-test");
+    assert.equal(
+      stateResponse.status,
+      404,
+    );
 
     const mcpResponse = await fetch(
       `http://127.0.0.1:${mcpPort}/mcp`,

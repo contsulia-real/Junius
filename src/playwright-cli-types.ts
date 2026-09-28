@@ -1,7 +1,7 @@
 import type { PlaywrightCliCommand } from "./playwright-cli-policy.js";
 
 export type PlaywrightCliErrorCode =
-  | "playwright_cli_disabled"
+  | "playwright_cli_closing"
   | "playwright_cli_not_available"
   | "invalid_session"
   | "command_not_allowed"

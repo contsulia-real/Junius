@@ -1,164 +1,192 @@
 import assert from "node:assert/strict";
+import {
+  mkdtemp,
+  realpath,
+  rm,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { CapabilityRegistry } from "./capabilities/registry.js";
-import type { Capability } from "./capabilities/types.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
-const fakeCapability: Capability = {
-  key: "demo",
-  description: "test capability",
-  async execute(args, context) {
-    return {
-      ok: true,
-      exitCode: 0,
-      stdout: `${context.cwd}|${args.join(",")}`,
-      stderr: "",
-      durationMs: 1,
-    };
-  },
-};
-
-test("run_command rejects unknown Workspace and capability identifiers", async () => {
-  const registered = new CapabilityRegistry();
-  registered.register(fakeCapability);
-  const missingWorkspace = new RunCommandService(
-    registered,
-    new WorkspaceManager(),
-  );
-  const workspaceResult = await missingWorkspace.run(
-    "missing",
-    "demo",
-    [],
-  );
-  assert.equal(workspaceResult.ok, false);
-  if (!workspaceResult.ok) {
-    assert.equal(
-      workspaceResult.code,
-      "workspace_not_registered",
+async function fixture() {
+  const raw =
+    await mkdtemp(
+      join(
+        tmpdir(),
+        "junius-command-",
+      ),
     );
-  }
-
-  const missingCapability = new RunCommandService(
-    new CapabilityRegistry(),
+  const root =
+    await realpath(raw);
+  const manager =
     new WorkspaceManager([
       {
-        id: "alpha",
-        profile: new WorkspaceProfile(process.cwd()),
+        id: "demo",
+        profile:
+          new WorkspaceProfile(
+            root,
+          ),
       },
-    ]),
-  );
-  const capabilityResult = await missingCapability.run(
-    "alpha",
-    "missing",
-    [],
-  );
-  assert.equal(capabilityResult.ok, false);
-  if (!capabilityResult.ok) {
-    assert.equal(
-      capabilityResult.code,
-      "capability_not_registered",
-    );
-  }
-});
-
-test("run_command enforces grants independently per Workspace", async () => {
-  const registry = new CapabilityRegistry();
-  registry.register(fakeCapability);
-
-  const alpha = new WorkspaceProfile("C:\\alpha", [
-    {
-      key: "demo",
-      arguments: [{ mode: "exact", args: ["a"] }],
-    },
-  ]);
-  const beta = new WorkspaceProfile("C:\\beta", [
-    {
-      key: "demo",
-      arguments: [{ mode: "exact", args: ["b"] }],
-    },
-  ]);
-
-  const service = new RunCommandService(
-    registry,
-    new WorkspaceManager([
-      { id: "alpha", profile: alpha },
-      { id: "beta", profile: beta },
-    ]),
-  );
-
-  const alphaAllowed = await service.run("alpha", "demo", ["a"]);
-  const alphaDenied = await service.run("alpha", "demo", ["b"]);
-  const betaAllowed = await service.run("beta", "demo", ["b"]);
-  const betaDenied = await service.run("beta", "demo", ["a"]);
-
-  assert.equal(alphaAllowed.ok, true);
-  assert.equal(betaAllowed.ok, true);
-  assert.equal(alphaDenied.ok, false);
-  assert.equal(betaDenied.ok, false);
-
-  if (alphaAllowed.ok) {
-    assert.equal(alphaAllowed.execution.stdout, "C:\\alpha|a");
-  }
-
-  if (betaAllowed.ok) {
-    assert.equal(betaAllowed.execution.stdout, "C:\\beta|b");
-  }
-
-  if (!alphaDenied.ok) {
-    assert.equal(
-      alphaDenied.code,
-      "arguments_not_allowed_by_workspace",
-    );
-  }
-
-  if (!betaDenied.ok) {
-    assert.equal(
-      betaDenied.code,
-      "arguments_not_allowed_by_workspace",
-    );
-  }
-});
-
-
-test("run_command exposes Workspace catalog", () => {
-  const manager = new WorkspaceManager([
-    {
-      id: "alpha",
-      profile: new WorkspaceProfile("C:\\alpha", [
+    ]);
+  return {
+    root,
+    service:
+      new RunCommandService(
+        manager,
+      ),
+    async dispose() {
+      await rm(
+        root,
         {
-          key: "demo",
-          arguments: [{ mode: "exact", args: ["a"] }],
+          recursive: true,
+          force: true,
         },
-      ]),
+      );
     },
-    {
-      id: "beta",
-      profile: new WorkspaceProfile("C:\\beta"),
-    },
-  ]);
+  };
+}
 
-  const service = new RunCommandService(
-    new CapabilityRegistry(),
-    manager,
-  );
+test(
+  "run_command rejects only an unknown Workspace before execution",
+  async () => {
+    const service =
+      new RunCommandService(
+        new WorkspaceManager(),
+      );
+    const result =
+      await service.run(
+        "missing",
+        process.execPath,
+        ["--version"],
+      );
 
-  assert.deepEqual(service.listWorkspaces(), [
-    {
-      id: "alpha",
-      rootPath: "C:\\alpha",
-      grants: [
+    assert.equal(
+      result.ok,
+      false,
+    );
+    if (!result.ok) {
+      assert.equal(
+        result.code,
+        "workspace_not_registered",
+      );
+    }
+  },
+);
+
+test(
+  "run_command launches arbitrary executable arguments in the Workspace cwd",
+  async () => {
+    const f =
+      await fixture();
+    try {
+      const result =
+        await f.service.run(
+          "demo",
+          process.execPath,
+          [
+            "-e",
+            "process.stdout.write(process.cwd())",
+          ],
+        );
+
+      assert.equal(
+        result.ok,
+        true,
+      );
+      if (result.ok) {
+        assert.equal(
+          await realpath(
+            result.execution
+              .stdout,
+          ),
+          f.root,
+        );
+      }
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "run_command does not apply executable or argument allowlists",
+  async () => {
+    const f =
+      await fixture();
+    try {
+      for (
+        const output of [
+          "first",
+          "second",
+        ]
+      ) {
+        const result =
+          await f.service.run(
+            "demo",
+            process.execPath,
+            [
+              "-e",
+              `process.stdout.write(${JSON.stringify(output)})`,
+            ],
+          );
+        assert.equal(
+          result.ok,
+          true,
+        );
+        if (result.ok) {
+          assert.equal(
+            result.execution
+              .stdout,
+            output,
+          );
+        }
+      }
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "run_command exposes the root-only Workspace catalog",
+  () => {
+    const service =
+      new RunCommandService(
+        new WorkspaceManager([
+          {
+            id: "alpha",
+            profile:
+              new WorkspaceProfile(
+                "C:\\alpha",
+              ),
+          },
+          {
+            id: "beta",
+            profile:
+              new WorkspaceProfile(
+                "C:\\beta",
+              ),
+          },
+        ]),
+      );
+
+    assert.deepEqual(
+      service.listWorkspaces(),
+      [
         {
-          key: "demo",
-          arguments: [{ mode: "exact", args: ["a"] }],
+          id: "alpha",
+          rootPath:
+            "C:\\alpha",
+        },
+        {
+          id: "beta",
+          rootPath:
+            "C:\\beta",
         },
       ],
-    },
-    {
-      id: "beta",
-      rootPath: "C:\\beta",
-      grants: [],
-    },
-  ]);
-});
+    );
+  },
+);

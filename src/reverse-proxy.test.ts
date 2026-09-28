@@ -87,221 +87,6 @@ async function targetWorker(
   };
 }
 
-async function configurationAwareWorker(
-  id: string,
-  shared: { allowed: boolean },
-): Promise<{
-  worker: ManagedWorker;
-  server: Server;
-  reload(): void;
-  allowed(): boolean;
-}> {
-  const child = new EventEmitter() as unknown as ChildProcess;
-  let exited = false;
-  let localAllowed = shared.allowed;
-
-  const server = createServer(async (req, res) => {
-    if (req.url === "/mcp") {
-      if (req.headers["mcp-session-id"] === undefined) {
-        res.setHeader("mcp-session-id", "session-a");
-      }
-      res.setHeader("content-type", "text/plain");
-      res.end(localAllowed ? "allowed" : "denied");
-      return;
-    }
-
-    if (
-      req.method === "POST" &&
-      req.url === "/workspaces/demo/grants/pnpm"
-    ) {
-      for await (const _chunk of req) {
-        // Consume the proxied request body.
-      }
-      shared.allowed = false;
-      localAllowed = false;
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ ok: true }));
-      return;
-    }
-
-    res.statusCode = 404;
-    res.end();
-  });
-  const port = await listen(server);
-
-  return {
-    server,
-    reload() {
-      localAllowed = shared.allowed;
-    },
-    allowed: () => localAllowed,
-    worker: {
-      id,
-      child,
-      pid: id === "worker-a" ? 101 : 202,
-      mcpPort: port,
-      adminPort: port,
-      internalToken: `token-${id}-012345678901234567890123456789`,
-      startedAt: new Date().toISOString(),
-      stdout: () => "",
-      stderr: () => "",
-      exited: () => exited,
-      async close() {
-        if (exited) return;
-        exited = true;
-        await closeServer(server);
-        child.emit("exit", 0, null);
-      },
-    },
-  };
-}
-
-async function machineConfigurationAwareWorker(
-  id: string,
-  shared: {
-    browser: boolean;
-    desktop: boolean;
-  },
-): Promise<{
-  worker: ManagedWorker;
-  server: Server;
-  reload(): void;
-  enabled(
-    capability: "browser" | "desktop",
-  ): boolean;
-}> {
-  const child =
-    new EventEmitter() as unknown as ChildProcess;
-  let exited = false;
-  let local = { ...shared };
-
-  const server = createServer(async (req, res) => {
-    if (
-      req.url === "/mcp" &&
-      req.method === "POST"
-    ) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(
-          Buffer.isBuffer(chunk)
-            ? chunk
-            : Buffer.from(chunk),
-        );
-      }
-
-      const request = JSON.parse(
-        Buffer.concat(chunks).toString("utf8"),
-      ) as {
-        params?: {
-          name?: string;
-          arguments?: Record<string, unknown>;
-        };
-      };
-      const name = request.params?.name;
-      const capability =
-        name === "playwright_cli"
-          ? "browser"
-          : name === "desktop"
-            ? "desktop"
-            : undefined;
-
-      const payload =
-        capability === undefined
-          ? { ok: true, worker: id }
-          : {
-              ok: local[capability],
-              worker: id,
-              capability,
-              enabled: local[capability],
-            };
-
-      res.setHeader(
-        "content-type",
-        "application/json",
-      );
-      res.end(toolResult(payload));
-      return;
-    }
-
-    const capabilityMatch =
-      /^\/capabilities\/(browser|desktop)$/u.exec(
-        req.url ?? "",
-      );
-    if (
-      req.method === "POST" &&
-      capabilityMatch !== null
-    ) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(
-          Buffer.isBuffer(chunk)
-            ? chunk
-            : Buffer.from(chunk),
-        );
-      }
-      const body = JSON.parse(
-        Buffer.concat(chunks).toString("utf8"),
-      ) as { enabled?: unknown };
-      const capability =
-        capabilityMatch[1] as
-          | "browser"
-          | "desktop";
-
-      if (typeof body.enabled !== "boolean") {
-        res.statusCode = 400;
-        res.end();
-        return;
-      }
-
-      shared[capability] = body.enabled;
-      local[capability] = body.enabled;
-      res.setHeader(
-        "content-type",
-        "application/json",
-      );
-      res.end(
-        JSON.stringify({
-          ok: true,
-          capability,
-          enabled: body.enabled,
-        }),
-      );
-      return;
-    }
-
-    res.statusCode = 404;
-    res.end();
-  });
-  const port = await listen(server);
-
-  return {
-    server,
-    reload() {
-      local = { ...shared };
-    },
-    enabled: (capability) => local[capability],
-    worker: {
-      id,
-      child,
-      pid: id === "worker-a" ? 101 : 202,
-      mcpPort: port,
-      adminPort: port,
-      internalToken:
-        `token-${id}-012345678901234567890123456789`,
-      startedAt: new Date().toISOString(),
-      stdout: () => "",
-      stderr: () => "",
-      exited: () => exited,
-      async close() {
-        if (exited) return;
-        exited = true;
-        await closeServer(server);
-        child.emit("exit", 0, null);
-      },
-    },
-  };
-}
-
 function toolCall(
   name: string,
   args: Record<string, unknown>,
@@ -354,9 +139,11 @@ async function statelessToolWorker(
   worker: ManagedWorker;
   server: Server;
   receivedWorkerTokens: string[];
+  configurationReloads(): number;
 }> {
   const child = new EventEmitter() as unknown as ChildProcess;
   let exited = false;
+  let reloads = 0;
   const receivedWorkerTokens: string[] = [];
 
   const server = createServer(async (req, res) => {
@@ -365,6 +152,20 @@ async function statelessToolWorker(
     if (typeof workerToken === "string") {
       receivedWorkerTokens.push(workerToken);
     }
+
+    if (
+      req.url === "/__junius/config-reload" &&
+      req.method === "POST"
+    ) {
+      reloads += 1;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        ok: true,
+        workerId: id,
+      }));
+      return;
+    }
+
     if (req.url !== "/mcp" || req.method !== "POST") {
       res.statusCode = 404;
       res.end();
@@ -455,6 +256,7 @@ async function statelessToolWorker(
   return {
     server,
     receivedWorkerTokens,
+    configurationReloads: () => reloads,
     worker: {
       id,
       child,
@@ -480,11 +282,13 @@ async function callTool(
   origin: string,
   name: string,
   args: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ): Promise<Record<string, unknown>> {
   const response = await fetch(origin + "/mcp", {
     method: "POST",
     headers: {
       "content-type": "application/json",
+      ...headers,
     },
     body: toolCall(name, args),
   });
@@ -587,6 +391,89 @@ test("reverse proxy records layered modern MCP latency", async () => {
     await closeServer(proxy);
     await supervisor.close();
     await closeServer(target.server);
+  }
+});
+
+test("Workspace MCP mutations synchronize retiring Workers before returning", async () => {
+  const first = await statelessToolWorker("worker-a");
+  const second = await statelessToolWorker("worker-b");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => successfulCheck(),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  const proxy = createServer((req, res) => {
+    proxyToActiveWorker(
+      req,
+      res,
+      supervisor,
+      "mcp",
+    );
+  });
+
+  try {
+    await supervisor.startInitial();
+    await supervisor.reload("promote-worker-b");
+
+    const proxyPort = await listen(proxy);
+    const origin =
+      `http://127.0.0.1:${proxyPort}`;
+
+    const created = await callTool(
+      origin,
+      "create_workspace",
+      {
+        id: "new-workspace",
+        root_path: "C:\\Project",
+      },
+    );
+
+    assert.equal(
+      created.worker,
+      "worker-b",
+    );
+    assert.equal(
+      first.configurationReloads(),
+      1,
+    );
+    assert.equal(
+      second.configurationReloads(),
+      0,
+    );
+
+    const deleted = await callTool(
+      origin,
+      "delete_workspace",
+      {
+        id: "new-workspace",
+      },
+      {
+        "mcp-session-id":
+          "legacy-session",
+      },
+    );
+
+    assert.equal(
+      deleted.worker,
+      "worker-b",
+    );
+    assert.equal(
+      first.configurationReloads(),
+      2,
+    );
+  } finally {
+    await closeServer(proxy);
+    await supervisor.close();
+    await Promise.allSettled([
+      closeServer(first.server),
+      closeServer(second.server),
+    ]);
   }
 });
 
@@ -733,225 +620,6 @@ test("reverse proxy keeps existing MCP session on retiring worker after promotio
     await closeServer(proxy);
     await supervisor.close();
     await Promise.allSettled([
-      closeServer(first.server),
-      closeServer(second.server),
-    ]);
-  }
-});
-
-test("admin configuration mutation synchronizes a retiring MCP session before success", async () => {
-  const shared = { allowed: true };
-  const first = await configurationAwareWorker("worker-a", shared);
-  const second = await configurationAwareWorker("worker-b", shared);
-  const queue = [first.worker, second.worker];
-
-  const supervisor = new WorkerSupervisor({
-    cwd: process.cwd(),
-    publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
-    rollbackWindowMs: 10_000,
-    validate: async () => successfulCheck(),
-    spawnWorker: async () => queue.shift()!,
-    reloadWorkerConfiguration: async (worker) => {
-      if (worker.id === first.worker.id) first.reload();
-      if (worker.id === second.worker.id) second.reload();
-    },
-  });
-
-  const mcpProxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "mcp");
-  });
-  const adminProxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "admin");
-  });
-
-  try {
-    await supervisor.startInitial();
-    const mcpPort = await listen(mcpProxy);
-    const adminPort = await listen(adminProxy);
-    const mcpOrigin = `http://127.0.0.1:${mcpPort}`;
-    const adminOrigin = `http://127.0.0.1:${adminPort}`;
-
-    const initial = await fetch(mcpOrigin + "/mcp");
-    assert.equal(await initial.text(), "allowed");
-    assert.equal(
-      initial.headers.get("mcp-session-id"),
-      "session-a",
-    );
-
-    await supervisor.reload("promote-worker-b");
-
-    const staleBeforeMutation = await fetch(mcpOrigin + "/mcp", {
-      headers: { "mcp-session-id": "session-a" },
-    });
-    assert.equal(await staleBeforeMutation.text(), "allowed");
-    assert.equal(first.allowed(), true);
-
-    const mutation = await fetch(
-      adminOrigin + "/workspaces/demo/grants/pnpm",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ arguments: [] }),
-      },
-    );
-    assert.equal(mutation.status, 200);
-    assert.deepEqual(await mutation.json(), { ok: true });
-    assert.equal(first.allowed(), false);
-
-    const oldSessionAfterMutation = await fetch(
-      mcpOrigin + "/mcp",
-      {
-        headers: { "mcp-session-id": "session-a" },
-      },
-    );
-    assert.equal(
-      await oldSessionAfterMutation.text(),
-      "denied",
-    );
-  } finally {
-    await Promise.allSettled([
-      closeServer(mcpProxy),
-      closeServer(adminProxy),
-      supervisor.close(),
-      closeServer(first.server),
-      closeServer(second.server),
-    ]);
-  }
-});
-
-test("admin browser disable synchronizes a retiring browser-affinity worker before success", async () => {
-  const shared = {
-    browser: true,
-    desktop: true,
-  };
-  const first =
-    await machineConfigurationAwareWorker(
-      "worker-a",
-      shared,
-    );
-  const second =
-    await machineConfigurationAwareWorker(
-      "worker-b",
-      shared,
-    );
-  const queue = [first.worker, second.worker];
-
-  const supervisor = new WorkerSupervisor({
-    cwd: process.cwd(),
-    publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
-    rollbackWindowMs: 10_000,
-    validate: async () => successfulCheck(),
-    spawnWorker: async () => queue.shift()!,
-    reloadWorkerConfiguration: async (worker) => {
-      if (worker.id === first.worker.id) {
-        first.reload();
-      }
-      if (worker.id === second.worker.id) {
-        second.reload();
-      }
-    },
-  });
-
-  const mcpProxy = createServer((req, res) => {
-    proxyToActiveWorker(
-      req,
-      res,
-      supervisor,
-      "mcp",
-    );
-  });
-  const adminProxy = createServer((req, res) => {
-    proxyToActiveWorker(
-      req,
-      res,
-      supervisor,
-      "admin",
-    );
-  });
-
-  try {
-    await supervisor.startInitial();
-    const mcpPort = await listen(mcpProxy);
-    const adminPort = await listen(adminProxy);
-    const mcpOrigin =
-      `http://127.0.0.1:${mcpPort}`;
-    const adminOrigin =
-      `http://127.0.0.1:${adminPort}`;
-
-    const opened = await callTool(
-      mcpOrigin,
-      "playwright_cli",
-      {
-        session: "browser-a",
-        command: "open",
-        args: [],
-      },
-    );
-    assert.equal(opened.worker, "worker-a");
-    assert.equal(opened.enabled, true);
-
-    await supervisor.reload("promote-worker-b");
-
-    const pinnedBeforeDisable = await callTool(
-      mcpOrigin,
-      "playwright_cli",
-      {
-        session: "browser-a",
-        command: "snapshot",
-        args: [],
-      },
-    );
-    assert.equal(
-      pinnedBeforeDisable.worker,
-      "worker-a",
-    );
-    assert.equal(
-      pinnedBeforeDisable.enabled,
-      true,
-    );
-
-    const mutation = await fetch(
-      adminOrigin + "/capabilities/browser",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          enabled: false,
-        }),
-      },
-    );
-    assert.equal(mutation.status, 200);
-    assert.equal(
-      first.enabled("browser"),
-      false,
-    );
-
-    const pinnedAfterDisable = await callTool(
-      mcpOrigin,
-      "playwright_cli",
-      {
-        session: "browser-a",
-        command: "snapshot",
-        args: [],
-      },
-    );
-    assert.equal(
-      pinnedAfterDisable.worker,
-      "worker-a",
-    );
-    assert.equal(
-      pinnedAfterDisable.enabled,
-      false,
-    );
-  } finally {
-    await Promise.allSettled([
-      closeServer(mcpProxy),
-      closeServer(adminProxy),
-      supervisor.close(),
       closeServer(first.server),
       closeServer(second.server),
     ]);

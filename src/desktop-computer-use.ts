@@ -37,7 +37,6 @@ export class DesktopComputerUseService {
     NodeJS.Platform;
   #helperClient:
     DesktopHelperClient | undefined;
-  #enabled = true;
 
   constructor(
     options:
@@ -77,10 +76,6 @@ export class DesktopComputerUseService {
       this.#createHelperClient();
   }
 
-  get enabled(): boolean {
-    return this.#enabled;
-  }
-
   get available(): boolean {
     return (
       this.#platform === "win32" &&
@@ -90,56 +85,15 @@ export class DesktopComputerUseService {
     );
   }
 
-  get active(): boolean {
-    return (
-      this.#enabled &&
-      this.available
-    );
-  }
-
-  async setEnabled(
-    enabled: boolean,
-  ): Promise<void> {
-    if (
-      this.#enabled ===
-      enabled
-    ) {
-      return;
-    }
-
-    this.#enabled = enabled;
-
-    if (!enabled) {
-      const helper =
-        this.#helperClient;
-      this.#helperClient =
-        undefined;
-      await helper?.close();
-      return;
-    }
-
-    if (
-      this.#helperClient ===
-      undefined
-    ) {
-      this.#helperClient =
-        this.#createHelperClient();
-    }
-  }
-
   state(): {
-    readonly enabled: boolean;
     readonly available: boolean;
-    readonly active: boolean;
     readonly helperPath: string;
     readonly pythonExecutable?: string;
     readonly helperRunning: boolean;
     readonly helperReady: boolean;
   } {
     return {
-      enabled: this.enabled,
       available: this.available,
-      active: this.active,
       helperPath:
         this.#helperPath,
       helperRunning:
@@ -163,7 +117,7 @@ export class DesktopComputerUseService {
   async prewarm():
     Promise<void> {
     if (
-      !this.active ||
+      !this.available ||
       this.#helperClient ===
         undefined
     ) {
@@ -213,13 +167,6 @@ export class DesktopComputerUseService {
       throw new DesktopComputerUseError(
         "arguments_not_allowed",
         `Arguments are not allowed for desktop command ${request.command}.`,
-      );
-    }
-
-    if (!this.#enabled) {
-      throw new DesktopComputerUseError(
-        "desktop_disabled",
-        "Desktop computer use is disabled by the Junius machine capability policy.",
       );
     }
 

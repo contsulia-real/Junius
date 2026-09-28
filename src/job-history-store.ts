@@ -57,22 +57,39 @@ function parseRunningJobMarker(
   }
 
   const marker =
-    value as Partial<RunningJobMarker>;
+    value as Record<string, unknown>;
+  const executable =
+    marker.version === 2
+      ? marker.executable
+      : marker.version === 1
+        ? marker.key
+        : undefined;
 
   if (
-    marker.version !== 1 ||
+    (marker.version !== 1 &&
+      marker.version !== 2) ||
     typeof marker.id !== "string" ||
     !validJobHistoryId(marker.id) ||
     typeof marker.ownerWorkerId !== "string" ||
     marker.ownerWorkerId.length === 0 ||
     typeof marker.workspace !== "string" ||
-    typeof marker.key !== "string" ||
+    typeof executable !== "string" ||
     typeof marker.startedAt !== "string"
   ) {
     return undefined;
   }
 
-  return marker as RunningJobMarker;
+  return {
+    version: 2,
+    id: marker.id,
+    ownerWorkerId:
+      marker.ownerWorkerId,
+    workspace:
+      marker.workspace,
+    executable,
+    startedAt:
+      marker.startedAt,
+  };
 }
 
 export class JobHistoryStore {
@@ -207,10 +224,10 @@ export class JobHistoryStore {
           "." + marker.id + "." + randomUUID() + ".tmp",
         );
         const metadata: PersistedJobMetadata = {
-          version: 1,
+          version: 2,
           id: marker.id,
           workspace: marker.workspace,
-          key: marker.key,
+          executable: marker.executable,
           status: "interrupted",
           pid: null,
           startedAt: marker.startedAt,
@@ -350,10 +367,10 @@ export class JobHistoryStore {
       }
 
       await this.save({
-        version: 1,
+        version: 2,
         id: marker.id,
         workspace: marker.workspace,
-        key: marker.key,
+        executable: marker.executable,
         status: "interrupted",
         pid: null,
         startedAt: marker.startedAt,
@@ -393,10 +410,10 @@ export class JobHistoryStore {
     );
 
     const metadata: PersistedJobMetadata = {
-      version: 1,
+      version: 2,
       id: record.id,
       workspace: record.workspace,
-      key: record.key,
+      executable: record.executable,
       status: record.status,
       pid: record.pid,
       startedAt: record.startedAt,

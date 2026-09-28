@@ -19,10 +19,10 @@ function record(
   endedAt: string,
 ): PersistedJobRecord {
   return {
-    version: 1,
+    version: 2,
     id,
     workspace: "demo",
-    key: "node",
+    executable: "node",
     status: "succeeded",
     pid: 123,
     startedAt: "2026-09-27T00:00:00.000Z",
@@ -320,10 +320,10 @@ test("JobHistoryStore lists metadata without reading captured output", async () 
 
   try {
     await store.save({
-      version: 1,
+      version: 2,
       id,
       workspace: "demo",
-      key: "node",
+      executable: "node",
       status: "succeeded",
       pid: 123,
       startedAt: "2026-09-27T00:00:00.000Z",
@@ -379,20 +379,20 @@ test("JobHistoryStore recovers running markers by owner as interrupted", async (
 
   try {
     await store.saveRunning({
-      version: 1,
+      version: 2,
       id: firstId,
       ownerWorkerId: "worker-a",
       workspace: "demo",
-      key: "node",
+      executable: "node",
       startedAt:
         "2026-09-28T00:00:00.000Z",
     });
     await store.saveRunning({
-      version: 1,
+      version: 2,
       id: secondId,
       ownerWorkerId: "worker-b",
       workspace: "demo",
-      key: "node",
+      executable: "node",
       startedAt:
         "2026-09-28T00:01:00.000Z",
     });

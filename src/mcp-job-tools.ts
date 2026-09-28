@@ -15,21 +15,25 @@ export function registerJobTools(
     {
       title: "Start Local Job",
       description:
-        "Start a long-running registered process capability in one explicitly selected Junius Workspace. Authorization is identical to run_command, but the process continues in the background and is managed by a returned job ID.",
+        "Launch any executable with any argument vector as a background process in one registered Junius Workspace. The Workspace selects cwd only; the returned job ID is used to inspect, wait for, read, or cancel the process.",
       inputSchema: runCommandInputSchema,
       _meta: {
         securitySchemes: [{ type: "noauth" }],
       },
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
-        openWorldHint: false,
+        openWorldHint: true,
       },
     },
-    async ({ workspace, key, args }) => {
+    async ({ workspace, executable, args }) => {
       try {
-        const job = await jobs.start(workspace, key, args);
+        const job = await jobs.start(
+          workspace,
+          executable,
+          args,
+        );
         return {
           content: [
             {

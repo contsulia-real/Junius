@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import type { AuditStore } from "./audit-store.js";
-import { isProcessPreparableCapability } from "./capabilities/types.js";
 import type { JobHistoryStore } from "./job-history-store.js";
 import {
   appendCaptured,
@@ -62,61 +61,33 @@ export class JobManager {
 
   async start(
     workspace: string,
-    key: string,
+    executable: string,
     args: readonly string[],
   ): Promise<JobSnapshot> {
-    const authorized = this.commands.authorize(workspace, key, args);
-    if (!authorized.ok) {
+    const prepared =
+      this.commands.prepare(
+        workspace,
+        executable,
+        args,
+      );
+
+    if (!prepared.ok) {
       this.audit?.record({
         category: "job",
         action: "start_job",
         status: "failed",
         workspace,
-        subject: key,
-        summary: authorized.code,
+        subject: executable,
+        summary: prepared.code,
         metadata: {
           argCount: args.length,
-          code: authorized.code,
+          code: prepared.code,
         },
       });
       throw new JobManagerError(
-        authorized.code,
-        authorized.message,
+        prepared.code,
+        prepared.message,
       );
-    }
-
-    let auditArgs: readonly string[];
-    try {
-      auditArgs =
-        authorized.capability
-          .auditArguments?.(args) ??
-        [...args];
-    } catch {
-      auditArgs = args.map(
-        () => "[REDACTED]",
-      );
-    }
-
-    if (!isProcessPreparableCapability(authorized.capability)) {
-      throw new JobManagerError(
-        "capability_not_job_startable",
-        `Capability does not support background jobs: ${key}`,
-      );
-    }
-
-    const prepared = authorized.capability.prepareProcess(
-      args,
-      authorized.context,
-    );
-
-    if (!prepared.ok) {
-      const code =
-        prepared.execution.code === "arguments_not_allowed" ||
-        prepared.execution.code === "unsafe_repository_config"
-          ? prepared.execution.code
-          : "spawn_failed";
-
-      throw new JobManagerError(code, prepared.execution.message);
     }
 
     const id = randomUUID();
@@ -124,12 +95,12 @@ export class JobManager {
       new Date().toISOString();
 
     await this.#persistence.markRunning({
-      version: 1,
+      version: 2,
       id,
       ownerWorkerId:
         this.ownerWorkerId,
       workspace,
-      key,
+      executable,
       startedAt,
     });
 
@@ -167,7 +138,7 @@ export class JobManager {
     const record: JobRecord = {
       id,
       workspace,
-      key,
+      executable,
       child,
       pid,
       startedAt,
@@ -191,13 +162,12 @@ export class JobManager {
       action: "start_job",
       status: "started",
       workspace,
-      subject: key,
+      subject: executable,
       summary: "Background job started.",
       metadata: {
         job: record.id,
         pid: record.pid ?? -1,
         argCount: args.length,
-        args: auditArgs,
       },
     });
 
@@ -260,12 +230,11 @@ export class JobManager {
               ? "cancelled"
               : "failed",
         workspace,
-        subject: key,
+        subject: executable,
         summary: status,
         metadata: {
           job: record.id,
           argCount: args.length,
-          args: auditArgs,
           exitCode:
             exitCode ?? -1,
           stdoutChars:
@@ -381,7 +350,7 @@ export class JobManager {
             ? "failed"
             : "succeeded",
       workspace: result.workspace,
-      subject: result.key,
+      subject: result.executable,
       summary: result.status,
       metadata: {
         job: result.id,

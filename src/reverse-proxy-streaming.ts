@@ -7,7 +7,6 @@ import { Transform } from "node:stream";
 import { sendHostJson } from "./host-http.js";
 import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import type { WorkerSupervisor } from "./worker-supervisor.js";
-import { isConfigurationMutationRequest } from "./reverse-proxy-routing.js";
 import {
   MAX_MCP_REQUEST_BYTES,
   copyResponseHeaders,
@@ -37,10 +36,6 @@ export function proxyStreaming(
   const worker = lease.worker;
   const port =
     kind === "mcp" ? worker.mcpPort : worker.adminPort;
-  const configurationMutation =
-    kind === "admin" &&
-    isConfigurationMutationRequest(req);
-
   let released = false;
   const release = () => {
     if (released) return;
@@ -64,63 +59,6 @@ export function proxyStreaming(
     },
     (upstreamResponse) => {
       const statusCode = upstreamResponse.statusCode ?? 502;
-      const shouldSynchronizeConfiguration =
-        configurationMutation &&
-        statusCode >= 200 &&
-        statusCode < 300;
-
-      if (shouldSynchronizeConfiguration) {
-        const chunks: Buffer[] = [];
-        let settled = false;
-
-        const finish = (error?: Error) => {
-          if (settled) return;
-          settled = true;
-
-          void supervisor
-            .synchronizeConfiguration(worker.id)
-            .then(() => {
-              if (error !== undefined) {
-                if (!res.headersSent) {
-                  sendHostJson(res, 502, {
-                    error: "worker_proxy_failed",
-                    message: error.message,
-                  });
-                } else {
-                  res.destroy(error);
-                }
-                return;
-              }
-
-              if (res.destroyed) return;
-              res.statusCode = statusCode;
-              copyResponseHeaders(upstreamResponse.headers, res);
-              res.end(Buffer.concat(chunks));
-            })
-            .catch((syncError: unknown) => {
-              if (res.destroyed) return;
-              sendHostJson(res, 503, {
-                error: "configuration_sync_failed",
-                message:
-                  syncError instanceof Error
-                    ? syncError.message
-                    : String(syncError),
-              });
-            })
-            .finally(release);
-        };
-
-        upstreamResponse.on("data", (chunk: Buffer | string) => {
-          chunks.push(
-            Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
-          );
-        });
-        upstreamResponse.once("end", () => finish());
-        upstreamResponse.once("error", (error) => finish(error));
-        res.once("close", release);
-        return;
-      }
-
       res.statusCode = statusCode;
       copyResponseHeaders(upstreamResponse.headers, res);
 

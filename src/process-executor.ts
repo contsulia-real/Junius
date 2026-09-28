@@ -1,25 +1,25 @@
 import { spawn } from "node:child_process";
-import { environmentForSpawn } from "../execution-environment.js";
-import { terminateProcessTree } from "../process-termination.js";
+import { environmentForSpawn } from "./execution-environment.js";
+import { terminateProcessTree } from "./process-termination.js";
 import type {
-  CapabilityExecution,
   PreparedProcess,
-} from "./types.js";
+  ProcessExecution,
+} from "./process-types.js";
 
 export async function executePreparedProcess(
   prepared: PreparedProcess,
   timeoutMs: number,
   maxOutputBytes: number,
-): Promise<CapabilityExecution> {
+): Promise<ProcessExecution> {
   const startedAt = performance.now();
 
-  return new Promise<CapabilityExecution>((resolve) => {
+  return new Promise<ProcessExecution>((resolve) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let capturedBytes = 0;
     let settled = false;
     let forcedFailure:
-      | (() => CapabilityExecution)
+      | (() => ProcessExecution)
       | undefined;
     let timer: NodeJS.Timeout | undefined;
 
@@ -32,8 +32,13 @@ export async function executePreparedProcess(
           prepared.env,
         ),
         shell: false,
-        windowsHide: prepared.windowsHide,
-        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide:
+          prepared.windowsHide,
+        stdio: [
+          "ignore",
+          "pipe",
+          "pipe",
+        ],
       },
     );
 
@@ -43,19 +48,18 @@ export async function executePreparedProcess(
       );
 
     const capturedText = () => ({
-      stdout: Buffer.concat(stdoutChunks)
-        .toString("utf8"),
-      stderr: Buffer.concat(stderrChunks)
-        .toString("utf8"),
+      stdout:
+        Buffer.concat(stdoutChunks)
+          .toString("utf8"),
+      stderr:
+        Buffer.concat(stderrChunks)
+          .toString("utf8"),
     });
 
     const finish = (
-      result: CapabilityExecution,
+      result: ProcessExecution,
     ): void => {
-      if (settled) {
-        return;
-      }
-
+      if (settled) return;
       settled = true;
       if (timer !== undefined) {
         clearTimeout(timer);
@@ -64,7 +68,7 @@ export async function executePreparedProcess(
     };
 
     const terminateWith = (
-      result: () => CapabilityExecution,
+      result: () => ProcessExecution,
     ): void => {
       if (
         settled ||
@@ -74,7 +78,6 @@ export async function executePreparedProcess(
       }
 
       forcedFailure = result;
-
       void terminateProcessTree(
         child,
         prepared.env,
@@ -85,7 +88,6 @@ export async function executePreparedProcess(
         ) {
           return;
         }
-
         finish(forcedFailure());
       });
     };
@@ -101,29 +103,29 @@ export async function executePreparedProcess(
         return;
       }
 
-      const buffer = Buffer.isBuffer(chunk)
-        ? chunk
-        : Buffer.from(chunk);
+      const buffer =
+        Buffer.isBuffer(chunk)
+          ? chunk
+          : Buffer.from(chunk);
       capturedBytes += buffer.length;
 
       if (
         capturedBytes >
         maxOutputBytes
       ) {
-        terminateWith(() => {
-          const captured =
-            capturedText();
-          return {
-            ok: false,
-            code: "output_limit",
-            message:
-              `Process output exceeded ${maxOutputBytes} bytes.`,
-            exitCode: child.exitCode,
-            signal: child.signalCode,
-            ...captured,
-            durationMs: durationMs(),
-          };
-        });
+        terminateWith(() => ({
+          ok: false,
+          code: "output_limit",
+          message:
+            `Process output exceeded ${maxOutputBytes} bytes.`,
+          exitCode:
+            child.exitCode,
+          signal:
+            child.signalCode,
+          ...capturedText(),
+          durationMs:
+            durationMs(),
+        }));
         return;
       }
 
@@ -150,31 +152,39 @@ export async function executePreparedProcess(
       },
     );
 
-    child.once("error", (error) => {
-      if (
-        forcedFailure !== undefined
-      ) {
-        return;
-      }
+    child.once(
+      "error",
+      (error) => {
+        if (
+          forcedFailure !==
+          undefined
+        ) {
+          return;
+        }
 
-      const captured = capturedText();
-      finish({
-        ok: false,
-        code: "spawn_failed",
-        message: error.message,
-        exitCode: null,
-        signal: null,
-        ...captured,
-        durationMs: durationMs(),
-      });
-    });
+        finish({
+          ok: false,
+          code: "spawn_failed",
+          message: error.message,
+          exitCode: null,
+          signal: null,
+          ...capturedText(),
+          durationMs:
+            durationMs(),
+        });
+      },
+    );
 
     child.once(
       "close",
-      (exitCode, signal) => {
+      (
+        exitCode,
+        signal,
+      ) => {
         if (
           settled ||
-          forcedFailure !== undefined
+          forcedFailure !==
+            undefined
         ) {
           return;
         }
@@ -208,21 +218,19 @@ export async function executePreparedProcess(
     );
 
     timer = setTimeout(() => {
-      terminateWith(() => {
-        const captured =
-          capturedText();
-        return {
-          ok: false,
-          code: "process_timeout",
-          message:
-            `Process exceeded timeout of ${timeoutMs} ms.`,
-          exitCode: child.exitCode,
-          signal: child.signalCode,
-          ...captured,
-          durationMs:
-            durationMs(),
-        };
-      });
+      terminateWith(() => ({
+        ok: false,
+        code: "process_timeout",
+        message:
+          `Process exceeded timeout of ${timeoutMs} ms.`,
+        exitCode:
+          child.exitCode,
+        signal:
+          child.signalCode,
+        ...capturedText(),
+        durationMs:
+          durationMs(),
+      }));
     }, timeoutMs);
   });
 }

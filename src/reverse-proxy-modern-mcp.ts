@@ -20,6 +20,7 @@ import {
   copyResponseHeaders,
   forwardedRequestHeaders,
   headerDurationMs,
+  headerString,
   readBody,
 } from "./reverse-proxy-http.js";
 
@@ -30,6 +31,7 @@ export async function proxyModernMcp(
   res: ServerResponse,
   supervisor: WorkerSupervisor,
   traces?: HostLatencyTraceStore,
+  requestSessionId?: string,
 ): Promise<void> {
   const startedAt = performance.now();
   const traceId = randomUUID();
@@ -96,7 +98,10 @@ export async function proxyModernMcp(
 
   let lease;
   try {
-    lease = supervisor.acquire(undefined, routeKey);
+    lease = supervisor.acquire(
+      requestSessionId,
+      routeKey,
+    );
   } catch (error) {
     sendHostJson(res, 503, {
       error: "no_active_worker",
@@ -119,9 +124,13 @@ export async function proxyModernMcp(
   const captureDesktopLifecycle =
     desktopCommand === "control_begin" ||
     desktopCommand === "control_end";
+  const captureWorkspaceMutation =
+    call?.name === "create_workspace" ||
+    call?.name === "delete_workspace";
   const captureToolResponse =
     captureStartJob ||
-    captureDesktopLifecycle;
+    captureDesktopLifecycle ||
+    captureWorkspaceMutation;
 
   const upstream = httpRequest(
     {
@@ -150,6 +159,17 @@ export async function proxyModernMcp(
       );
       copyResponseHeaders(upstreamResponse.headers, res);
       res.setHeader("x-junius-trace-id", traceId);
+
+      const responseSessionId =
+        headerString(
+          upstreamResponse.headers["mcp-session-id"],
+        );
+      if (responseSessionId !== undefined) {
+        supervisor.bindSession(
+          responseSessionId,
+          worker.id,
+        );
+      }
 
       if (!captureToolResponse) {
         upstreamResponse.pipe(res);
@@ -201,46 +221,85 @@ export async function proxyModernMcp(
         const responseText =
           responseBody.toString("utf8");
 
-        if (captureStartJob) {
-          const jobId = extractStartedJobId(
-            responseText,
-          );
+        void (async () => {
+          try {
+            if (captureStartJob) {
+              const jobId = extractStartedJobId(
+                responseText,
+              );
 
-          if (jobId !== undefined) {
-            supervisor.bindResource(
-              `job:${jobId}`,
-              worker.id,
+              if (jobId !== undefined) {
+                supervisor.bindResource(
+                  `job:${jobId}`,
+                  worker.id,
+                );
+              }
+            }
+
+            if (
+              captureWorkspaceMutation &&
+              toolCallSucceeded(responseText)
+            ) {
+              await supervisor
+                .synchronizeConfiguration(
+                  worker.id,
+                );
+            }
+
+            if (
+              captureDesktopLifecycle &&
+              toolCallSucceeded(responseText)
+            ) {
+              const session =
+                typeof call?.arguments.session === "string"
+                  ? call.arguments.session
+                  : "junius";
+              const resourceKey =
+                `desktop:${session}`;
+
+              if (desktopCommand === "control_begin") {
+                supervisor.bindResource(
+                  resourceKey,
+                  worker.id,
+                );
+              } else {
+                supervisor.releaseResource(
+                  resourceKey,
+                );
+              }
+            }
+
+            releaseAfterForward(
+              supervisor,
+              call,
             );
+            if (!res.destroyed) {
+              res.end(responseBody);
+            }
+            recordTrace(statusCode);
+          } catch (error) {
+            if (!res.destroyed) {
+              res.removeHeader(
+                "content-length",
+              );
+              sendHostJson(
+                res,
+                503,
+                {
+                  error:
+                    "configuration_sync_failed",
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : String(error),
+                },
+              );
+            }
+            recordTrace(503);
+          } finally {
+            lease.release();
           }
-        }
-
-        if (
-          captureDesktopLifecycle &&
-          toolCallSucceeded(responseText)
-        ) {
-          const session =
-            typeof call?.arguments.session === "string"
-              ? call.arguments.session
-              : "junius";
-          const resourceKey =
-            `desktop:${session}`;
-
-          if (desktopCommand === "control_begin") {
-            supervisor.bindResource(
-              resourceKey,
-              worker.id,
-            );
-          } else {
-            supervisor.releaseResource(
-              resourceKey,
-            );
-          }
-        }
-
-        releaseAfterForward(supervisor, call);
-        res.end(responseBody);
-        recordTrace(statusCode);
-        lease.release();
+        })();
       });
       upstreamResponse.once("error", (error) => {
         if (captureExceeded) return;

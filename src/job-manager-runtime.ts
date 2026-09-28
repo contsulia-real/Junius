@@ -14,7 +14,7 @@ const MAX_CAPTURE_CHARS = 4 * 1024 * 1024;
 export interface JobRecord {
   readonly id: string;
   readonly workspace: string;
-  readonly key: string;
+  readonly executable: string;
   readonly child: ChildProcess;
   readonly pid: number | null;
   readonly startedAt: string;
@@ -102,7 +102,7 @@ export function snapshot(record: JobRecord): JobSnapshot {
   return {
     id: record.id,
     workspace: record.workspace,
-    key: record.key,
+    executable: record.executable,
     status: record.status,
     pid: record.pid,
     startedAt: record.startedAt,
@@ -123,7 +123,7 @@ export function persistedSnapshot(
   return {
     id: record.id,
     workspace: record.workspace,
-    key: record.key,
+    executable: record.executable,
     status: record.status,
     pid: record.pid,
     startedAt: record.startedAt,
@@ -155,10 +155,10 @@ export function persistedRecord(
   }
 
   return {
-    version: 1,
+    version: 2,
     id: record.id,
     workspace: record.workspace,
-    key: record.key,
+    executable: record.executable,
     status: record.status,
     pid: record.pid,
     startedAt: record.startedAt,

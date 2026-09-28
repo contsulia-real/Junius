@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createMcpServer } from "./mcp-server.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
+import type { WorkspaceRegistryService } from "./workspace-registry.js";
 import { JobManager } from "./job-manager.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
@@ -19,6 +20,7 @@ export interface McpRuntime {
 
 export async function createMcpRuntime(
   commands: RunCommandService,
+  workspaces: WorkspaceRegistryService,
   files: WorkspaceFilesService,
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
@@ -28,6 +30,7 @@ export async function createMcpRuntime(
   const modernHandler = createMcpHandler(
     () => createMcpServer(
       commands,
+      workspaces,
       files,
       jobs,
       playwrightCli,
@@ -45,6 +48,7 @@ export async function createMcpRuntime(
   const legacyServer =
     createMcpServer(
       commands,
+      workspaces,
       files,
       jobs,
       playwrightCli,

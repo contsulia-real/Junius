@@ -7,34 +7,52 @@ import {
 
 export function registerRunCommandTool(
   server: McpServer,
-  commands: RunCommandService,
+  commands:
+    RunCommandService,
 ): void {
   server.registerTool(
     "run_command",
     {
-      title: "Run Junius Capability",
+      title:
+        "Run Local Command",
       description:
-        "Run one registered Junius capability in one explicitly selected Junius Workspace. If the user names a project rather than a Workspace ID, use list_workspaces first. The Workspace ID and capability key must already be registered and authorized. Filesystem paths and shell command strings are not accepted as capability selectors.",
-      inputSchema: runCommandInputSchema,
+        "Launch any executable with any argument vector in one registered Junius Workspace. The Workspace selects cwd only; Junius does not pre-register executables or restrict argument vectors.",
+      inputSchema:
+        runCommandInputSchema,
       _meta: {
-        securitySchemes: [{ type: "noauth" }],
+        securitySchemes: [
+          { type: "noauth" },
+        ],
       },
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
-        openWorldHint: false,
+        openWorldHint: true,
       },
     },
-    async ({ workspace, key, args }) => {
-      const result = await commands.run(workspace, key, args);
+    async ({
+      workspace,
+      executable,
+      args,
+    }) => {
+      const result =
+        await commands.run(
+          workspace,
+          executable,
+          args,
+        );
 
       return {
         isError: !result.ok,
         content: [
           {
-            type: "text" as const,
-            text: formatRunCommandResult(result),
+            type:
+              "text" as const,
+            text:
+              formatRunCommandResult(
+                result,
+              ),
           },
         ],
       };

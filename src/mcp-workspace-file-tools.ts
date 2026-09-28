@@ -1,6 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { RunCommandService } from "./run-command.js";
 import type { WorkspaceFilesService } from "./workspace-files.js";
 import {
   fileToolError,
@@ -10,38 +9,8 @@ import {
 
 export function registerWorkspaceFileTools(
   server: McpServer,
-  commands: RunCommandService,
   files: WorkspaceFilesService,
 ): void {
-  server.registerTool(
-    "list_workspaces",
-    {
-      title: "List Junius Workspaces",
-      description:
-        "List registered Junius Workspaces, their roots, and the capability argument grants available in each Workspace. Use this before choosing a Workspace when the user refers to a project by name rather than by Workspace ID.",
-      inputSchema: z.object({}),
-      _meta: {
-        securitySchemes: [{ type: "noauth" }],
-      },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    },
-    async () => ({
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({
-            workspaces: commands.listWorkspaces(),
-          }),
-        },
-      ],
-    }),
-  );
-
   server.registerTool(
     "ls",
     {

@@ -86,10 +86,6 @@ process.exit(result === "pass" ? 0 : 1);
           root,
           "workspace-state.json",
         ),
-        JUNIUS_MACHINE_CAPABILITY_STATE_PATH: join(
-          root,
-          "machine-capability-state.json",
-        ),
         JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
         JUNIUS_WORKER_ROLLBACK_MS: "1000",
       },

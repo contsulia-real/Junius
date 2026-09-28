@@ -1,188 +1,171 @@
-import type {
-  Capability,
-  CapabilityExecution,
-  CapabilityExecutionContext,
-} from "./capabilities/types.js";
 import type { AuditStore } from "./audit-store.js";
-import { CapabilityRegistry } from "./capabilities/registry.js";
+import {
+  executePreparedProcess,
+} from "./process-executor.js";
+import type {
+  PreparedProcess,
+  ProcessExecution,
+  ProcessExecutionErrorCode,
+} from "./process-types.js";
 import {
   WorkspaceManager,
   type WorkspaceState,
 } from "./workspace-manager.js";
 
-export type InvocationAuthorizationErrorCode =
-  | "workspace_not_registered"
-  | "capability_not_registered"
-  | "capability_not_allowed"
-  | "arguments_not_allowed_by_workspace";
+const DEFAULT_TIMEOUT_MS =
+  30_000;
+const DEFAULT_MAX_OUTPUT_BYTES =
+  4 * 1024 * 1024;
 
-export type AuthorizedInvocation =
+export type CommandPreparation =
   | {
       readonly ok: true;
       readonly workspace: string;
-      readonly key: string;
-      readonly capability: Capability;
-      readonly context: CapabilityExecutionContext;
+      readonly executable: string;
+      readonly args: readonly string[];
+      readonly process: PreparedProcess;
     }
   | {
       readonly ok: false;
       readonly workspace: string;
-      readonly key: string;
-      readonly code: InvocationAuthorizationErrorCode;
+      readonly executable: string;
+      readonly args: readonly string[];
+      readonly code:
+        "workspace_not_registered";
       readonly message: string;
     };
-
-export function authorizeInvocation(
-  registry: CapabilityRegistry,
-  workspaceManager: WorkspaceManager,
-  workspace: string,
-  key: string,
-  args: readonly string[],
-): AuthorizedInvocation {
-  const profile = workspaceManager.get(workspace);
-
-  if (profile === undefined) {
-    return {
-      ok: false,
-      workspace,
-      key,
-      code: "workspace_not_registered",
-      message: `Workspace is not registered: ${workspace}`,
-    };
-  }
-
-  const capability = registry.get(key);
-
-  if (capability === undefined) {
-    return {
-      ok: false,
-      workspace,
-      key,
-      code: "capability_not_registered",
-      message: `Capability is not registered: ${key}`,
-    };
-  }
-
-  if (!profile.hasCapabilityGrant(key)) {
-    return {
-      ok: false,
-      workspace,
-      key,
-      code: "capability_not_allowed",
-      message: `Capability is not allowed by Workspace ${workspace}: ${key}`,
-    };
-  }
-
-  if (!profile.isInvocationAllowed(key, args)) {
-    return {
-      ok: false,
-      workspace,
-      key,
-      code: "arguments_not_allowed_by_workspace",
-      message: `Arguments are not allowed for capability ${key} by Workspace ${workspace}.`,
-    };
-  }
-
-  return {
-    ok: true,
-    workspace,
-    key,
-    capability,
-    context: {
-      cwd: profile.rootPath,
-    },
-  };
-}
 
 export type RunCommandResult =
   | {
       readonly ok: true;
       readonly workspace: string;
-      readonly key: string;
-      readonly execution: Extract<CapabilityExecution, { ok: true }>;
+      readonly executable: string;
+      readonly args: readonly string[];
+      readonly execution:
+        Extract<
+          ProcessExecution,
+          { ok: true }
+        >;
     }
   | {
       readonly ok: false;
       readonly workspace: string;
-      readonly key: string;
+      readonly executable: string;
+      readonly args: readonly string[];
       readonly code:
-        | InvocationAuthorizationErrorCode
-        | Extract<CapabilityExecution, { ok: false }>["code"];
+        | "workspace_not_registered"
+        | ProcessExecutionErrorCode;
       readonly message: string;
-      readonly execution?: Extract<CapabilityExecution, { ok: false }>;
+      readonly execution?:
+        Extract<
+          ProcessExecution,
+          { ok: false }
+        >;
     };
 
 export class RunCommandService {
   constructor(
-    private readonly registry: CapabilityRegistry,
-    private readonly workspaceManager: WorkspaceManager,
-    private readonly audit?: AuditStore,
+    private readonly workspaceManager:
+      WorkspaceManager,
+    private readonly audit?:
+      AuditStore,
+    private readonly timeoutMs =
+      DEFAULT_TIMEOUT_MS,
+    private readonly maxOutputBytes =
+      DEFAULT_MAX_OUTPUT_BYTES,
   ) {}
 
-  listWorkspaces(): readonly WorkspaceState[] {
+  listWorkspaces():
+    readonly WorkspaceState[] {
     return this.workspaceManager.list();
   }
 
-  authorize(
+  prepare(
     workspace: string,
-    key: string,
-    args: readonly string[],
-  ): AuthorizedInvocation {
-    return authorizeInvocation(
-      this.registry,
-      this.workspaceManager,
+    executable: string,
+    args:
+      readonly string[],
+  ): CommandPreparation {
+    const profile =
+      this.workspaceManager
+        .get(workspace);
+
+    if (
+      profile === undefined
+    ) {
+      return {
+        ok: false,
+        workspace,
+        executable,
+        args: [...args],
+        code:
+          "workspace_not_registered",
+        message:
+          `Workspace is not registered: ${workspace}`,
+      };
+    }
+
+    return {
+      ok: true,
       workspace,
-      key,
-      args,
-    );
+      executable,
+      args: [...args],
+      process: {
+        executable,
+        args: [...args],
+        cwd:
+          profile.rootPath,
+        env: {
+          ...process.env,
+        },
+        windowsHide: true,
+      },
+    };
   }
 
   async run(
     workspace: string,
-    key: string,
-    args: readonly string[],
+    executable: string,
+    args:
+      readonly string[],
   ): Promise<RunCommandResult> {
-    const startedAt = performance.now();
-    const capability =
-      this.registry.get(key);
-    const auditArgs =
-      this.#auditArguments(
-        capability,
-        args,
-      );
-    const authorized =
-      this.authorize(
+    const startedAt =
+      performance.now();
+    const prepared =
+      this.prepare(
         workspace,
-        key,
+        executable,
         args,
       );
 
-    if (!authorized.ok) {
+    if (!prepared.ok) {
       this.audit?.record({
         category: "command",
         action: "run_command",
         status: "failed",
         workspace,
-        subject: key,
-        summary: authorized.code,
+        subject: executable,
+        summary:
+          prepared.code,
         durationMs:
           performance.now() -
           startedAt,
         metadata: {
-          argCount: args.length,
-          ...(auditArgs === undefined
-            ? {}
-            : { args: auditArgs }),
-          code: authorized.code,
+          argCount:
+            args.length,
+          code:
+            prepared.code,
         },
       });
-      return authorized;
+
+      return prepared;
     }
 
     const execution =
-      await authorized.capability.execute(
-        args,
-        authorized.context,
+      await executePreparedProcess(
+        prepared.process,
+        this.timeoutMs,
+        this.maxOutputBytes,
       );
 
     this.audit?.record({
@@ -193,17 +176,16 @@ export class RunCommandService {
           ? "succeeded"
           : "failed",
       workspace,
-      subject: key,
+      subject: executable,
       summary:
         execution.ok
-          ? "Capability execution succeeded."
+          ? "Command execution succeeded."
           : execution.code,
-      durationMs: execution.durationMs,
+      durationMs:
+        execution.durationMs,
       metadata: {
-        argCount: args.length,
-        ...(auditArgs === undefined
-          ? {}
-          : { args: auditArgs }),
+        argCount:
+          args.length,
         exitCode:
           execution.exitCode ??
           -1,
@@ -211,14 +193,12 @@ export class RunCommandService {
           execution.stdout.length,
         stderrChars:
           execution.stderr.length,
-        ...(
-          execution.ok
-            ? {}
-            : {
-                code:
-                  execution.code,
-              }
-        ),
+        ...(execution.ok
+          ? {}
+          : {
+              code:
+                execution.code,
+            }),
       },
     });
 
@@ -226,9 +206,12 @@ export class RunCommandService {
       return {
         ok: false,
         workspace,
-        key,
-        code: execution.code,
-        message: execution.message,
+        executable,
+        args: [...args],
+        code:
+          execution.code,
+        message:
+          execution.message,
         execution,
       };
     }
@@ -236,27 +219,9 @@ export class RunCommandService {
     return {
       ok: true,
       workspace,
-      key,
+      executable,
+      args: [...args],
       execution,
     };
-  }
-
-  #auditArguments(
-    capability: Capability | undefined,
-    args: readonly string[],
-  ): readonly string[] | undefined {
-    if (capability === undefined) {
-      return undefined;
-    }
-
-    try {
-      return capability.auditArguments?.(
-        args,
-      ) ?? [...args];
-    } catch {
-      return args.map(
-        () => "[REDACTED]",
-      );
-    }
   }
 }

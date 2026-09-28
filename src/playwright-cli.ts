@@ -3,7 +3,7 @@ import {
   PlaywrightCliBrokerClient,
   PlaywrightCliBrokerError,
 } from "./playwright-cli-broker-client.js";
-import { resolveNodeExecutable } from "./capabilities/node-capability.js";
+import { resolveNodeExecutable } from "./node-executable.js";
 import { withoutEnvironmentVariables } from "./execution-environment.js";
 import {
   resolveBrowserStatePath,
@@ -55,7 +55,6 @@ export class PlaywrightCliService {
   readonly #sessions: PlaywrightSessionPool;
   #brokerError: string | undefined;
   #closing = false;
-  #enabled = true;
 
   constructor(
     environment: NodeJS.ProcessEnv = process.env,
@@ -105,34 +104,12 @@ export class PlaywrightCliService {
         : undefined;
   }
 
-  get enabled(): boolean {
-    return this.#enabled;
-  }
-
   get available(): boolean {
     return this.#launcher !== undefined;
   }
 
-  get active(): boolean {
-    return this.#enabled && this.available;
-  }
-
-  async setEnabled(enabled: boolean): Promise<void> {
-    if (this.#enabled === enabled) return;
-
-    this.#enabled = enabled;
-
-    if (enabled) {
-      return;
-    }
-
-    await this.#sessions.cleanupIdle();
-  }
-
   state(): {
-    readonly enabled: boolean;
     readonly available: boolean;
-    readonly active: boolean;
     readonly statePath: string;
     readonly transport: "broker" | "spawn";
     readonly brokerRunning: boolean;
@@ -149,9 +126,7 @@ export class PlaywrightCliService {
     };
   } {
     return {
-      enabled: this.enabled,
       available: this.available,
-      active: this.active,
       statePath: this.#statePath,
       transport:
         this.#broker?.available === true
@@ -187,7 +162,7 @@ export class PlaywrightCliService {
 
   async prewarm(): Promise<void> {
     if (
-      !this.active ||
+      !this.available ||
       this.#broker?.available !== true
     ) {
       return;
@@ -235,15 +210,8 @@ export class PlaywrightCliService {
 
     if (this.#closing && command !== "close") {
       throw new PlaywrightCliError(
-        "playwright_cli_disabled",
+        "playwright_cli_closing",
         "Browser computer use is shutting down.",
-      );
-    }
-
-    if (!this.#enabled && command !== "close") {
-      throw new PlaywrightCliError(
-        "playwright_cli_disabled",
-        "Browser computer use is disabled by the Junius machine capability policy.",
       );
     }
 
@@ -333,7 +301,7 @@ export class PlaywrightCliService {
       } else {
         this.#sessions.endActivity(
           session,
-          this.#enabled,
+          true,
         );
       }
     }

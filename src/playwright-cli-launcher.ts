@@ -14,7 +14,7 @@ import {
   join,
   resolve,
 } from "node:path";
-import { resolveNodeExecutable } from "./capabilities/node-capability.js";
+import { resolveNodeExecutable } from "./node-executable.js";
 
 export interface PlaywrightCliLauncher {
   readonly executable: string;

@@ -1,4 +1,3 @@
-import type { IncomingMessage } from "node:http";
 import type { WorkerSupervisor } from "./worker-supervisor.js";
 
 export interface McpToolCall {
@@ -63,63 +62,6 @@ function argumentString(
 ): string | undefined {
   const value = call.arguments[key];
   return typeof value === "string" ? value : fallback;
-}
-
-export function isConfigurationMutationRequest(
-  req: IncomingMessage,
-): boolean {
-  const method = req.method ?? "";
-  if (method !== "POST" && method !== "DELETE") {
-    return false;
-  }
-
-  const pathname = new URL(
-    req.url ?? "/",
-    "http://127.0.0.1",
-  ).pathname;
-  const rawSegments = pathname
-    .split("/")
-    .filter((segment) => segment.length > 0);
-  const segments =
-    rawSegments[0] === "api"
-      ? rawSegments.slice(1)
-      : rawSegments;
-
-  if (
-    segments[0] === "capabilities" &&
-    (
-      (method === "POST" &&
-        (segments.length === 1 ||
-          segments.length === 2)) ||
-      (method === "DELETE" &&
-        segments.length === 2)
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    method === "POST" &&
-    segments.length === 1 &&
-    segments[0] === "workspaces"
-  ) {
-    return true;
-  }
-
-  if (
-    method === "DELETE" &&
-    segments.length === 2 &&
-    segments[0] === "workspaces"
-  ) {
-    return true;
-  }
-
-  return (
-    (method === "POST" || method === "DELETE") &&
-    segments.length === 4 &&
-    segments[0] === "workspaces" &&
-    segments[2] === "grants"
-  );
 }
 
 export function routeKeyForTool(

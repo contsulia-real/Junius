@@ -313,7 +313,9 @@ const adminHttpServer = createHttpServer((req, res) => {
     return;
   }
 
-  proxyToActiveWorker(req, res, supervisor, "admin");
+  sendHostJson(res, 404, {
+    error: "not_found",
+  });
 });
 
 try {
@@ -338,7 +340,9 @@ try {
 }
 
 console.error(`Junius Host MCP: ${publicMcpOrigin}/mcp`);
-console.error(`Junius Host WebUI: ${publicAdminOrigin}/`);
+console.error(
+  `Junius Host Control: ${publicAdminOrigin}/__junius/host-health`,
+);
 console.error(
   `Junius Supervisor: ${publicAdminOrigin}/__junius/supervisor`,
 );

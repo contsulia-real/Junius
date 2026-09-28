@@ -1,584 +1,333 @@
 # Junius
 
-**Local capabilities for ChatGPT over MCP.**
+**Local computer control for ChatGPT over MCP.**
 
-Junius is a local MCP capability service for ChatGPT chat. It exposes controlled access to local files, processes, background jobs, browser automation, and Windows desktop interaction while keeping authorization and execution on the user's machine.
+Junius is a local MCP execution service designed for ChatGPT chat. It gives the calling assistant direct access to local Workspace files, local processes, background Jobs, browser automation, and Windows desktop interaction.
 
-ChatGPT provides the reasoning, planning, and conversational layer. Junius does not run its own autonomous agent loop: it provides the MCP tools, authorization model, local execution, process lifecycle, audit trail, and management surface that let ChatGPT act on the local environment.
+> **Junius is an execution service, not a policy engine.**
+>
+> Decisions about whether an operation is appropriate, destructive, or intended belong to the user and the calling assistant. Junius does not maintain a second command-authorization system.
 
-> [!WARNING]
-> Junius is **not an OS security sandbox**. An authorized executable runs with the permissions of the operating-system user that started Junius. Read the [Security boundary](#security-boundary) before granting capabilities to untrusted Workspaces.
+Junius is **not an operating-system sandbox**. Processes launched by Junius run with the permissions of the operating-system user that started Junius.
 
-Architecture: [docs/architecture.md](docs/architecture.md) · Security policy: [SECURITY.md](SECURITY.md)
+## MCP surface
 
-## What it exposes
+    list_workspaces()
+    create_workspace(id, root_path)
+    delete_workspace(id)
 
-- Workspace-scoped file access with bounded `ls`, `read`, `write`, `rg`, and transactional batch operations.
-- Explicitly authorized local process capabilities such as Node, pnpm, Git, and user-defined executables.
-- Background Jobs with persisted history and Windows crash containment.
-- Browser computer use through a bounded Playwright CLI adapter.
-- Windows desktop computer use through screenshots plus bounded mouse and keyboard actions.
-- A local-only WebUI for Workspaces, capabilities, Jobs, Audit, Browser, and Desktop state.
+    ls(workspace, ...)
+    read(workspace, ...)
+    write(workspace, ...)
+    workspace_apply(workspace, files, verify)
+    rg(workspace, ...)
+    workspace_batch(workspace, operations)
 
-Junius is currently developed and fully validated on Windows. Some process/file/browser paths are portable, but Windows desktop control and Windows Job Object crash containment are platform-specific.
+    run_command(workspace, executable, args)
+
+    start_job(workspace, executable, args)
+    get_job(job)
+    wait_job(job, timeout_ms)
+    read_job_output(job, stream, offset, limit)
+    cancel_job(job)
+
+    playwright_cli(session, command, args)
+
+    desktop(session, command, ...)
+
+There is no management Web UI. Workspace creation, removal, inspection, command execution, Jobs, Browser control, and Desktop control are intended to be driven through ChatGPT conversation.
 
 ## Requirements
 
+Core requirements:
+
+- Windows, macOS, or Linux for the Node service
 - Node.js 20+
 - pnpm 12.6.0
-- OpenAI Secure MCP Tunnel `tunnel-client` for connecting the local MCP endpoint to ChatGPT
-- `playwright-cli` / `@playwright/cli` for the Browser capability
-- Optional Windows Desktop capability: Python with the packages in [requirements-desktop.txt](requirements-desktop.txt)
+
+Browser automation additionally requires a compatible playwright-cli / @playwright/cli installation available to Junius.
+
+Windows Desktop Computer Use additionally requires Python and the packages listed in requirements-desktop.txt. Junius prefers the project-owned .venv beside its Desktop helper.
 
 ## Quick start
 
-```powershell
-git clone https://github.com/contsulia-real/Junius.git
-cd Junius
-pnpm install
-pnpm run check
-pnpm dev
-```
-
-For Windows Desktop computer use:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
-```
-
-Default local endpoints:
-
-- MCP: `http://127.0.0.1:8787/mcp`
-- Local WebUI: `http://127.0.0.1:8788/`
-- Local admin state: `http://127.0.0.1:8788/state`
+    pnpm install
+    pnpm dev
 
-To use Junius from ChatGPT, route only the MCP endpoint through OpenAI Secure MCP Tunnel (`tunnel-client`) and point the tunnel at `http://127.0.0.1:8787/mcp`. The management WebUI and admin API remain loopback-only and are not routed through the tunnel.
-
-Optional environment variables:
-
-- `JUNIUS_MCP_PORT`
-- `JUNIUS_ADMIN_PORT`
-- `JUNIUS_WORKSPACE_ID`
-- `JUNIUS_WORKSPACE_ROOT`
-- `JUNIUS_WORKSPACE_STATE_PATH`
-- `JUNIUS_MACHINE_CAPABILITY_STATE_PATH`
-- `JUNIUS_BROWSER_STATE_PATH`
-- `JUNIUS_DESKTOP_HELPER_PATH`
-- `JUNIUS_AUDIT_PATH`
-- `JUNIUS_AUDIT_MAX_ENTRIES`
-- `JUNIUS_AUDIT_MAX_AGE_MS`
+The Host binds locally to:
 
-`pnpm dev` and `pnpm start` are manual lifecycle commands. They enter a tiny live launcher (`scripts/host-launcher.mjs`) that prefers the previously validated bootstrap copy at `.junius/runtime/bootstrap/host-bootstrap.mjs`; only when no validated bootstrap exists yet does it run the live `scripts/host-bootstrap.mjs`. The bootstrap then selects which validated Host release to launch. Junius does not autonomously start or restart its own MCP service. The Host owns the public MCP/admin ports and runs the mutable capability-service implementation in supervised Worker processes. `pnpm start:direct` remains as a legacy/emergency direct entry and does not provide hot-swap or last-known-good startup protection. Its MCP HTTP entry still enforces the same exact loopback Host/Origin request guard as the supervised Host, so the emergency path does not bypass localhost browser-request protection.
+    MCP:          http://127.0.0.1:8787/mcp
+    Host control: http://127.0.0.1:8788/__junius/host-health
 
-## Host / Worker runtime
+Port 8788 is not a management UI. It exposes only local Host diagnostics such as health and supervisor state.
 
-The public service no longer runs directly inside the mutable Worker implementation:
+To use Junius from ChatGPT, expose only the MCP endpoint through the supported Secure MCP Tunnel flow and point the tunnel at:
 
-```text
-ChatGPT / WebUI
-  -> Junius Host (:8787 / :8788)
-  -> active Worker (random localhost ports, per-Worker private token)
-  -> MCP/admin implementation
-```
+    http://127.0.0.1:8787/mcp
 
-Each Worker gets a fresh 256-bit internal token at spawn time. The Host strips any client-supplied internal-token header and injects the correct token when proxying to the Worker. Private Worker MCP, admin, and health endpoints reject requests without that token, so random Worker ports cannot be used to bypass the Host boundary.
+Do not expose the Host-control endpoint.
 
-The Host itself is not run under `tsx watch`. It watches Worker-side source changes and performs a guarded reload sequence:
+## Chat-first Workspace management
 
-```text
-source change
--> pnpm run check
--> spawn candidate Worker
--> wait for ready IPC message
--> HTTP health check
--> atomically promote candidate
--> keep previous Worker during rollback/drain window
-```
+A Workspace is deliberately small:
 
-If source validation or candidate startup fails, the active Worker is unchanged. Full source validation uses independent pending transaction files keyed to each check invocation, so a Host-triggered validation and a manual `pnpm run check` can overlap without overwriting or deleting each other's begin state. A transaction still refuses to commit if the source fingerprint or runtime environment stamp changed after its own begin. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their owning Worker while their Host route is active; those routes have a 30-minute idle TTL, refreshed by requests, so abandoned MCP sessions cannot pin routing state forever. For modern sessionless MCP calls, the Host keeps resource affinity for Job IDs, named browser sessions, and active Desktop control sessions so hot swaps do not move process-local state to the wrong Worker. A successful Desktop `control_begin` binds `desktop:<session>` to the Worker that created the helper-side takeover scope; all later Desktop calls for that session stay on that Worker across promotion, and a successful `control_end` releases the binding. Desktop control bindings do not use an idle TTL because their lifetime is explicit; Worker exit removes the binding as the crash fallback. Resource affinity remains bounded elsewhere: browser bindings expire after 10 minutes of inactivity, and Jobs remain pinned indefinitely while running. When a Worker reports that a Job reached a terminal state, its result/output affinity first enters a 30-minute fallback retention window. After that Worker confirms the terminal history was persisted successfully, the Host releases the Job affinity immediately so later reads can route to any active Worker and lazy-load the shared history. Unbound terminal/persisted Job race hints also expire after the same 30-minute fallback window. Retiring Workers are never reaped before the rollback window ends, and only the newest 16 exited Worker records are retained for diagnostics.
+    Workspace
+    = stable ID
+    + canonical local root path
 
-Admin configuration mutations are synchronized across every live Worker before the public admin response is allowed to succeed. The Worker that handled the mutation persists the new Workspace or machine-capability state first; the Host then asks every other active/retiring Worker to reload that shared state through a private authenticated endpoint. A Worker that cannot reload is quarantined and removed from routing instead of continuing with stale authorization. Configuration changes racing with candidate startup advance a Host-side epoch; a candidate that may have loaded an older snapshot is refreshed to the latest epoch before promotion. This keeps old MCP sessions and Browser/Desktop affinity routes subject to current grants and machine-level enablement.
+It has no command permissions, executable registration, or argument rules.
 
-Host-only implementation files are deliberately not hot-applied. Editing them marks the Host as requiring a restart; it does not restart the Host automatically. A restart is performed only when the operator explicitly stops/starts Junius. On the next manual `pnpm dev` / `pnpm start`, the launcher first selects the validated bootstrap copy when available. The bootstrap fingerprints the Host/Worker source plus its startup-control scripts, compares that fingerprint with the persisted validated release, and starts an unchanged validated release directly. A successful full `pnpm run check` records the exact source fingerprint, Node version, platform, and architecture. When changed source is later restarted with that same already-validated fingerprint, bootstrap reuses the full-check result instead of rerunning the test suite; otherwise it runs `pnpm run check` normally. In either case the source is snapshotted, fingerprint stability is rechecked, the candidate is started on the real Host path, and promotion still requires `/__junius/host-health` to succeed. A successful promotion atomically refreshes the validated bootstrap copy before advancing `.junius/runtime/current.json`; failed validation or candidate startup leaves both the previous bootstrap and previous last-known-good Host release intact. The newest three Host releases are retained under `.junius/runtime/releases`. Supervisor state is available locally at `/__junius/supervisor`, and health/supervisor responses expose the active `releaseId`. `package.json` and the tiny launcher remain the unavoidable manual-entry boundary for a `pnpm dev` command itself.
+Create a Workspace from ChatGPT:
 
-## Execution model
+    create_workspace(
+      id = "weave",
+      root_path = "C:\Projects\Weave"
+    )
 
-Junius exposes stable MCP tools:
+Inspect all Workspaces:
 
-```text
-list_workspaces()
-ls
-read
-write
-workspace_apply
-rg
-workspace_batch
-playwright_cli
-desktop
-start_job
-get_job
-wait_job
-read_job_output
-cancel_job
-run_command(workspace, key, args)
-```
+    list_workspaces()
 
-The execution path is:
+Remove a Workspace registration:
 
-```text
-ChatGPT
-  -> list_workspaces when project resolution is needed
-  -> run_command(workspace, key, args)
-  -> WorkspaceManager lookup by stable Workspace ID
-  -> that Workspace's argument grant
-  -> Machine Capability Registry
-  -> machine capability argument policy
-  -> ProcessCapability
-  -> spawn(executable, args, { shell: false, cwd: Workspace })
-```
+    delete_workspace(id = "weave")
 
-There is no global active Workspace. Multiple Workspaces can execute concurrently.
+delete_workspace removes only the Junius registration. It never deletes the directory or its files.
 
-Workspace-scoped process capabilities (`node`, `pnpm`, `git`, and user-defined custom process capabilities) require both a Workspace grant and the machine capability policy; the effective permission is their intersection. Browser and desktop are machine-scoped capabilities: they do not belong to a Workspace and are controlled by their persisted machine-level enablement plus runtime availability.
+Workspace registrations are persisted outside the repository.
 
-A Workspace ID is not a filesystem path. The model cannot provide an executable path or a raw shell command line.
+    Windows:
+    %LOCALAPPDATA%\Junius\workspace-state.json
 
-## Security boundary
+    Linux/macOS:
+    $XDG_STATE_HOME/Junius/workspace-state.json
+    or ~/.local/state/Junius/workspace-state.json
 
-Junius does **not** provide filesystem, network, registry, UI, token, or process-tree isolation.
+Override with JUNIUS_WORKSPACE_STATE_PATH.
 
-An authorized executable runs with the permissions of the Junius process. It can access anything the operating-system user account can access unless the executable itself applies additional restrictions.
+Legacy Workspace state containing older authorization fields is accepted during migration; those fields are ignored and new writes use the root-only schema.
 
-The current process adapter:
+## Command execution
 
-- uses a registry-owned executable path;
-- passes arguments as a vector with `shell: false`;
-- starts the process with the selected Workspace as `cwd`;
-- enforces machine-level argument policy;
-- enforces per-Workspace argument grants before launch;
-- applies timeout and captured-output limits.
+run_command launches any executable with any argument vector:
 
-Git receives an additional repository preflight before both synchronous execution and background Job startup. Junius requires repository metadata to be self-contained under the selected Workspace root, rejects `.git` symlink/junction/worktree indirection outside that root, rejects repository-local executable/config-extension settings such as credential helpers, SSH command overrides, filters, and includes, and validates configured fetch/push remote URLs before network operations. Git system/global config and system attributes are disabled during repository operations, inherited `GIT_*` variables and `SSH_ASKPASS*` are stripped case-insensitively, and Junius then injects only its own non-interactive Git environment. The only global Git values imported separately are `user.name` and `user.email`; repository-local identity still takes precedence.
-
-Workspace reads reject links that resolve outside the Workspace. Workspace writes also reject symbolic/junction parent aliases even when they ultimately resolve back inside the Workspace, and transactional commits revalidate the write parent immediately before installation to narrow path-replacement races. The root `.junius/` control directory and `.git` metadata at any depth are reserved from Workspace file tools; Git metadata is accessed only through the Git capability. Production also protects the effective Junius runtime root, Workspace-state file, machine-capability-state file, and Browser state/profile root when any of those configured paths fall inside a registered Workspace; `ls` hides them and `rg` excludes them before scanning. User-supplied `rg` globs are applied before Junius protection globs, so later user include rules cannot re-enable `.junius`, `.git`, or other protected paths.
-
-It also inherits the Junius host environment. Therefore an authorized project script can observe environment variables available to Junius.
-
-`pnpm run <script>` is explicitly an authorization to execute the Workspace's own package-script code. Junius constrains the pnpm command shape and script name, but it does not sandbox or freeze the contents of that script. A Workspace whose package scripts can be modified should therefore be treated as executable code, not as passive data.
-
-Synchronous ProcessCapability timeout and output-limit termination share the same process-termination primitive as Job Manager. On Windows, Junius invokes `%SystemRoot%\\System32\\taskkill.exe /PID <pid> /T /F` directly with `shell: false`, so the spawned process tree is terminated before the synchronous call returns. Other platforms currently use direct-child SIGTERM followed by SIGKILL fallback.
-
-The `Workspace` concept is therefore an authorization/routing boundary, not an OS access-control boundary.
-
-The public MCP listener is intentionally loopback-only and rejects hostile `Host` values, any present non-local browser `Origin`, and browser requests marked `Sec-Fetch-Site: cross-site` or `same-site`. Non-browser local clients may omit `Origin`; therefore processes already running on the same operating-system account are part of Junius's local trust boundary. Secure MCP Tunnel supplies the OpenAI-side private transport/authentication boundary, but Junius does not currently require an additional application-level bearer token on the loopback MCP endpoint. Sessionless and sessionful MCP request bodies are both capped at 16 MiB at the Host; the sessionful path enforces this while streaming rather than buffering the entire request.
-
-## Capabilities
-
-### custom process capabilities
-
-The local WebUI can create, edit, enable/disable, and delete user-defined Workspace-scoped process capabilities. A custom definition owns a stable key, description, absolute executable path, optional fixed argument vector, machine-level exact/prefix argument rules, environment policy, timeout, and output limit. The executable is always launched directly with `shell: false`; Junius never accepts a raw shell command string. Prefix rules must contain at least one argument. The WebUI can discover candidate executables from the Host's inherited `PATH`, but it does not expose arbitrary filesystem browsing; manual absolute paths remain supported.
-
-A custom capability is only `available` when its configured absolute executable currently exists as a file. It becomes `active` only when it is enabled and available, at which point it is registered in the live Capability Registry. Every Workspace still requires an explicit grant for that key, and each Workspace rule must be a subset of the custom machine policy. Environment inheritance is independently bounded: new definitions default to inheriting no Host variables, and may opt into all variables or a case-insensitive allowlist, then remove inherited names/prefixes and apply explicit overrides. Explicit values are passed directly to the child process and are never shell-expanded. Custom capabilities can also control how their argument vector is represented in Audit: record all arguments, redact the entire vector, or redact selected zero-based indexes. This affects only Audit representation, not authorization or execution. Deleting a custom capability unregisters it and removes its machine definition, but existing Workspace grants are intentionally retained as invalid historical rules so they can be reviewed or removed explicitly.
-
-Machine capability state files written by current Junius use version 3. Version 1 enablement-only files and version 2 custom-capability files are read transparently and are upgraded on the next save. Version 2 custom definitions retain their historical inherit-all environment behavior during migration; newly created version 3 definitions default to no inherited environment.
-
-### node
-
-The built-in `node` capability resolves Node directly from the inherited `PATH` in normal command-search order. Junius does not infer a Node version from the executable path and does not fall back to the Node binary that happened to launch Junius when `PATH` has no Node.
-
-The capability currently permits only:
-
-```text
-["--version"]
-["-p", "process.platform"]
-```
-
-JavaScript-based pnpm and Playwright launchers use the same PATH-resolved Node executable, so changing the Node selected by `PATH` takes effect on the next Worker start without changing Junius configuration.
-
-### pnpm
-
-Junius registers a `pnpm` capability when it can resolve a usable pnpm command from the inherited `PATH`. On Windows, a PATH-resolved `pnpm.cmd` shim is inspected only to reach the target it itself declares; Junius does not scan `PNPM_HOME`, `npm_execpath`, Corepack directories, or neighboring install trees.
-
-Machine-level pnpm policy permits:
-
-```text
-["--version"]
-["typecheck"]
-["lint"]
-["test"]
-["build"]
-["install", ...allowedArgs]
-["update", ...packagesAndOptions]
-["self-update", optionalVersion]
-["add", packageOrOption, ...packagesAndOptions]
-["run", "<script>"]
-["run", "<script>", "--", ...scriptArgs]
-```
-
-`install`, `update`, and `add` reject explicit global-package, working-directory, external state/configuration path, and broader-workspace selector forms such as `--global`, `--dir`, `--lockfile-dir`, `--store-dir`, `--state-dir`, `--userconfig`, `--filter`, and recursive/workspace-root selectors. `add` requires at least one following package/option token. `self-update` accepts either no version or one explicit version/tag. Arbitrary execution commands such as `exec` and `dlx` remain unavailable.
-
-pnpm runs directly in the selected Workspace. Junius does not add `--dir` indirection or a sandbox portal. The package-script body remains trusted Workspace code; the argument policy does not claim to sandbox what that script itself executes.
-
-### git
-
-Junius registers a `git` machine capability when it can resolve a usable Git executable from the inherited `PATH`, using normal command-search order and the first matching `git.exe`/`git`. It does not scan Program Files or use a separate Git-path fallback. Git is exposed through the existing `run_command(workspace, key, args)` path, not through a separate MCP tool.
-
-The machine policy covers normal repository-development and synchronization operations:
-
-```text
---version
-init [-b <branch>]
-status
-add
-commit -m <message>
-config --get user.name/user.email
-config --local user.name/user.email <value>
-branch
-remote
-fetch
-push [--force|--force-with-lease] [-u|--set-upstream] <remote> <branch>
-rev-parse
-diff
-log
-ls-files
-```
-
-The policy intentionally does not expose destructive forms such as `git clean`, `git reset --hard`, arbitrary Git aliases, mirror pushes, or remote branch deletion.
-
-A Workspace must still explicitly grant the Git argument ranges it needs. Machine capability policy and Workspace grants remain an intersection.
-
-Before a repository command is prepared, the Git capability also performs a repository-local safety preflight. Git metadata must be self-contained under the Workspace root rather than borrowed from a parent repository or redirected through a `.git` symlink/worktree file. Local Git config is restricted to a small non-executable whitelist covering core repository metadata, user identity, remote URLs/refspecs, and branch tracking. Repository-local executable configuration such as credential helpers, SSH commands, filters, diff/textconv commands, includes, or other unrecognized keys is rejected. `fetch`/`push` additionally require the selected repository-local remote URL to use the bounded HTTP(S)/SSH forms accepted by Junius. Git system/global config and system attributes are disabled during repository operations, inherited `GIT_*` and `SSH_ASKPASS*` injection variables are stripped case-insensitively, and Junius then injects its own non-interactive Git environment. Global `user.name` / `user.email` are resolved separately as safe identity-only fallbacks, while repository-local identity overrides them. On Windows, HTTP(S) fetch/push uses Git's OpenSSL backend to avoid Schannel revocation-service availability becoming a hard dependency. Git Credential Manager is enabled only when the selected Git installation contains its executable, remains non-interactive, and is injected by Junius rather than accepted from repository/global config. Git is launched with `--no-pager`, hooks redirected to Junius's disabled-hooks directory, and commit signing disabled for this capability.
-
-For an explicit local-source-of-truth synchronization, Junius can authorize a flow such as:
-
-```text
-git init -b main
-git add -A
-git commit -m "..."
-git remote add origin <url>
-git push --force --set-upstream origin main
-```
-
-## Workspace discovery
-
-`list_workspaces()` returns registered Workspace IDs, canonical roots, and each Workspace's capability grants.
-
-When the user names a project rather than an internal Workspace ID, ChatGPT should use `list_workspaces` first and then call `run_command` with the resolved Workspace ID.
-
-## Per-Workspace argument grants
-
-A grant is argument-scoped rather than a simple boolean.
+    run_command(
+      workspace,
+      executable,
+      args
+    )
 
 Example:
 
-```text
-default:
-  pnpm --version
-  pnpm run check
+    run_command(
+      workspace = "default",
+      executable = "git",
+      args = ["status", "--short", "--branch"]
+    )
 
-weave:
-  pnpm --version
-  pnpm run typecheck
-```
+Junius does not require executables to be registered first and does not apply an argument allowlist.
 
-Even though the machine-level pnpm capability understands `run <script>`, `weave` cannot run `pnpm run check` unless that argument shape is explicitly granted to `weave`.
+The selected Workspace determines the child process working directory:
 
-Grant rules support:
+    cwd = Workspace root
 
-- `exact`: the complete argument vector must match.
-- `prefix`: the configured prefix must match; trailing arguments are permitted.
+Execution uses direct process spawning with shell disabled:
 
-A Workspace grant can only narrow a machine capability. It cannot expand the machine-level argument policy.
+    child_process.spawn(executable, args, {
+      cwd,
+      shell: false
+    })
 
-## Local admin
+If shell semantics are required, the caller can explicitly launch a shell executable such as cmd.exe, PowerShell, or /bin/sh and provide that shell's arguments. Junius does not parse a command for safety or intent.
 
-Inspect all registered Workspaces and machine capabilities:
+Synchronous execution retains runtime engineering bounds:
 
-```powershell
-$state = Invoke-RestMethod http://127.0.0.1:8788/state
-$state | ConvertTo-Json -Depth 20
-```
+- bounded captured output;
+- bounded execution time;
+- stdout/stderr and exit diagnostics;
+- process-tree termination on forced stop;
+- Windows descendant termination through taskkill /T /F.
 
-Mutation requests require the current local admin token returned by `/state`. The browser WebUI adds it automatically. For direct PowerShell calls:
+These are execution-integrity controls, not command-authorization rules.
 
-```powershell
-$headers = @{
-  "X-Junius-Admin-Token" = $state.adminToken
-}
-```
+## Background Jobs
 
-Register a Workspace:
+Long-running commands use the same executable model:
 
-```powershell
-$body = @{
-  id = "weave"
-  rootPath = "C:\\Projects\\Weave"
-} | ConvertTo-Json
+    start_job(workspace, executable, args)
 
-Invoke-RestMethod `
-  -Method Post `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body $body `
-  http://127.0.0.1:8788/workspaces
-```
+The returned Job ID is used with get_job, wait_job, read_job_output, and cancel_job.
 
-Grant selected pnpm arguments:
+Jobs preserve:
 
-```powershell
-$body = @{
-  arguments = @(
-    @{ mode = "exact"; args = @("--version") }
-    @{ mode = "exact"; args = @("run", "typecheck") }
-  )
-} | ConvertTo-Json -Depth 5
+- bounded captured stdout/stderr;
+- persistent terminal history;
+- cancellation;
+- Worker ownership and affinity while running;
+- Windows Job Object crash containment through the guardian path;
+- interrupted-job recovery when a Worker or Host disappears.
 
-Invoke-RestMethod `
-  -Method Post `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body $body `
-  http://127.0.0.1:8788/workspaces/weave/grants/pnpm
-```
-
-Revoke one capability grant:
-
-```powershell
-Invoke-RestMethod -Method Delete `
-  -Headers $headers `
-  http://127.0.0.1:8788/workspaces/weave/grants/pnpm
-```
-
-Remove a Workspace:
-
-```powershell
-Invoke-RestMethod -Method Delete `
-  -Headers $headers `
-  http://127.0.0.1:8788/workspaces/weave
-```
-
-The admin server validates its configured localhost Host header, rejects cross-origin mutation requests, requires the per-process admin token for mutations, and requires application/json for JSON request bodies. Admin responses are `no-store`, `nosniff`, deny framing/referrers, and use a restrictive same-origin CSP. `/api/state` omits the mutation token; only same-origin WebUI state at `/state` carries it. The WebUI remains local-only and is not exposed through the Secure MCP Tunnel.
-
-## Workspace state persistence
-
-Workspace registration and per-Workspace grants are persisted outside the repository.
-
-Default Windows location:
-
-```text
-%LOCALAPPDATA%\Junius\workspace-state.json
-```
-
-Override it with:
-
-```text
-JUNIUS_WORKSPACE_STATE_PATH
-```
-
-The state file is internal, versioned Junius state rather than a public configuration contract.
-
-Current shape:
-
-```json
-{
-  "version": 1,
-  "workspaces": [
-    {
-      "id": "example",
-      "rootPath": "C:\\path\\to\\project",
-      "grants": []
-    }
-  ]
-}
-```
-
-Startup behavior:
-
-- If the state file exists, Junius restores Workspace IDs, roots, and grants.
-- If it does not exist, Junius creates the configured initial Workspace and writes the first state file.
-- An invalid existing state file fails startup rather than silently discarding authorization state.
-- Workspace registration/removal and grant changes are written immediately.
-- Writes are serialized so concurrent admin changes do not race.
-
-## Current direction
-
-Junius remains a general local MCP capability service. The current file/process tools are part of the capability surface, not the boundary of the project.
-
-The local WebUI Dashboard v1 is implemented and locally validated.
-
-Machine Capability v1 is implemented and locally validated.
-
-Authorization UX v1 is implemented and locally validated.
-
-Desktop Computer Use v1 is implemented and locally validated with screenshot-based perception plus bounded mouse/keyboard control.
-
-OS-level sandboxing is not part of the current execution implementation.
-
-## Verified end-to-end execution
-
-The authorization-controlled direct execution path has been verified through ChatGPT against two registered Workspaces.
-
-Observed black-box result:
-
-- Junius Workspace: `pnpm run check` completed with exit code `0`; TypeScript checking and the project test suite completed successfully.
-- Weave Workspace: `pnpm run typecheck` reached the project's TypeScript compiler and returned exit code `2` with a real project compilation diagnostic.
-
-This verifies that Workspace discovery/routing, per-Workspace pnpm grants, direct `ProcessCapability` execution, working-directory selection, and stdout/stderr/exit-code propagation operate through the real MCP path.
-
-The Weave compiler failure is project-level output, not a Junius execution-layer failure.
-
-
+Current Job history writes use the executable-oriented v2 schema. Historical v1 records that stored a command key are still read and normalized.
 
 ## Workspace file tools
 
-Junius exposes four built-in Workspace file operations:
+Built-in file tools are intentionally different from process execution. They use Workspace-relative paths and apply their own path-containment implementation.
 
-```text
-ls
-read
-write
-rg
-```
+Important properties include:
 
-- `ls` lists Workspace-relative directory entries with bounded recursion.
-- `read` reads UTF-8 text files with optional line ranges.
-- `write` creates, replaces, or exact-text edits UTF-8 files through the transactional multi-file commit path; no version token or prior `read` is required.
-- `rg` searches with ripgrep using Junius-controlled arguments and a Workspace-scoped target.
+- absolute paths and .. traversal are rejected;
+- reads do not follow links outside the Workspace;
+- writes reject symbolic-link/junction parent aliases;
+- transactional multi-file writes stage, commit, and attempt reverse rollback on commit failure;
+- write parents are revalidated around commit to narrow path-replacement races;
+- the .junius control directory is reserved;
+- .git metadata is reserved from generic Workspace file tools;
+- configured Junius runtime/state and Browser profile paths are protected if they fall inside a Workspace;
+- rg cannot use later include globs to re-enable protected paths.
 
-The built-in file tools reject absolute paths, `..` traversal, and existing paths that canonicalize outside the registered Workspace. Reads may follow a link only when its canonical target remains inside the Workspace. Writes do not traverse symbolic-link/junction parent aliases at all: new/existing write parents are canonicalized after directory creation and revalidated again immediately before transactional commit. This narrows filesystem TOCTOU/link-escape windows without claiming OS-level `openat`/handle-based atomic path confinement. This is a boundary implemented by the file tools themselves; it does not turn `run_command` into a sandbox.
+These checks apply only to Junius's built-in file tools. They do not restrict an executable launched by run_command or start_job.
 
-The `rg` tool requires a usable `rg` executable on the Junius process PATH.
+## Browser Computer Use
 
-## Verified Workspace file tools
+playwright_cli is a bounded adapter over Playwright CLI.
 
-The built-in Workspace file tools have passed real black-box ChatGPT validation.
+It supports the browser workflow needed by ChatGPT: navigation, snapshots, element-reference interaction, keyboard/mouse actions, tabs, dialogs, and session lifecycle. Arbitrary JavaScript/eval, CDP, request interception, and raw storage access are not exposed by this adapter.
 
-Verified behavior:
+Named Browser sessions are Worker-affined across hot promotion. Idle sessions are bounded and cleaned up independently.
 
-- `ls` resolved the Junius project by name and listed its directory structure.
-- `read` read `package.json` and returned the project's scripts.
-- `rg` located all references to `WorkspaceFilesService` with file/position information.
-- `write` created a new root-level text file without requiring a prior read, SHA, revision, or version token.
-- `write` then performed an exact-text edit that changed only the requested line.
-- The same natural-language workflow did not require the user to provide a Workspace ID, capability key, raw tool call, or filesystem path outside the project context.
-- A request to read the parent directory of the registered Workspace was rejected by the built-in file-tool path boundary.
-- Multi-Workspace command routing continued to work for Junius and Weave.
+Browser profile data is persistent so normal authenticated browser sessions can survive between calls.
 
-This validates the intended ChatGPT-to-Junius MCP interaction model for the first file/process capability set.
+## Windows Desktop Computer Use
 
+Desktop perception is screenshot-based. Junius can enumerate top-level native windows, capture the screen or one window, focus a window, perform coordinate mouse actions, send keyboard actions and macros, read/write Unicode clipboard text, and type text directly where supported.
 
+Desktop tasks have an explicit control lifecycle:
 
-## Job Manager
+    control_begin(session)
+    → desktop actions
+    → control_end(session)
 
-Long-running local processes use the Job Manager instead of blocking `run_command`.
+The same session must be used for the whole task.
 
-Stable MCP tools:
+While at least one Desktop control scope is active, Junius shows a top-center local disclosure:
 
-```text
-start_job
-get_job
-wait_job
-read_job_output
-cancel_job
-```
+    ChatGPT 正通过 Junius 操作电脑
 
-`start_job` uses the same Workspace capability and argument authorization as `run_command`. Only process-backed capabilities can be started as jobs.
+Four click-through topmost edge windows provide the breathing-light effect. Top and bottom edges own the corner pixels; left and right edges exclude the corner thickness so alpha does not overlap.
 
-A job keeps running under the Worker that created it until it exits or is cancelled. `get_job` returns current status, payload PID, exit information, and captured-output sizes. `wait_job` waits for up to 60 seconds per call. `read_job_output` reads stdout or stderr with an offset cursor. On Windows, `start_job` does not return until a Junius guardian has established a `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job Object and confirmed that the payload is contained by it.
+The disclosure remains visible for the entire control scope, not for an inactivity timeout. Helper or Worker exit destroys the native windows as the crash fallback.
 
-Captured stdout and stderr are bounded to 4 Mi characters per stream. The job itself continues running if capture is truncated.
+Desktop sessions are Worker-affined until successful control_end, so hot Worker promotion cannot split the visible takeover lifecycle from the Worker performing the actions.
 
-`cancel_job` performs best-effort termination. On Windows Junius invokes `taskkill.exe /T /F` directly with `shell: false` to terminate the target process tree. Other platforms currently terminate the direct child with SIGTERM and then SIGKILL if necessary.
+## Host / Worker architecture
 
-Running Job control remains process-local and Junius deliberately does not reattach to a naked PID after Worker/Host loss. Before payload launch, Job Manager persists a small owner-scoped running marker. On Windows, a separate guardian owns the kill-on-close Job Object and monitors both the Worker and Host process handles; loss of either causes the guardian to close the Job Object and Windows terminates the contained payload tree. When a Worker exits, the Host synchronously converts only that Worker's remaining markers to terminal `interrupted` records before releasing its routing affinity. On full Host startup, any markers left by the previous Host instance are recovered before the first Worker starts. This records `message: worker_or_host_lost` without guessing that a reused PID still belongs to the old Job.
+Junius uses a stable Host plus replaceable Workers:
 
-Terminal Job history is persisted by default under `.junius/runtime/jobs/<job-id>/` (or under `<JUNIUS_RUNTIME_ROOT>/jobs/<job-id>/` when the runtime root is overridden) with separate `meta.json`, `stdout.txt`, and `stderr.txt` files. A later Worker or manually restarted Junius instance can still `get_job`, `wait_job`, `read_job_output`, list, or idempotently `cancel_job` for completed, cancelled, failed, or interrupted historical Jobs. Normal Worker shutdown still cancels running Jobs and waits for terminal history to flush before exit. History retention is opt-in: by default Junius does not automatically delete terminal history. `JUNIUS_JOB_HISTORY_MAX_ENTRIES` and `JUNIUS_JOB_HISTORY_MAX_AGE_MS` enable explicit count/age pruning; Admin `/state` and the WebUI expose the current entry count, captured-output size, and active retention policy. The hot metadata cache is bounded to 256 entries so unlimited on-disk history does not become unlimited resident memory.
+    ChatGPT
+       |
+       v
+    127.0.0.1:8787
+       |
+      Host
+       |
+       +--> active Worker
+       |
+       +--> retiring Worker(s) while affinity/in-flight work drains
 
-Job Manager v1 is implemented and black-box verified through ChatGPT.
+The Host owns public routing. Workers listen on random loopback ports and require a private 256-bit token injected by the Host.
 
+Source hot reload follows:
 
-## Verified Job Manager
+    source change
+    → full validation
+    → spawn candidate Worker
+    → ready IPC
+    → private health check
+    → promote candidate
+    → retain previous Worker for rollback/drain
 
-Job Manager v1 has passed real black-box ChatGPT validation.
+Failed validation or failed candidate startup leaves the active Worker unchanged. A newly promoted Worker that exits during the rollback window can fall back to the previous live Worker.
 
-Observed workflow:
+### Resource affinity
 
-```text
-natural-language request
--> start background Junius project check
--> inspect job status
--> read captured output
--> wait for completion
--> report final result
-```
+Process-local resources stay with their owning Worker:
 
-The verified job completed with status `succeeded` and exit code `0`. The background command executed the Junius full check:
+- MCP session IDs retain their owning Worker while the route is active;
+- running Jobs retain the Worker that created them;
+- named Browser sessions retain their Worker until close or idle expiry;
+- Desktop control sessions retain their Worker from control_begin through successful control_end.
 
-```text
-node scripts/source-validation.mjs begin && pnpm check:bootstrap && pnpm typecheck && pnpm test && node scripts/source-validation.mjs commit
-```
+Workspace mutation is shared persistent configuration.
 
-The current full check covers the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC, owner-scoped interrupted recovery, Windows Job Object crash containment, persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, concurrent source-validation transactions, Workspace root canonicalization, and screenshot-only Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+A successful create_workspace or delete_workspace response is buffered by the Host until every other live Worker has reloaded the persisted Workspace state. A Worker that cannot reload is quarantined rather than continuing with stale registration state.
 
-The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
+## Last-known-good startup
 
+pnpm dev and pnpm start enter scripts/host-launcher.mjs.
 
-## Browser capability
+The launcher prefers the last validated bootstrap copy. The bootstrap fingerprints source/runtime control inputs and uses full validation before advancing the last-known-good release.
 
-Junius uses the locally installed `playwright-cli` as its browser execution layer. It does not reimplement Playwright through a second browser framework.
+Failed validation or failed startup leaves the previous validated release intact.
 
-The MCP surface adds one thin tool:
+The newest three Host releases are retained under:
 
-```text
-playwright_cli
-```
+    .junius/runtime/releases
 
-The tool accepts a named browser session, one whitelisted `playwright-cli` command, and that command's validated arguments.
+Host-only changes require a manual Junius restart rather than an autonomous self-restart.
 
-The current allowlist covers ordinary browser navigation and interaction, including navigation, snapshots, ref-based element actions, keyboard/mouse input, dialogs, tabs, and close. It intentionally does not expose arbitrary evaluation, CDP attachment, storage mutation, request interception, or arbitrary CLI commands.
+## Audit
 
-Browser sessions are named, headed, and persistent by default. Runtime browser state lives in Junius's own state directory rather than a project Workspace or the user's normal browser profile. The `playwright-cli` command itself is discovered from inherited `PATH`; Junius does not use a separate executable override or scan package-manager installation trees.
+Audit is observational, not an authorization layer.
 
-For compatible `@playwright/cli` JavaScript installations, each Worker prewarms a persistent Node broker after the Worker becomes ready, without opening a browser window. The broker loads the installed CLI's own `program` client once and reuses it for later commands while the Playwright-managed browser daemon/session remains authoritative. Junius discovers the local CLI's actual program-module specifier from its installed entry file and resolves pnpm links through the entry's real path, so it follows the locally installed CLI version rather than hard-coding one Playwright internal path. Initialization incompatibility disables the broker for that Worker and Browser falls back to the existing one-process-per-command CLI transport. A broker that was already ready but later times out, crashes, exceeds its transport output limit, or suffers a pipe/protocol failure is treated as recoverable: the current command falls back to spawn and the next browser command can rebuild a fresh broker.
+It stores bounded metadata such as category/action/status, Workspace, executable identity, argument count, exit code, output sizes, durations, and Browser/Desktop action metadata.
 
-On the current Windows development machine, the verified broker path reduced repeated `snapshot` calls from roughly 0.36–0.60 s of local execution to 13–15 ms, and `tab-list` from roughly 0.40–0.65 s to 17 ms. Browser `open` still includes the cost of starting/navigating the headed browser and therefore remains much heavier than later commands.
+It intentionally does not copy:
 
-Browser is machine-scoped. Its persisted `enabled` preference combines with runtime `available` state to produce `active`; it does not use Workspace grants. The Host keeps a named browser session on the Worker that owns it across hot swaps and releases that affinity when the session is closed. Browser lifecycle is bounded at both layers: Host affinity expires after 10 idle minutes, while each Worker also tracks at most 32 named browser sessions and automatically executes `close` after 10 idle minutes. Activity refreshes the Worker timer, in-flight commands are never closed mid-command, and Worker shutdown waits for pending session cleanup. Disabling the Browser machine capability rejects new Browser work immediately, closes idle tracked sessions during the disable operation, and closes any session that was already in-flight as soon as that command finishes; re-enabling remains supported. The WebUI exposes current session count, idle TTL, limit, and any cleanup error. Closing or idle-expiring a session intentionally preserves playwright-cli's persistent profile data, including login state; Junius does not automatically delete those profiles.
+- command stdout/stderr contents;
+- raw arbitrary command argument vectors;
+- file contents or edit text;
+- screenshots;
+- Browser/Desktop typed text;
+- clipboard text.
 
-## Activity Audit
+Browser navigation audit strips query/hash.
 
-Junius keeps a unified, bounded local activity history for user-visible execution and configuration changes. The WebUI exposes this as **活动记录**, with local filtering by Workspace, category, status, and free-text search across operation/object/summary/metadata fields. Each event stays compact by default and can be expanded to inspect its event ID, timestamp, scope, duration, and already-sanitized metadata. Audit currently covers synchronous capability execution, Job start/terminal/cancel, Workspace writes and `workspace_apply`, Browser and Desktop MCP actions, Workspace registration/removal, grant changes, and machine-capability create/edit/remove/enable/disable.
+Audit persistence is best-effort and must not change the result of the underlying operation.
 
-Audit is observational and best-effort: recording is not part of authorization and an Audit persistence failure does not fail or roll back the user operation. Each Worker appends independent event files into the shared Audit directory rather than rewriting one shared log, so active and retiring Workers can safely record during hot swaps. Recent events are also kept in bounded memory for immediate visibility. By default Junius retains at most 1000 events for at most 7 days; `JUNIUS_AUDIT_MAX_ENTRIES` and `JUNIUS_AUDIT_MAX_AGE_MS` override those limits, while `JUNIUS_AUDIT_PATH` overrides the storage directory. The effective Audit directory is protected from generic Workspace file tools.
+## Security boundary
 
-Audit intentionally stores summaries rather than captured content. Process stdout/stderr are represented only by sizes; Workspace writes record paths and create/edit metadata, not file contents or edit text; Browser fill/type text and Desktop text input are redacted; Browser navigation strips URL query/hash; screenshots and page/desktop content are not copied into Audit; custom capability environment-variable values never enter Audit. Custom capabilities can additionally redact all argv values or selected argv indexes.
+Junius intentionally does not decide whether a requested local command is safe, destructive, appropriate, or intended.
 
-## Latency tracing
+The intended decision chain is:
 
-For modern MCP calls, Junius assigns a Host trace ID and the Worker reports its own handler duration in response metadata. The Host keeps the newest 64 completed traces in memory and exposes them at `/__junius/supervisor`. Each trace includes the tool name, Worker ID, HTTP status, total Host-observed duration, Worker duration, and derived proxy/transport overhead. Tracing does not rewrite tool result bodies or force streaming responses into an additional buffering layer.
+    User
+      ↓
+    ChatGPT / calling assistant
+      ↓
+    Junius execution
 
-## Desktop Computer Use
+Any executable launched through run_command or start_job has the operating-system permissions of the user running Junius.
 
-Junius exposes Windows desktop automation through the stable `desktop` MCP tool.
+A process can therefore access resources outside its selected Workspace if that operating-system user can access them.
 
-Desktop perception is screenshot-only. The tool can list top-level native windows, capture the full screen or one native window, focus a top-level window, and perform bounded coordinate mouse / keyboard / text input. Keyboard sequences can be sent with `key_macro` in one local operation; any key pressed down by that macro and not explicitly released is released before the macro returns, including on failure. Desktop control is task-scoped rather than action-scoped. A caller must open a control scope with `control_begin` before the first desktop action and close the same named session with `control_end` before the task finishes, whether it succeeds, cannot be completed, or ends in an error. For that entire scope Junius shows a local topmost, click-through banner reading **“ChatGPT 正通过 Junius 操作电脑”** at the top center of the virtual desktop. Four thin topmost edge windows animate their opacity as a breathing-light effect. The top and bottom edges own the four corners; the left and right edges start below the top edge and stop above the bottom edge so layered transparency never overlaps at a corner. The indicator is intentionally visible in screenshots as well as on the physical display so its presence can be verified during black-box testing. If the indicator windows cannot be created, shown, or hidden when the scope closes, the lifecycle call fails instead of silently losing disclosure.
+The Workspace is:
 
-When a window handle is supplied for a screenshot or mouse action, coordinates are window-relative and must remain inside that window's rectangle. Without a handle, screenshot and mouse coordinates are screen-relative. Junius does not maintain semantic element refs or inspect application accessibility trees.
+    cwd + built-in file-tool root
 
-Direct `type` input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, but some applications reject injected Unicode input. Junius therefore also exposes explicit Unicode-text `clipboard_read` / `clipboard_write` primitives; callers can combine `clipboard_write` with a `key_macro` such as Ctrl+V when paste semantics are more reliable. Clipboard contents and Desktop text remain redacted from Audit.
+It is not a process sandbox, filesystem jail for launched executables, network isolation, registry isolation, or credential isolation.
 
-The Python helper runs as a persistent JSONL server inside each Worker. Desktop Computer Use is bound to Junius's project-local `.venv` (`.venv/Scripts/python.exe` on Windows) rather than an arbitrary Python discovered from `PATH`; the helper script itself is the Junius-owned `python/desktop_helper.py`. The helper uses Win32 APIs for top-level window metadata/focus and PyAutoGUI for screenshots and coordinate input. After a Worker becomes ready, Junius opportunistically prewarms both the Desktop helper and the Playwright broker in the background. If the Desktop helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
+The MCP and Host-control listeners remain bound to loopback. Worker private endpoints require their internal token. If the MCP endpoint is tunneled to ChatGPT, only that endpoint should be exposed.
 
-Desktop has no semantic element refs, but its named `control_begin` / `control_end` session is a user-disclosure lifecycle scope owned by the helper process; a helper/Worker exit destroys the native indicator windows automatically. Desktop is machine-scoped like browser. It has persisted `enabled`, runtime `available`, and derived `active` state and does not use Workspace grants.
+See SECURITY.md and docs/architecture.md for more detail.
 
-## Workspace batching and transactional writes
+## Validation
 
-`workspace_batch` executes up to 16 independent `ls`, `read`, and `rg` operations in one MCP round trip. The operations run concurrently, expected Workspace-file failures are isolated per operation, and per-result/aggregate response budgets prevent one batch from returning unbounded data. Each sub-operation and the whole batch report `durationMs` so Junius can distinguish local execution time from external MCP round-trip latency.
+Run the complete project validation:
 
-`write` now uses the same transactional multi-file commit path used by `workspace_apply`: all targets are resolved and read in parallel, duplicate targets and size limits are checked, complete next-file contents are prepared in memory, and same-directory temporary files are fully written before any target replacement starts. Immediately before replacement, Junius rechecks existing target contents so an IDE or another process cannot silently change a file between validation and commit.
+    pnpm run check
 
-During commit, existing targets are renamed to temporary backups and prepared files are renamed into place. If a later replacement fails, Junius walks the staged set in reverse and attempts to restore the backups and remove newly created targets. This is a best-effort application-level transaction; Junius does not claim the filesystem provides one atomic commit across multiple files.
+This performs bootstrap syntax validation, TypeScript checking, the complete test suite, and source-validation fingerprint commit.
 
-`workspace_apply` combines that write phase with optional post-commit `ls`, `read`, and `rg` verification in the same MCP round trip. Verification operations are observational: their results are returned to the caller, but Junius does not infer success criteria or autonomously undo an otherwise successful commit.
+## License
 
+ISC.
