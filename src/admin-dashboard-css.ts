@@ -16,7 +16,7 @@ export const ADMIN_DASHBOARD_CSS = `
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 .shell { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
 .sidebar { background: var(--sidebar); border-right: 1px solid var(--border); padding: 24px 16px; display: flex; flex-direction: column; gap: 28px; }
 .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
@@ -73,8 +73,9 @@ h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spa
 .form-row label { display: grid; gap: 6px; min-width: 140px; }
 .form-row label.grow { flex: 1; min-width: 240px; }
 label span { color: var(--muted); font-size: 12px; }
-input, select { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 9px 10px; background: #11151c; color: var(--text); outline: none; }
-input:focus, select:focus { border-color: var(--accent); }
+input, select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 9px 10px; background: #11151c; color: var(--text); outline: none; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 92px; }
 .hint { color: var(--muted); font-size: 12px; margin: -8px 0 16px; }
 .detail-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .detail { padding: 14px; border-radius: 10px; background: var(--panel-2); }

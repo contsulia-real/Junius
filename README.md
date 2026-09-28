@@ -116,7 +116,7 @@ ChatGPT
 
 There is no global active Workspace. Multiple Workspaces can execute concurrently.
 
-Workspace-scoped process capabilities (`node`, `pnpm`, and `git`) require both a Workspace grant and the machine capability policy; the effective permission is their intersection. Browser and desktop are machine-scoped capabilities: they do not belong to a Workspace and are controlled by their persisted machine-level enablement plus runtime availability.
+Workspace-scoped process capabilities (`node`, `pnpm`, `git`, and user-defined custom process capabilities) require both a Workspace grant and the machine capability policy; the effective permission is their intersection. Browser and desktop are machine-scoped capabilities: they do not belong to a Workspace and are controlled by their persisted machine-level enablement plus runtime availability.
 
 A Workspace ID is not a filesystem path. The model cannot provide an executable path or a raw shell command line.
 
@@ -150,6 +150,14 @@ The `Workspace` concept is therefore an authorization/routing boundary, not an O
 The public MCP listener is intentionally loopback-only and rejects hostile `Host` values, any present non-local browser `Origin`, and browser requests marked `Sec-Fetch-Site: cross-site` or `same-site`. Non-browser local clients may omit `Origin`; therefore processes already running on the same operating-system account are part of Junius's local trust boundary. Secure MCP Tunnel supplies the OpenAI-side private transport/authentication boundary, but Junius does not currently require an additional application-level bearer token on the loopback MCP endpoint. Sessionless and sessionful MCP request bodies are both capped at 16 MiB at the Host; the sessionful path enforces this while streaming rather than buffering the entire request.
 
 ## Capabilities
+
+### custom process capabilities
+
+The local WebUI can create, edit, enable/disable, and delete user-defined Workspace-scoped process capabilities. A custom definition owns a stable key, description, absolute executable path, optional fixed argument vector, machine-level exact/prefix argument rules, timeout, and output limit. The executable is always launched directly with `shell: false`; Junius never accepts a raw shell command string. Prefix rules must contain at least one argument.
+
+A custom capability is only `available` when its configured absolute executable currently exists as a file. It becomes `active` only when it is enabled and available, at which point it is registered in the live Capability Registry. Every Workspace still requires an explicit grant for that key, and each Workspace rule must be a subset of the custom machine policy. Deleting a custom capability unregisters it and removes its machine definition, but existing Workspace grants are intentionally retained as invalid historical rules so they can be reviewed or removed explicitly.
+
+Machine capability state files written by current Junius use version 2. Version 1 files containing only built-in enablement are read transparently and are upgraded on the next save.
 
 ### node
 

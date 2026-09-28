@@ -1,34 +1,29 @@
 import {
-  createNodeCapability,
   resolveNodeExecutable,
 } from "./capabilities/node-capability.js";
 import {
-  createPnpmCapability,
-  resolvePnpmLauncher,
-} from "./capabilities/pnpm-capability.js";
-import {
-  createGitCapability,
-  resolveGitLauncher,
-} from "./capabilities/git-capability.js";
+  builtInMachineCapabilityStatus,
+  reconcileBuiltInMachineCapability,
+} from "./built-in-machine-capabilities.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
+import {
+  customCapabilityAvailable,
+  customCapabilityGrantCompatible,
+  customCapabilityPolicyLabels,
+  createCustomMachineCapability,
+  validateCustomMachineCapability,
+  type CustomMachineCapabilityDefinition,
+} from "./custom-machine-capability.js";
 import {
   MachineCapabilityStateStore,
   type MachineCapabilityPreferences,
 } from "./machine-capability-state-store.js";
-import {
-  PLAYWRIGHT_CLI_COMMANDS,
-  PlaywrightCliService,
-} from "./playwright-cli.js";
-import {
-  DESKTOP_COMMANDS,
-  DesktopComputerUseService,
-} from "./desktop-computer-use.js";
+
 import type { WorkspaceArgumentGrant } from "./workspace-profile.js";
 import {
   KNOWN_KEYS,
   workspaceGrantCompatibility,
   type MachineCapabilityKey,
-  type MachineCapabilityScope,
   type WorkspaceGrantCompatibility,
 } from "./machine-capability-policy.js";
 
@@ -37,61 +32,70 @@ export type {
   MachineCapabilityScope,
   WorkspaceGrantCompatibility,
 } from "./machine-capability-policy.js";
+export type {
+  MachineCapabilityServices,
+  MachineCapabilityStatus,
+} from "./machine-capability-types.js";
+import type {
+  MachineCapabilityServices,
+  MachineCapabilityStatus,
+} from "./machine-capability-types.js";
+export type {
+  CustomMachineCapabilityDefinition,
+} from "./custom-machine-capability.js";
 
-export interface MachineCapabilityStatus {
-  readonly key: MachineCapabilityKey;
-  readonly scope: MachineCapabilityScope;
-  readonly description: string;
-  readonly enabled: boolean;
-  readonly available: boolean;
-  readonly active: boolean;
-  readonly launcher?: {
-    readonly executable: string;
-    readonly fixedArgs: readonly string[];
-  };
-  readonly policy: readonly string[];
-}
-
-export interface MachineCapabilityServices {
-  readonly browser: PlaywrightCliService;
-  readonly desktop: DesktopComputerUseService;
+function isBuiltInKey(
+  key: string,
+): key is MachineCapabilityKey {
+  return (KNOWN_KEYS as readonly string[])
+    .includes(key);
 }
 
 export class MachineCapabilityManager {
-  readonly #preferences = new Map<MachineCapabilityKey, boolean>();
+  readonly #preferences =
+    new Map<string, boolean>();
+  readonly #customDefinitions =
+    new Map<
+      string,
+      CustomMachineCapabilityDefinition
+    >();
 
   private constructor(
-    private readonly registry: CapabilityRegistry,
-    private readonly store: MachineCapabilityStateStore,
-    private readonly services: MachineCapabilityServices,
-    private readonly environment: NodeJS.ProcessEnv,
-    private readonly nodeExecutable: string | undefined,
+    private readonly registry:
+      CapabilityRegistry,
+    private readonly store:
+      MachineCapabilityStateStore,
+    private readonly services:
+      MachineCapabilityServices,
+    private readonly environment:
+      NodeJS.ProcessEnv,
+    private readonly nodeExecutable:
+      string | undefined,
   ) {}
 
   static async create(
     registry: CapabilityRegistry,
     store: MachineCapabilityStateStore,
     services: MachineCapabilityServices,
-    environment: NodeJS.ProcessEnv = process.env,
-    nodeExecutable = resolveNodeExecutable(environment),
+    environment:
+      NodeJS.ProcessEnv = process.env,
+    nodeExecutable =
+      resolveNodeExecutable(environment),
   ): Promise<MachineCapabilityManager> {
-    const manager = new MachineCapabilityManager(
-      registry,
-      store,
-      services,
-      environment,
-      nodeExecutable,
-    );
-
-    const persisted = await store.load();
-
-    for (const key of KNOWN_KEYS) {
-      manager.#preferences.set(
-        key,
-        persisted?.[key]?.enabled ?? true,
+    const manager =
+      new MachineCapabilityManager(
+        registry,
+        store,
+        services,
+        environment,
+        nodeExecutable,
       );
-    }
 
+    const persisted =
+      await store.load();
+    manager.#loadPreferences(
+      persisted,
+    );
     await manager.#reconcileAll();
 
     if (persisted === undefined) {
@@ -101,23 +105,45 @@ export class MachineCapabilityManager {
     return manager;
   }
 
-  list(): readonly MachineCapabilityStatus[] {
-    return KNOWN_KEYS.map((key) => this.#status(key));
+  list():
+    readonly MachineCapabilityStatus[] {
+    const builtIns = KNOWN_KEYS.map(
+      (key) => this.#status(key),
+    );
+    const custom = [
+      ...this.#customDefinitions.keys(),
+    ]
+      .sort((a, b) =>
+        a.localeCompare(b),
+      )
+      .map((key) =>
+        this.#status(key),
+      );
+
+    return [...builtIns, ...custom];
   }
 
   async reload(): Promise<void> {
-    const persisted = await this.store.load();
+    const persisted =
+      await this.store.load();
     if (persisted === undefined) {
-      throw new Error("machine_capability_state_missing");
-    }
-
-    for (const key of KNOWN_KEYS) {
-      this.#preferences.set(
-        key,
-        persisted[key]?.enabled ?? true,
+      throw new Error(
+        "machine_capability_state_missing",
       );
     }
 
+    for (
+      const key of
+      this.#customDefinitions.keys()
+    ) {
+      this.registry.unregister(key);
+    }
+
+    this.#preferences.clear();
+    this.#customDefinitions.clear();
+    this.#loadPreferences(
+      persisted,
+    );
     await this.#reconcileAll();
   }
 
@@ -125,7 +151,25 @@ export class MachineCapabilityManager {
     key: string,
     grant: WorkspaceArgumentGrant,
   ): WorkspaceGrantCompatibility {
-    return workspaceGrantCompatibility(key, grant);
+    const custom =
+      this.#customDefinitions.get(key);
+    if (custom !== undefined) {
+      return customCapabilityGrantCompatible(
+        custom,
+        grant,
+      )
+        ? { valid: true }
+        : {
+            valid: false,
+            reason:
+              "arguments_outside_machine_policy",
+          };
+    }
+
+    return workspaceGrantCompatibility(
+      key,
+      grant,
+    );
   }
 
   async setEnabled(
@@ -133,224 +177,305 @@ export class MachineCapabilityManager {
     enabled: boolean,
   ): Promise<MachineCapabilityStatus> {
     if (!this.#isKnownKey(key)) {
-      throw new Error(`machine_capability_not_known: ${key}`);
+      throw new Error(
+        `machine_capability_not_known: ${key}`,
+      );
     }
 
-    this.#preferences.set(key, enabled);
+    this.#preferences.set(
+      key,
+      enabled,
+    );
     await this.#reconcile(key);
     await this.#save();
 
     return this.#status(key);
   }
 
-  #status(key: MachineCapabilityKey): MachineCapabilityStatus {
-    const enabled = this.#preferences.get(key) ?? true;
-
-    if (key === "node") {
-      return {
-        key,
-        scope: "workspace",
-        description:
-          "Node.js executable resolved from PATH. Only --version and -p process.platform are permitted.",
-        enabled,
-        available: this.nodeExecutable !== undefined,
-        active: this.registry.has(key),
-        ...(this.nodeExecutable === undefined
-          ? {}
-          : {
-              launcher: {
-                executable: this.nodeExecutable,
-                fixedArgs: [],
-              },
-            }),
-        policy: [
-          "--version",
-          "-p process.platform",
-        ],
-      };
-    }
-
-    if (key === "pnpm") {
-      const launcher = resolvePnpmLauncher(
-        this.environment,
-        this.nodeExecutable,
+  async upsertCustom(
+    input: unknown,
+  ): Promise<MachineCapabilityStatus> {
+    const definition =
+      validateCustomMachineCapability(
+        input,
       );
 
-      return {
-        key,
-        scope: "workspace",
-        description:
-          "pnpm Workspace package manager and script runner. Allows selected script shortcuts, install/update/self-update/add, and pnpm run <script>; exec/dlx remain blocked.",
-        enabled,
-        available: launcher !== undefined,
-        active: this.registry.has(key),
-        ...(launcher === undefined ? {} : { launcher }),
-        policy: [
-          "--version",
-          "typecheck",
-          "lint",
-          "test",
-          "build",
-          "install [...args]",
-          "update [...packages/options]",
-          "self-update [version]",
-          "add <pkg...> [...options]",
-          "run <script>",
-          "run <script> -- ...scriptArgs",
-        ],
-      };
+    if (isBuiltInKey(definition.key)) {
+      throw new Error(
+        `custom_machine_capability_reserved_key: ${definition.key}`,
+      );
     }
 
-    if (key === "git") {
-      const launcher = resolveGitLauncher(this.environment);
-
-      return {
-        key,
-        scope: "workspace",
-        description:
-          "Git repository operations for Workspace development and synchronization. Destructive clean/reset-hard style operations are not exposed.",
-        enabled,
-        available: launcher !== undefined,
-        active: this.registry.has(key),
-        ...(launcher === undefined ? {} : { launcher }),
-        policy: [
-          "--version",
-          "init [-b <branch>]",
-          "status",
-          "add",
-          "commit -m <message>",
-          "config --local user.name/user.email",
-          "branch",
-          "remote",
-          "fetch",
-          "push [--force|--force-with-lease] [-u|--set-upstream] <remote> <branch>",
-          "rev-parse",
-          "diff",
-          "log",
-          "ls-files",
-        ],
-      };
+    this.#customDefinitions.set(
+      definition.key,
+      definition,
+    );
+    if (
+      !this.#preferences.has(
+        definition.key,
+      )
+    ) {
+      this.#preferences.set(
+        definition.key,
+        true,
+      );
     }
 
-    if (key === "browser") {
-      return {
-        key,
-        scope: "machine",
-        description:
-          "Local headed browser computer use through the bounded playwright-cli adapter.",
-        enabled,
-        available: this.services.browser.available,
-        active: this.services.browser.active,
-        policy: PLAYWRIGHT_CLI_COMMANDS,
-      };
-    }
+    await this.#reconcile(
+      definition.key,
+    );
+    await this.#save();
 
-    return {
-      key,
-      scope: "machine",
-      description:
-        "Local Windows desktop computer use through UI Automation plus bounded screenshot, mouse, and keyboard actions.",
-      enabled,
-      available: this.services.desktop.available,
-      active: this.services.desktop.active,
-      policy: DESKTOP_COMMANDS,
-    };
+    return this.#status(
+      definition.key,
+    );
   }
 
-  async #reconcileAll(): Promise<void> {
+  async removeCustom(
+    key: string,
+  ): Promise<boolean> {
+    if (isBuiltInKey(key)) {
+      throw new Error(
+        `machine_capability_builtin_not_removable: ${key}`,
+      );
+    }
+
+    if (
+      !this.#customDefinitions.has(key)
+    ) {
+      return false;
+    }
+
+    this.registry.unregister(key);
+    this.#customDefinitions.delete(key);
+    this.#preferences.delete(key);
+    await this.#save();
+    return true;
+  }
+
+  #loadPreferences(
+    persisted:
+      MachineCapabilityPreferences |
+      undefined,
+  ): void {
     for (const key of KNOWN_KEYS) {
+      this.#preferences.set(
+        key,
+        persisted?.[key]?.enabled ??
+          true,
+      );
+    }
+
+    if (persisted === undefined) {
+      return;
+    }
+
+    for (
+      const [key, preference] of
+      Object.entries(persisted)
+    ) {
+      if (
+        preference.custom === undefined
+      ) {
+        continue;
+      }
+
+      if (
+        isBuiltInKey(key) ||
+        preference.custom.key !== key
+      ) {
+        throw new Error(
+          `invalid_custom_machine_capability_key: ${key}`,
+        );
+      }
+
+      const definition =
+        validateCustomMachineCapability(
+          preference.custom,
+        );
+      this.#customDefinitions.set(
+        key,
+        definition,
+      );
+      this.#preferences.set(
+        key,
+        preference.enabled,
+      );
+    }
+  }
+
+  #status(
+    key: string,
+  ): MachineCapabilityStatus {
+    const custom =
+      this.#customDefinitions.get(key);
+    if (custom !== undefined) {
+      const enabled =
+        this.#preferences.get(key) ??
+        true;
+      const available =
+        customCapabilityAvailable(
+          custom,
+        );
+
+      return {
+        key,
+        scope: "workspace",
+        description:
+          custom.description,
+        enabled,
+        available,
+        active:
+          this.registry.has(key),
+        custom: true,
+        launcher: {
+          executable:
+            custom.executable,
+          fixedArgs: [
+            ...custom.fixedArgs,
+          ],
+        },
+        policy:
+          customCapabilityPolicyLabels(
+            custom,
+          ),
+        definition: {
+          ...custom,
+          fixedArgs: [
+            ...custom.fixedArgs,
+          ],
+          argumentPolicy:
+            custom.argumentPolicy
+              .map((rule) => ({
+                mode: rule.mode,
+                args: [...rule.args],
+              })),
+        },
+      };
+    }
+
+    if (!isBuiltInKey(key)) {
+      throw new Error(
+        `machine_capability_not_known: ${key}`,
+      );
+    }
+
+    return this.#builtInStatus(key);
+  }
+
+  #builtInStatus(
+    key: MachineCapabilityKey,
+  ): MachineCapabilityStatus {
+    return builtInMachineCapabilityStatus(
+      key,
+      this.#preferences.get(key) ?? true,
+      {
+        registry: this.registry,
+        services: this.services,
+        environment: this.environment,
+        nodeExecutable: this.nodeExecutable,
+      },
+    );
+  }
+
+  async #reconcileAll():
+    Promise<void> {
+    for (const key of KNOWN_KEYS) {
+      await this.#reconcile(key);
+    }
+
+    for (
+      const key of
+      this.#customDefinitions.keys()
+    ) {
       await this.#reconcile(key);
     }
   }
 
   async #reconcile(
-    key: MachineCapabilityKey,
+    key: string,
   ): Promise<void> {
-    const enabled = this.#preferences.get(key) ?? true;
+    const custom =
+      this.#customDefinitions.get(key);
+    if (custom !== undefined) {
+      this.registry.unregister(key);
 
-    if (key === "browser") {
-      await this.services.browser.setEnabled(enabled);
-      return;
-    }
-
-    if (key === "desktop") {
-      await this.services.desktop.setEnabled(enabled);
-      return;
-    }
-
-    this.registry.unregister(key);
-
-    if (!enabled) {
-      return;
-    }
-
-    if (key === "node") {
-      const capability =
-        this.nodeExecutable === undefined
-          ? undefined
-          : createNodeCapability(
-              {
-                executable: this.nodeExecutable,
-                fixedArgs: [],
-              },
-              this.environment,
-            );
-
-      if (capability !== undefined) {
-        this.registry.register(capability);
-      }
-      return;
-    }
-
-    if (key === "pnpm") {
-      const launcher = resolvePnpmLauncher(
-        this.environment,
-        this.nodeExecutable,
-      );
-      const capability =
-        launcher === undefined
-          ? undefined
-          : createPnpmCapability(
-              launcher,
-              this.environment,
-            );
-
-      if (capability !== undefined) {
-        this.registry.register(capability);
-      }
-      return;
-    }
-
-    const launcher = resolveGitLauncher(this.environment);
-    const capability =
-      launcher === undefined
-        ? undefined
-        : createGitCapability(
-            launcher,
+      if (
+        (this.#preferences.get(key) ??
+          true) &&
+        customCapabilityAvailable(
+          custom,
+        )
+      ) {
+        this.registry.register(
+          createCustomMachineCapability(
+            custom,
             this.environment,
-          );
-
-    if (capability !== undefined) {
-      this.registry.register(capability);
+          ),
+        );
+      }
+      return;
     }
-  }
 
-  #snapshot(): MachineCapabilityPreferences {
-    return Object.fromEntries(
-      KNOWN_KEYS.map((key) => [
-        key,
-        {
-          enabled: this.#preferences.get(key) ?? true,
-        },
-      ]),
+    if (!isBuiltInKey(key)) {
+      throw new Error(
+        `machine_capability_not_known: ${key}`,
+      );
+    }
+
+    await reconcileBuiltInMachineCapability(
+      key,
+      this.#preferences.get(key) ?? true,
+      {
+        registry: this.registry,
+        services: this.services,
+        environment: this.environment,
+        nodeExecutable: this.nodeExecutable,
+      },
     );
   }
 
-  #save(): Promise<void> {
-    return this.store.save(this.#snapshot());
+  #snapshot():
+    MachineCapabilityPreferences {
+    const snapshot:
+      MachineCapabilityPreferences =
+      {};
+
+    for (const key of KNOWN_KEYS) {
+      snapshot[key] = {
+        enabled:
+          this.#preferences.get(key) ??
+          true,
+      };
+    }
+
+    for (
+      const [key, definition] of
+      this.#customDefinitions
+    ) {
+      snapshot[key] = {
+        enabled:
+          this.#preferences.get(key) ??
+          true,
+        custom: definition,
+      };
+    }
+
+    return snapshot;
   }
 
-  #isKnownKey(key: string): key is MachineCapabilityKey {
-    return (KNOWN_KEYS as readonly string[]).includes(key);
+  #save(): Promise<void> {
+    return this.store.save(
+      this.#snapshot(),
+    );
+  }
+
+  #isKnownKey(
+    key: string,
+  ): boolean {
+    return (
+      isBuiltInKey(key) ||
+      this.#customDefinitions.has(key)
+    );
   }
 }

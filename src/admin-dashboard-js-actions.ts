@@ -43,6 +43,71 @@ export const ADMIN_DASHBOARD_JS_ACTIONS = String.raw`  function parseArgs(text) 
     return result;
   }
 
+  function parseMachinePolicy(text) {
+    var lines = text.split(/\r?\n/).map(function (line) {
+      return line.trim();
+    }).filter(Boolean);
+
+    if (lines.length === 0) {
+      throw new Error("至少需要一条机器参数策略。");
+    }
+
+    return lines.map(function (line) {
+      var firstSpace = line.search(/\s/);
+      var mode = firstSpace < 0 ? line : line.slice(0, firstSpace);
+      var rest = firstSpace < 0 ? "" : line.slice(firstSpace + 1).trim();
+
+      if (mode !== "exact" && mode !== "prefix") {
+        throw new Error("机器参数策略每行必须以 exact 或 prefix 开头。");
+      }
+
+      var args = rest ? parseArgs(rest) : [];
+      if (mode === "prefix" && args.length === 0) {
+        throw new Error("prefix 策略至少需要一个参数。");
+      }
+
+      return { mode: mode, args: args };
+    });
+  }
+
+  function formatMachinePolicy(definition) {
+    return (definition.argumentPolicy || []).map(function (rule) {
+      var args = (rule.args || []).map(function (arg) {
+        return /\s/.test(arg) ? JSON.stringify(arg) : arg;
+      }).join(" ");
+      return rule.mode + (args ? " " + args : "");
+    }).join("\n");
+  }
+
+  function resetCapabilityForm() {
+    var form = document.getElementById("capability-form");
+    form.reset();
+    form.elements.key.readOnly = false;
+    form.elements.timeoutMs.value = "15000";
+    form.elements.maxOutputBytes.value = "65536";
+  }
+
+  function editCapability(key) {
+    var capability = data.machineCapabilities.find(function (item) {
+      return item.key === key;
+    });
+    if (!capability || !capability.custom || !capability.definition) return;
+
+    var form = document.getElementById("capability-form");
+    var definition = capability.definition;
+    form.elements.key.value = definition.key;
+    form.elements.key.readOnly = true;
+    form.elements.description.value = definition.description;
+    form.elements.executable.value = definition.executable;
+    form.elements.fixedArgs.value = (definition.fixedArgs || []).map(function (arg) {
+      return /\s/.test(arg) ? JSON.stringify(arg) : arg;
+    }).join(" ");
+    form.elements.argumentPolicy.value = formatMachinePolicy(definition);
+    form.elements.timeoutMs.value = String(definition.timeoutMs);
+    form.elements.maxOutputBytes.value = String(definition.maxOutputBytes);
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function workspaceById(id) {
     return data.workspaces.find(function (workspace) { return workspace.id === id; });
   }
@@ -123,6 +188,42 @@ export const ADMIN_DASHBOARD_JS_ACTIONS = String.raw`  function parseArgs(text) 
     refresh().then(function () { showNotice("状态已刷新。"); }).catch(function (error) { showNotice(error.message, true); });
   });
 
+  document.getElementById("capability-form-reset").addEventListener("click", resetCapabilityForm);
+
+  document.getElementById("capability-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var form = event.target;
+
+    var payload;
+    try {
+      payload = {
+        key: form.elements.key.value.trim(),
+        description: form.elements.description.value.trim(),
+        executable: form.elements.executable.value.trim(),
+        fixedArgs: parseArgs(form.elements.fixedArgs.value),
+        argumentPolicy: parseMachinePolicy(form.elements.argumentPolicy.value),
+        timeoutMs: Number(form.elements.timeoutMs.value),
+        maxOutputBytes: Number(form.elements.maxOutputBytes.value)
+      };
+    } catch (error) {
+      showNotice(error.message, true);
+      return;
+    }
+
+    api("/capabilities", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function () {
+      resetCapabilityForm();
+      return refresh();
+    }).then(function () {
+      showNotice("自定义机器能力已保存。");
+    }).catch(function (error) {
+      showNotice(error.message, true);
+    });
+  });
+
   document.getElementById("workspace-form").addEventListener("submit", function (event) {
     event.preventDefault();
     api("/workspaces", {
@@ -188,6 +289,29 @@ export const ADMIN_DASHBOARD_JS_ACTIONS = String.raw`  function parseArgs(text) 
         .then(refresh)
         .then(function () {
           showNotice("机器级能力 " + key + (nextEnabled ? " 已启用。" : " 已禁用。"));
+        })
+        .catch(function (error) { showNotice(error.message, true); });
+      return;
+    }
+
+    if (target.dataset.editCapability) {
+      editCapability(target.dataset.editCapability);
+      return;
+    }
+
+    if (target.dataset.deleteCapability) {
+      var customKey = target.dataset.deleteCapability;
+      if (!confirm("确定删除自定义机器能力 " + customKey + " 吗？已有工作区授权会保留为失效规则。")) return;
+
+      api("/capabilities/" + encodeURIComponent(customKey), {
+        method: "DELETE"
+      })
+        .then(function () {
+          resetCapabilityForm();
+          return refresh();
+        })
+        .then(function () {
+          showNotice("自定义机器能力 " + customKey + " 已删除。");
         })
         .catch(function (error) { showNotice(error.message, true); });
       return;

@@ -249,7 +249,7 @@ Git also performs a synchronous repository preflight inside `prepareProcess()`, 
 
 ## Machine Capability state
 
-Built-in process capabilities have persistent machine-level enablement state.
+Built-in and user-defined process capabilities have persistent machine-level state. Built-ins persist enablement; custom process capabilities additionally persist their executable and bounded execution policy.
 
 Current managed keys and scopes:
 
@@ -258,6 +258,7 @@ workspace-scoped
   node
   pnpm
   git
+  <custom process capability keys>
 
 machine-scoped
   browser
@@ -281,7 +282,7 @@ This distinction allows a capability such as pnpm to remain enabled in configura
 
 External user-tool executables are resolved from the inherited `PATH` in command-search order. This applies to Node, pnpm, Git, playwright-cli, and ripgrep. `process.execPath`, `PNPM_HOME`, `npm_execpath`, fixed installation-directory scans, and private executable override variables are not launcher fallbacks. Executable paths are treated only as locations; Junius never derives a runtime version from directory or file names. On Windows, a PATH-resolved `.cmd` shim may be inspected to reach the target declared by that shim while preserving `shell: false` execution. Desktop Computer Use is intentionally different: its Python runtime is project-owned and resolves to Junius's own `.venv` beside `python/desktop_helper.py`. OS components such as `%SystemRoot%\System32\taskkill.exe` and Junius-owned internal files are not user-tool discovery and remain explicit internal paths.
 
-The persisted machine state is stored separately from Workspace grants.
+The persisted machine state is stored separately from Workspace grants. Current files use schema version 2; the loader also accepts version 1 enablement-only files and upgrades them on the next save.
 
 Windows default:
 
@@ -295,9 +296,9 @@ Override:
 JUNIUS_MACHINE_CAPABILITY_STATE_PATH
 ```
 
-Machine Capability v1 only controls known built-in adapters. It does not allow the WebUI to register arbitrary executable paths, arbitrary argument policies, or raw shell commands.
+The WebUI may register custom Workspace-scoped process capabilities, but this does not create a raw command-execution surface. Each custom definition must use a stable non-built-in key, an absolute executable path, an argument vector for fixed launcher arguments, one or more exact/prefix machine-policy rules, and bounded timeout/output limits. Prefix rules cannot be empty. Custom execution still goes through `ProcessCapability`, uses `shell: false`, starts in the selected Workspace, and is intersected with that Workspace's grant. Custom definitions do not create new machine-scoped MCP services; browser/desktop remain explicit built-in service adapters.
 
-Disabling an active Workspace-scoped process capability unregisters it immediately. Workspace grants referencing that key are intentionally preserved rather than rewritten. Browser and desktop keep their stable MCP surfaces but reject execution in their service layer while disabled. Re-enabling restores execution when the underlying runtime is available.
+Disabling an active Workspace-scoped process capability unregisters it immediately. Updating a custom definition reconciles that registry entry in place across Workers through the normal configuration barrier. Deleting a custom capability unregisters it and removes its machine definition. Workspace grants referencing disabled, changed, or deleted keys are intentionally preserved rather than rewritten. Browser and desktop keep their stable MCP surfaces but reject execution in their service layer while disabled. Re-enabling restores execution when the underlying runtime is available.
 
 Disabling a capability prevents new synchronous commands and jobs from starting through that capability. It does not terminate jobs that were already started.
 

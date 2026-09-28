@@ -86,9 +86,14 @@ export function isConfigurationMutationRequest(
       : rawSegments;
 
   if (
-    method === "POST" &&
-    segments.length === 2 &&
-    segments[0] === "capabilities"
+    segments[0] === "capabilities" &&
+    (
+      (method === "POST" &&
+        (segments.length === 1 ||
+          segments.length === 2)) ||
+      (method === "DELETE" &&
+        segments.length === 2)
+    )
   ) {
     return true;
   }

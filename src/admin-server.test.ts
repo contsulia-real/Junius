@@ -730,3 +730,137 @@ test("admin can disable machine-scoped browser capability", async () => {
     await f.dispose();
   }
 });
+
+test("admin creates custom machine capabilities and preserves Workspace grants after deletion", async () => {
+  const f = await fixture();
+
+  try {
+    const created = await fetch(
+      f.origin + "/capabilities",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          key: "custom_node",
+          description: "Custom Node",
+          executable: process.execPath,
+          fixedArgs: [],
+          argumentPolicy: [
+            {
+              mode: "exact",
+              args: ["--version"],
+            },
+          ],
+          timeoutMs: 10_000,
+          maxOutputBytes: 65_536,
+        }),
+      },
+    );
+    assert.equal(created.status, 201);
+
+    const workspace = await fetch(
+      f.origin + "/workspaces",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          id: "custom-test",
+          rootPath: f.root,
+        }),
+      },
+    );
+    assert.equal(workspace.status, 201);
+
+    const grant = await fetch(
+      f.origin +
+        "/workspaces/custom-test/grants/custom_node",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          arguments: [
+            {
+              mode: "exact",
+              args: ["--version"],
+            },
+          ],
+        }),
+      },
+    );
+    assert.equal(grant.status, 200);
+
+    const beforeDelete = await fetch(
+      f.origin + "/api/state",
+    );
+    const beforeBody = await beforeDelete.json() as {
+      machineCapabilities: {
+        key: string;
+        custom: boolean;
+      }[];
+    };
+    assert.equal(
+      beforeBody.machineCapabilities.find(
+        (capability) =>
+          capability.key === "custom_node",
+      )?.custom,
+      true,
+    );
+
+    const removed = await fetch(
+      f.origin + "/capabilities/custom_node",
+      {
+        method: "DELETE",
+        headers: f.mutationHeaders(false),
+      },
+    );
+    assert.equal(removed.status, 200);
+
+    const state = await fetch(
+      f.origin + "/api/state",
+    );
+    const body = await state.json() as {
+      machineCapabilities: {
+        key: string;
+      }[];
+      workspaces: {
+        id: string;
+        grants: {
+          key: string;
+          arguments: {
+            valid: boolean;
+            reason?: string;
+          }[];
+        }[];
+      }[];
+    };
+
+    assert.equal(
+      body.machineCapabilities.some(
+        (capability) =>
+          capability.key === "custom_node",
+      ),
+      false,
+    );
+
+    const preserved = body.workspaces
+      .find(
+        (item) =>
+          item.id === "custom-test",
+      )
+      ?.grants.find(
+        (item) =>
+          item.key === "custom_node",
+      )
+      ?.arguments[0];
+
+    assert.deepEqual(preserved, {
+      mode: "exact",
+      args: ["--version"],
+      valid: false,
+      reason:
+        "machine_capability_not_known",
+    });
+  } finally {
+    await f.dispose();
+  }
+});

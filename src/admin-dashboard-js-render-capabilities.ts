@@ -26,7 +26,9 @@ export const ADMIN_DASHBOARD_JS_RENDER_CAPABILITIES = String.raw`  function rend
 
       return '<div class="item"><div class="item-main">' +
         '<div class="item-title">' + esc(capability.key) +
-        ' <span class="badge">' + esc(scopeLabel) + '</span></div>' +
+        ' <span class="badge">' + esc(scopeLabel) + '</span>' +
+        (capability.custom ? ' <span class="badge warning">自定义</span>' : '') +
+        '</div>' +
         '<div class="item-meta">' + esc(capability.description) + '</div>' +
         '<div class="item-meta">状态：' +
         (capability.enabled ? '<span class="badge success">已启用</span>' : '<span class="badge danger">已禁用</span>') +
@@ -45,7 +47,12 @@ export const ADMIN_DASHBOARD_JS_RENDER_CAPABILITIES = String.raw`  function rend
         '" data-toggle-capability="' + esc(capability.key) +
         '" data-enabled="' + String(capability.enabled) + '">' +
         (capability.enabled ? '禁用' : '启用') +
-        '</button></div></div>';
+        '</button>' +
+        (capability.custom
+          ? '<button class="button secondary" data-edit-capability="' + esc(capability.key) + '">编辑</button>' +
+            '<button class="button danger" data-delete-capability="' + esc(capability.key) + '">删除</button>'
+          : '') +
+        '</div></div>';
     }).join("");
   }
 

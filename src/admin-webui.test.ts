@@ -38,6 +38,18 @@ test("Dashboard assets contain the expected local WebUI shell", () => {
   );
   assert.match(
     ADMIN_DASHBOARD_HTML,
+    /id="capability-form"/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_HTML,
+    /机器参数策略/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_JS,
+    /data-delete-capability/u,
+  );
+  assert.match(
+    ADMIN_DASHBOARD_HTML,
     /job-history-summary/u,
   );
   assert.match(

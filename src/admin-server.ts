@@ -134,6 +134,60 @@ export async function handleAdminRequest(
 
   if (
     req.method === "POST" &&
+    segments.length === 1 &&
+    segments[0] === "capabilities"
+  ) {
+    try {
+      const capability =
+        await machineCapabilities.upsertCustom(
+          await readJsonBody(req),
+        );
+      sendJson(res, 201, { capability });
+    } catch (error) {
+      sendJson(res, 400, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "invalid_request_body",
+      });
+    }
+    return;
+  }
+
+  if (
+    req.method === "DELETE" &&
+    segments.length === 2 &&
+    segments[0] === "capabilities"
+  ) {
+    try {
+      const removed =
+        await machineCapabilities.removeCustom(
+          segments[1],
+        );
+      sendJson(res, removed ? 200 : 404, {
+        removed,
+        key: segments[1],
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "invalid_request";
+      sendJson(
+        res,
+        message.startsWith(
+          "machine_capability_builtin_not_removable:",
+        )
+          ? 400
+          : 404,
+        { error: message },
+      );
+    }
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
     segments.length === 2 &&
     segments[0] === "capabilities"
   ) {

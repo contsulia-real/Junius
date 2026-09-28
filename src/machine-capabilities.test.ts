@@ -363,3 +363,153 @@ test("MachineCapabilityManager rejects unknown capability keys", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("MachineCapabilityManager creates, persists, and removes custom process capabilities", async () => {
+  const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
+  const statePath = join(root, "state.json");
+
+  try {
+    const registry = new CapabilityRegistry();
+    const manager = await MachineCapabilityManager.create(
+      registry,
+      new MachineCapabilityStateStore(statePath),
+      services(root),
+      {
+        ...process.env,
+        PATH: "",
+      },
+      process.execPath,
+    );
+
+    const created = await manager.upsertCustom({
+      key: "custom_node",
+      description: "Custom Node version command",
+      executable: process.execPath,
+      fixedArgs: [],
+      argumentPolicy: [
+        { mode: "exact", args: ["--version"] },
+        { mode: "prefix", args: ["-p"] },
+      ],
+      timeoutMs: 10_000,
+      maxOutputBytes: 65_536,
+    });
+
+    assert.equal(created.custom, true);
+    assert.equal(created.available, true);
+    assert.equal(created.active, true);
+    assert.equal(registry.has("custom_node"), true);
+
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("custom_node", {
+        mode: "exact",
+        args: ["--version"],
+      }),
+      { valid: true },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("custom_node", {
+        mode: "prefix",
+        args: ["-p", "process."],
+      }),
+      { valid: true },
+    );
+    assert.deepEqual(
+      manager.workspaceGrantCompatibility("custom_node", {
+        mode: "prefix",
+        args: ["--version"],
+      }),
+      {
+        valid: false,
+        reason: "arguments_outside_machine_policy",
+      },
+    );
+
+    const execution = await registry.get("custom_node")!.execute(
+      ["--version"],
+      { cwd: root },
+    );
+    assert.equal(execution.ok, true);
+
+    const secondRegistry = new CapabilityRegistry();
+    const second = await MachineCapabilityManager.create(
+      secondRegistry,
+      new MachineCapabilityStateStore(statePath),
+      services(root),
+      {
+        ...process.env,
+        PATH: "",
+      },
+      process.execPath,
+    );
+
+    assert.equal(secondRegistry.has("custom_node"), true);
+    assert.equal(
+      second.list().find((item) => item.key === "custom_node")?.custom,
+      true,
+    );
+
+    assert.equal(await second.removeCustom("custom_node"), true);
+    assert.equal(secondRegistry.has("custom_node"), false);
+    assert.deepEqual(
+      second.workspaceGrantCompatibility("custom_node", {
+        mode: "exact",
+        args: ["--version"],
+      }),
+      {
+        valid: false,
+        reason: "machine_capability_not_known",
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("MachineCapabilityManager rejects built-in keys and relative executables for custom capabilities", async () => {
+  const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
+
+  try {
+    const manager = await MachineCapabilityManager.create(
+      new CapabilityRegistry(),
+      new MachineCapabilityStateStore(join(root, "state.json")),
+      services(root),
+      {
+        ...process.env,
+        PATH: "",
+      },
+      process.execPath,
+    );
+
+    await assert.rejects(
+      manager.upsertCustom({
+        key: "node",
+        description: "collision",
+        executable: process.execPath,
+        fixedArgs: [],
+        argumentPolicy: [
+          { mode: "exact", args: ["--version"] },
+        ],
+        timeoutMs: 10_000,
+        maxOutputBytes: 65_536,
+      }),
+      /custom_machine_capability_reserved_key/u,
+    );
+
+    await assert.rejects(
+      manager.upsertCustom({
+        key: "relative_tool",
+        description: "relative",
+        executable: "tool.exe",
+        fixedArgs: [],
+        argumentPolicy: [
+          { mode: "exact", args: ["--version"] },
+        ],
+        timeoutMs: 10_000,
+        maxOutputBytes: 65_536,
+      }),
+      /custom_capability_executable_must_be_absolute/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

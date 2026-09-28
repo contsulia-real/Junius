@@ -83,6 +83,39 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
               <p>管理 Junius 已知的机器级能力、启用状态与运行元数据。</p>
             </div>
           </div>
+          <form id="capability-form" class="form-row">
+            <label>
+              <span>Key</span>
+              <input name="key" required maxlength="64" placeholder="python">
+            </label>
+            <label class="grow">
+              <span>描述</span>
+              <input name="description" required maxlength="1024" placeholder="Python interpreter">
+            </label>
+            <label class="grow">
+              <span>可执行文件（绝对路径）</span>
+              <input name="executable" required placeholder="C:\\Python313\\python.exe">
+            </label>
+            <label class="grow">
+              <span>固定参数</span>
+              <input name="fixedArgs" placeholder="-I">
+            </label>
+            <label>
+              <span>超时 ms</span>
+              <input name="timeoutMs" type="number" min="100" max="600000" value="15000">
+            </label>
+            <label>
+              <span>最大输出 bytes</span>
+              <input name="maxOutputBytes" type="number" min="1024" max="16777216" value="65536">
+            </label>
+            <label class="grow">
+              <span>机器参数策略（每行 exact 或 prefix）</span>
+              <textarea name="argumentPolicy" required rows="4" placeholder="exact --version&#10;prefix -m"></textarea>
+            </label>
+            <button class="button" type="submit">保存自定义能力</button>
+            <button id="capability-form-reset" class="button secondary" type="button">清空</button>
+          </form>
+          <p class="hint">自定义能力始终以 shell:false 直接启动；Workspace 还需要单独授权，且授权必须是机器参数策略的子集。</p>
           <div id="capability-list" class="stack"></div>
         </div>
       </section>
