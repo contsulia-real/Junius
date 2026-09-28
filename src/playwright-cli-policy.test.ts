@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validatePlaywrightCliArgs } from "./playwright-cli-policy.js";
+import {
+  playwrightCliCommandArgs,
+  validatePlaywrightCliArgs,
+} from "./playwright-cli-policy.js";
 
 test("playwright-cli policy accepts snapshot element refs and rejects selectors", () => {
   assert.equal(
@@ -18,5 +21,38 @@ test("playwright-cli policy accepts snapshot element refs and rejects selectors"
   assert.equal(
     validatePlaywrightCliArgs("click", ["#selector"]),
     false,
+  );
+});
+
+test("playwright-cli fill protects leading-dash text from CLI option parsing", () => {
+  assert.deepEqual(
+    playwrightCliCommandArgs(
+      "browser",
+      "fill",
+      ["e7", "--version"],
+    ),
+    [
+      "-s=browser",
+      "fill",
+      "e7",
+      "--",
+      "--version",
+    ],
+  );
+
+  assert.deepEqual(
+    playwrightCliCommandArgs(
+      "browser",
+      "fill",
+      ["e7", "--version", "--submit"],
+    ),
+    [
+      "-s=browser",
+      "fill",
+      "e7",
+      "--submit",
+      "--",
+      "--version",
+    ],
   );
 });

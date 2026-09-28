@@ -197,7 +197,17 @@ export function playwrightCliCommandArgs(
     prefix.push("--raw");
   }
 
-  const commandSpecific = [...args];
+  let commandSpecific = [...args];
+
+  if (
+    command === "fill" &&
+    args[1]?.startsWith("-")
+  ) {
+    commandSpecific =
+      args[2] === "--submit"
+        ? [args[0]!, "--submit", "--", args[1]]
+        : [args[0]!, "--", args[1]];
+  }
 
   if (command === "open") {
     if (!commandSpecific.includes("--persistent")) {
