@@ -5,12 +5,13 @@ import ctypes
 import io
 import json
 import sys
-import threading
 import time
 from ctypes import wintypes
 from typing import Any, Callable
 
 import pyautogui
+
+from desktop_indicator import DesktopActivityIndicator
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.03
@@ -22,29 +23,9 @@ SW_RESTORE = 9
 ULONG_PTR = wintypes.WPARAM
 CF_UNICODETEXT = 13
 GMEM_MOVEABLE = 0x0002
-WS_POPUP = 0x80000000
-WS_BORDER = 0x00800000
-WS_EX_TOPMOST = 0x00000008
-WS_EX_TOOLWINDOW = 0x00000080
-WS_EX_NOACTIVATE = 0x08000000
-SS_CENTER = 0x00000001
-SS_CENTERIMAGE = 0x00000200
-SW_HIDE = 0
-SW_SHOWNOACTIVATE = 4
-SWP_NOACTIVATE = 0x0010
-SWP_SHOWWINDOW = 0x0040
-PM_REMOVE = 0x0001
-WM_SETFONT = 0x0030
-DEFAULT_GUI_FONT = 17
-WDA_EXCLUDEFROMCAPTURE = 0x00000011
-ACTIVITY_INDICATOR_IDLE_SECONDS = 8.0
-ACTIVITY_INDICATOR_TEXT = (
-    "ChatGPT 正通过 Junius 操作电脑"
-)
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
-gdi32 = ctypes.windll.gdi32
 
 kernel32.GlobalAlloc.argtypes = [
     wintypes.UINT,
@@ -72,202 +53,6 @@ user32.GetClipboardData.argtypes = [
     wintypes.UINT,
 ]
 user32.GetClipboardData.restype = ctypes.c_void_p
-user32.CreateWindowExW.restype = wintypes.HWND
-user32.SetWindowDisplayAffinity.argtypes = [
-    wintypes.HWND,
-    wintypes.DWORD,
-]
-user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
-
-
-class DesktopActivityIndicator:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._wake = threading.Event()
-        self._ready = threading.Event()
-        self._started = False
-        self._deadline = 0.0
-        self._window: int | None = None
-        self._error: str | None = None
-
-    def touch(self) -> None:
-        start_thread = False
-        with self._lock:
-            self._deadline = (
-                time.monotonic()
-                + ACTIVITY_INDICATOR_IDLE_SECONDS
-            )
-            if not self._started:
-                self._started = True
-                start_thread = True
-
-        if start_thread:
-            threading.Thread(
-                target=self._run,
-                name="JuniusDesktopActivityIndicator",
-                daemon=True,
-            ).start()
-
-        self._wake.set()
-
-        if start_thread:
-            if not self._ready.wait(timeout=1.0):
-                raise DesktopHelperError(
-                    "activity_indicator_failed",
-                    (
-                        "Timed out while creating the "
-                        "Junius desktop activity indicator."
-                    ),
-                )
-
-        with self._lock:
-            error = self._error
-        if error is not None:
-            raise DesktopHelperError(
-                "activity_indicator_failed",
-                error,
-            )
-
-    def _create_window(self) -> int:
-        screen_width = int(
-            user32.GetSystemMetrics(0)
-        )
-        width = 410
-        height = 44
-        x = max(12, screen_width - width - 18)
-        y = 18
-
-        hwnd = user32.CreateWindowExW(
-            (
-                WS_EX_TOPMOST
-                | WS_EX_TOOLWINDOW
-                | WS_EX_NOACTIVATE
-            ),
-            "STATIC",
-            ACTIVITY_INDICATOR_TEXT,
-            (
-                WS_POPUP
-                | WS_BORDER
-                | SS_CENTER
-                | SS_CENTERIMAGE
-            ),
-            x,
-            y,
-            width,
-            height,
-            None,
-            None,
-            None,
-            None,
-        )
-        if not hwnd:
-            raise RuntimeError(
-                "Windows CreateWindowExW failed."
-            )
-
-        font = gdi32.GetStockObject(
-            DEFAULT_GUI_FONT
-        )
-        if font:
-            user32.SendMessageW(
-                hwnd,
-                WM_SETFONT,
-                font,
-                True,
-            )
-
-        # Best effort: keep the local indicator visible to the
-        # user while excluding it from screen-capture APIs.
-        user32.SetWindowDisplayAffinity(
-            hwnd,
-            WDA_EXCLUDEFROMCAPTURE,
-        )
-
-        if not user32.SetWindowPos(
-            hwnd,
-            wintypes.HWND(-1),
-            x,
-            y,
-            width,
-            height,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        ):
-            user32.DestroyWindow(hwnd)
-            raise RuntimeError(
-                "Windows SetWindowPos failed."
-            )
-
-        user32.ShowWindow(
-            hwnd,
-            SW_SHOWNOACTIVATE,
-        )
-        return int(hwnd)
-
-    def _run(self) -> None:
-        try:
-            hwnd = self._create_window()
-            with self._lock:
-                self._window = hwnd
-            self._ready.set()
-
-            visible = True
-            message = wintypes.MSG()
-
-            while True:
-                while user32.PeekMessageW(
-                    ctypes.byref(message),
-                    None,
-                    0,
-                    0,
-                    PM_REMOVE,
-                ):
-                    user32.TranslateMessage(
-                        ctypes.byref(message)
-                    )
-                    user32.DispatchMessageW(
-                        ctypes.byref(message)
-                    )
-
-                with self._lock:
-                    active = (
-                        time.monotonic()
-                        < self._deadline
-                    )
-
-                if active and not visible:
-                    user32.ShowWindow(
-                        wintypes.HWND(hwnd),
-                        SW_SHOWNOACTIVATE,
-                    )
-                    user32.SetWindowPos(
-                        wintypes.HWND(hwnd),
-                        wintypes.HWND(-1),
-                        0,
-                        0,
-                        0,
-                        0,
-                        (
-                            SWP_NOACTIVATE
-                            | 0x0001
-                            | 0x0002
-                            | SWP_SHOWWINDOW
-                        ),
-                    )
-                    visible = True
-                elif not active and visible:
-                    user32.ShowWindow(
-                        wintypes.HWND(hwnd),
-                        SW_HIDE,
-                    )
-                    visible = False
-
-                self._wake.wait(timeout=0.025)
-                self._wake.clear()
-        except Exception as error:
-            with self._lock:
-                self._error = str(error)
-            self._ready.set()
-
 
 ACTIVITY_INDICATOR = DesktopActivityIndicator()
 
@@ -926,7 +711,13 @@ def execute(
     }
 
     if command in allowed_commands:
-        ACTIVITY_INDICATOR.touch()
+        try:
+            ACTIVITY_INDICATOR.touch()
+        except RuntimeError as error:
+            raise DesktopHelperError(
+                "activity_indicator_failed",
+                str(error),
+            ) from error
 
     if command == "windows":
         return list_windows()

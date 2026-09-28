@@ -686,24 +686,183 @@ test("desktop real Python helper supports screenshot-only perception when instal
         windows.result as {
           windows?: Array<{
             title?: string;
+            className?: string;
             visible?: boolean;
+            rect?: {
+              left: number;
+              top: number;
+              right: number;
+              bottom: number;
+              width: number;
+              height: number;
+            };
           }>;
         }
       ).windows;
+    const screenshotRegion =
+      (
+        screenshot.result as {
+          region?: {
+            left: number;
+            top: number;
+            width: number;
+            height: number;
+          };
+        }
+      ).region;
 
     assert.equal(
       Array.isArray(listedWindows),
       true,
     );
+
+    const indicatorWindows =
+      new Map(
+        listedWindows
+          ?.filter(
+            (window) =>
+              window.visible === true &&
+              window.title !== undefined,
+          )
+          .map(
+            (window) => [
+              window.title as string,
+              window,
+            ],
+          ) ?? [],
+      );
+
     assert.equal(
-      listedWindows?.some(
-        (window) =>
-          window.title ===
-            "ChatGPT 正通过 Junius 操作电脑" &&
-          window.visible === true,
+      indicatorWindows.has(
+        "ChatGPT 正通过 Junius 操作电脑",
       ),
       true,
+      "Expected visible top-center desktop activity banner.",
     );
+
+    assert.notEqual(
+      screenshotRegion,
+      undefined,
+    );
+
+    const banner =
+      indicatorWindows.get(
+        "ChatGPT 正通过 Junius 操作电脑",
+      );
+
+    const glowWindows =
+      listedWindows?.filter(
+        (window) =>
+          window.visible === true &&
+          window.className ===
+            "JuniusDesktopActivityIndicatorWindow",
+      ) ?? [];
+
+    assert.equal(
+      glowWindows.length,
+      4,
+      "Expected four visible desktop activity edge-glow windows.",
+    );
+
+    assert.notEqual(banner?.rect, undefined);
+
+    const screenLeft =
+      screenshotRegion?.left ?? 0;
+    const screenTop =
+      screenshotRegion?.top ?? 0;
+    const screenRight =
+      screenLeft +
+      (screenshotRegion?.width ?? 0);
+    const screenBottom =
+      screenTop +
+      (screenshotRegion?.height ?? 0);
+
+    const topGlow =
+      glowWindows.find(
+        (window) =>
+          window.rect?.left === screenLeft &&
+          window.rect?.top === screenTop &&
+          window.rect?.right === screenRight,
+      );
+    const bottomGlow =
+      glowWindows.find(
+        (window) =>
+          window.rect?.left === screenLeft &&
+          window.rect?.right === screenRight &&
+          window.rect?.bottom === screenBottom,
+      );
+    const leftGlow =
+      glowWindows.find(
+        (window) =>
+          window.rect?.left === screenLeft &&
+          window.rect?.top === screenTop &&
+          window.rect?.bottom === screenBottom,
+      );
+    const rightGlow =
+      glowWindows.find(
+        (window) =>
+          window.rect?.right === screenRight &&
+          window.rect?.top === screenTop &&
+          window.rect?.bottom === screenBottom,
+      );
+
+    assert.notEqual(topGlow?.rect, undefined);
+    assert.notEqual(bottomGlow?.rect, undefined);
+    assert.notEqual(leftGlow?.rect, undefined);
+    assert.notEqual(rightGlow?.rect, undefined);
+
+    const screenCenterX =
+      screenLeft +
+      (screenshotRegion?.width ?? 0) / 2;
+    const bannerCenterX =
+      ((banner?.rect?.left ?? 0) +
+        (banner?.rect?.right ?? 0)) /
+      2;
+
+    assert.equal(
+      Math.abs(
+        screenCenterX - bannerCenterX,
+      ) <= 1,
+      true,
+    );
+    assert.equal(
+      banner?.rect?.top,
+      (screenshotRegion?.top ?? 0) + 16,
+    );
+
+    assert.equal(
+      topGlow?.rect?.left,
+      screenLeft,
+    );
+    assert.equal(
+      topGlow?.rect?.top,
+      screenTop,
+    );
+    assert.equal(
+      topGlow?.rect?.right,
+      screenRight,
+    );
+    assert.equal(
+      bottomGlow?.rect?.bottom,
+      screenBottom,
+    );
+    assert.equal(
+      leftGlow?.rect?.left,
+      screenLeft,
+    );
+    assert.equal(
+      leftGlow?.rect?.height,
+      screenshotRegion?.height,
+    );
+    assert.equal(
+      rightGlow?.rect?.right,
+      screenRight,
+    );
+    assert.equal(
+      rightGlow?.rect?.height,
+      screenshotRegion?.height,
+    );
+
     assert.equal(
       screenshot.image
         ?.mimeType,
