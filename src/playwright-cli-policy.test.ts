@@ -11,7 +11,15 @@ test("playwright-cli policy accepts snapshot element refs and rejects selectors"
     true,
   );
   assert.equal(
+    validatePlaywrightCliArgs("click", ["f1e12"]),
+    true,
+  );
+  assert.equal(
     validatePlaywrightCliArgs("fill", ["e7", "hello"]),
+    true,
+  );
+  assert.equal(
+    validatePlaywrightCliArgs("fill", ["f23e7", "hello"]),
     true,
   );
   assert.equal(
@@ -20,6 +28,14 @@ test("playwright-cli policy accepts snapshot element refs and rejects selectors"
   );
   assert.equal(
     validatePlaywrightCliArgs("click", ["#selector"]),
+    false,
+  );
+  assert.equal(
+    validatePlaywrightCliArgs("click", ["f1f2e12"]),
+    false,
+  );
+  assert.equal(
+    validatePlaywrightCliArgs("click", ["frame-e12"]),
     false,
   );
 });

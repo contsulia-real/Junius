@@ -17,18 +17,25 @@ async function fixture(
     typeof DesktopComputerUseService
   >[0] = {},
 ) {
-  const root = await mkdtemp(join(tmpdir(), "junius-desktop-"));
-  const helper = join(root, "fake-helper.js");
+  const root = await mkdtemp(
+    join(
+      tmpdir(),
+      "junius-desktop-",
+    ),
+  );
+  const helper = join(
+    root,
+    "fake-helper.js",
+  );
 
   await writeFile(
     helper,
     `
 function responseFor(request) {
-  if (request.command === "inspect") {
+  if (request.command === "windows") {
     return {
       ok: true,
       result: {
-        handle: request.handle,
         helperPid: process.pid,
         pythonEnvironment: {
           PYTHONPATH: process.env.PYTHONPATH ?? null,
@@ -36,29 +43,7 @@ function responseFor(request) {
           PYTHONSTARTUP: process.env.PYTHONSTARTUP ?? null,
           PYTHONINSPECT: process.env.PYTHONINSPECT ?? null
         },
-        truncated: false,
-        elements: [
-          {
-            path: [],
-            name: "Window",
-            controlType: "Window",
-            automationId: "",
-            className: "Window",
-            rect: { left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600 },
-            enabled: true,
-            visible: true
-          },
-          {
-            path: [0],
-            name: "OK",
-            controlType: "Button",
-            automationId: "ok",
-            className: "Button",
-            rect: { left: 10, top: 10, right: 100, bottom: 40, width: 90, height: 30 },
-            enabled: true,
-            visible: true
-          }
-        ]
+        windows: []
       }
     };
   }
@@ -123,16 +108,25 @@ if (process.argv.includes("--server")) {
       if (!line.trim()) continue;
 
       const envelope = JSON.parse(line);
-      writeEnvelope(envelope.id, envelope.request);
+      writeEnvelope(
+        envelope.id,
+        envelope.request
+      );
     }
   });
 } else {
   let input = "";
   process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (chunk) => input += chunk);
+  process.stdin.on("data", (chunk) => {
+    input += chunk;
+  });
   process.stdin.on("end", () => {
     process.stdout.write(
-      JSON.stringify(responseFor(JSON.parse(input)))
+      JSON.stringify(
+        responseFor(
+          JSON.parse(input)
+        )
+      )
     );
   });
 }
@@ -140,19 +134,27 @@ if (process.argv.includes("--server")) {
     "utf8",
   );
 
-  const service = new DesktopComputerUseService({
-    ...serviceOptions,
-    helperPath: helper,
-    pythonExecutable: process.execPath,
-    platform: "win32",
-  });
+  const service =
+    new DesktopComputerUseService({
+      ...serviceOptions,
+      helperPath: helper,
+      pythonExecutable:
+        process.execPath,
+      platform: "win32",
+    });
 
   return {
     root,
     service,
     async dispose() {
       await service.close();
-      await rm(root, { recursive: true, force: true });
+      await rm(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
     },
   };
 }
@@ -160,28 +162,36 @@ if (process.argv.includes("--server")) {
 test("desktop helper strips inherited Python preload environment", async () => {
   const f = await fixture({
     environment: {
-      PYTHONPATH: "C:\\evil\\modules",
-      pythonhome: "C:\\evil\\python",
-      PYTHONSTARTUP: "C:\\evil\\startup.py",
+      PYTHONPATH:
+        "C:\\evil\\modules",
+      pythonhome:
+        "C:\\evil\\python",
+      PYTHONSTARTUP:
+        "C:\\evil\\startup.py",
       pythoninspect: "1",
     },
   });
 
   try {
-    const result = await f.service.run({
-      session: "desktop",
-      command: "inspect",
-      handle: 42,
-    });
+    const result =
+      await f.service.run({
+        session: "desktop",
+        command: "windows",
+      });
 
-    const body = result.result as {
-      pythonEnvironment: {
-        PYTHONPATH: string | null;
-        PYTHONHOME: string | null;
-        PYTHONSTARTUP: string | null;
-        PYTHONINSPECT: string | null;
+    const body =
+      result.result as {
+        pythonEnvironment: {
+          PYTHONPATH:
+            string | null;
+          PYTHONHOME:
+            string | null;
+          PYTHONSTARTUP:
+            string | null;
+          PYTHONINSPECT:
+            string | null;
+        };
       };
-    };
 
     assert.deepEqual(
       body.pythonEnvironment,
@@ -197,50 +207,39 @@ test("desktop helper strips inherited Python preload environment", async () => {
   }
 });
 
-test("desktop inspect creates session-local element refs", async () => {
+test("desktop screenshot separates MCP image data from metadata", async () => {
   const f = await fixture();
   try {
-    const result = await f.service.run({
-      session: "desktop",
-      command: "inspect",
-      handle: 42,
-      depth: 3,
-    });
+    const result =
+      await f.service.run({
+        session: "desktop",
+        command: "screenshot",
+        handle: 42,
+      });
 
-    const body = result.result as {
-      handle: number;
-      elements: {
-        ref: string;
-        name: string;
-        path?: unknown;
-      }[];
-    };
-
-    assert.equal(body.handle, 42);
     assert.deepEqual(
-      body.elements.map((element) => ({
-        ref: element.ref,
-        name: element.name,
-        path: element.path,
-      })),
-      [
-        { ref: "d1", name: "Window", path: undefined },
-        { ref: "d2", name: "OK", path: undefined },
-      ],
+      result.image,
+      {
+        mimeType: "image/jpeg",
+        data: "ZmFrZS1pbWFnZQ==",
+      },
     );
 
-    const invoked = await f.service.run({
-      session: "desktop",
-      command: "invoke",
-      ref: "d2",
-    });
-
     assert.deepEqual(
-      (invoked.result as { received: unknown }).received,
+      result.result,
       {
-        command: "invoke",
-        handle: 42,
-        path: [0],
+        helperPid:
+          (
+            result.result as {
+              helperPid: number;
+            }
+          ).helperPid,
+        region: {
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 600,
+        },
       },
     );
   } finally {
@@ -248,82 +247,22 @@ test("desktop inspect creates session-local element refs", async () => {
   }
 });
 
-test("desktop refs are scoped to the named session", async () => {
+test("desktop exposes only screenshot and coordinate keyboard/mouse commands", async () => {
   const f = await fixture();
-  try {
-    await f.service.run({
-      session: "first",
-      command: "inspect",
-      handle: 42,
-    });
 
-    await assert.rejects(
-      f.service.run({
-        session: "second",
-        command: "invoke",
-        ref: "d1",
-      }),
-      (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "desktop_ref_not_found",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("desktop screenshot separates MCP image data from metadata", async () => {
-  const f = await fixture();
-  try {
-    const result = await f.service.run({
-      session: "desktop",
-      command: "screenshot",
-      handle: 42,
-    });
-
-    assert.deepEqual(result.image, {
-      mimeType: "image/jpeg",
-      data: "ZmFrZS1pbWFnZQ==",
-    });
-
-    const body = result.result as {
-      helperPid: number;
-      region: {
-        left: number;
-        top: number;
-        width: number;
-        height: number;
-      };
-    };
-
-    assert.equal(typeof body.helperPid, "number");
-    assert.deepEqual(body.region, {
-      left: 0,
-      top: 0,
-      width: 800,
-      height: 600,
-    });
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("desktop adapter rejects invalid refs and command arguments before unsafe actions", async () => {
-  const f = await fixture();
   try {
     await assert.rejects(
       f.service.run({
         session: "desktop",
-        command: "focus",
-        ref: "d99",
+        command:
+          "inspect" as never,
+        handle: 42,
       }),
       (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "desktop_ref_not_found",
-    );
-    assert.equal(
-      f.service.state().helperRunning,
-      false,
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "command_not_allowed",
     );
 
     await assert.rejects(
@@ -333,31 +272,65 @@ test("desktop adapter rejects invalid refs and command arguments before unsafe a
         x: 10,
       }),
       (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "arguments_not_allowed",
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "arguments_not_allowed",
+    );
+
+    const action =
+      await f.service.run({
+        session: "desktop",
+        command: "mouse_click",
+        handle: 42,
+        x: 10,
+        y: 20,
+      });
+
+    assert.deepEqual(
+      (
+        action.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command: "mouse_click",
+        handle: 42,
+        x: 10,
+        y: 20,
+      },
     );
   } finally {
     await f.dispose();
   }
 });
 
-test("desktop disable clears refs, stops helper, and supports re-enable", async () => {
+test("desktop disable stops helper and supports re-enable", async () => {
   const f = await fixture();
 
   try {
     await f.service.run({
       session: "desktop",
-      command: "inspect",
-      handle: 42,
+      command: "windows",
     });
-    assert.equal(f.service.state().sessionCount, 1);
-    assert.equal(f.service.state().helperRunning, true);
+    assert.equal(
+      f.service.state()
+        .helperRunning,
+      true,
+    );
 
-    await f.service.setEnabled(false);
-    assert.equal(f.service.state().enabled, false);
-    assert.equal(f.service.state().active, false);
-    assert.equal(f.service.state().sessionCount, 0);
-    assert.equal(f.service.state().helperRunning, false);
+    await f.service.setEnabled(
+      false,
+    );
+    assert.equal(
+      f.service.state().enabled,
+      false,
+    );
+    assert.equal(
+      f.service.state()
+        .helperRunning,
+      false,
+    );
 
     await assert.rejects(
       f.service.run({
@@ -365,126 +338,68 @@ test("desktop disable clears refs, stops helper, and supports re-enable", async 
         command: "windows",
       }),
       (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "desktop_disabled",
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "desktop_disabled",
     );
 
-    await f.service.setEnabled(true);
-    assert.equal(f.service.state().enabled, true);
-    assert.equal(f.service.state().active, true);
-
-    const resumed = await f.service.run({
-      session: "desktop",
-      command: "inspect",
-      handle: 42,
-    });
-    assert.equal(resumed.command, "inspect");
-    assert.equal(f.service.state().helperRunning, true);
-    assert.equal(f.service.state().sessionCount, 1);
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("desktop prunes idle named-session refs", async () => {
-  const f = await fixture({
-    sessionIdleMs: 20,
-    maxSessions: 8,
-  });
-
-  try {
-    await f.service.run({
-      session: "old",
-      command: "inspect",
-      handle: 42,
-    });
-    assert.equal(f.service.state().sessionCount, 1);
-
-    await new Promise((resolve) =>
-      setTimeout(resolve, 35),
+    await f.service.setEnabled(
+      true,
     );
-
-    await f.service.run({
-      session: "new",
-      command: "inspect",
-      handle: 42,
-    });
-
-    assert.equal(f.service.state().sessionCount, 1);
-
-    await assert.rejects(
-      f.service.run({
-        session: "old",
-        command: "invoke",
-        ref: "d1",
-      }),
-      (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "desktop_ref_not_found",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("desktop bounds named-session ref state", async () => {
-  const f = await fixture({
-    sessionIdleMs: 60_000,
-    maxSessions: 2,
-  });
-
-  try {
-    for (const session of ["one", "two", "three"]) {
+    const resumed =
       await f.service.run({
-        session,
-        command: "inspect",
-        handle: 42,
+        session: "desktop",
+        command: "windows",
       });
-    }
-
-    assert.equal(f.service.state().sessionCount, 2);
-
-    await assert.rejects(
-      f.service.run({
-        session: "one",
-        command: "invoke",
-        ref: "d1",
-      }),
-      (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "desktop_ref_not_found",
+    assert.equal(
+      resumed.command,
+      "windows",
     );
   } finally {
     await f.dispose();
   }
 });
 
-test("desktop prewarms and reuses one persistent helper process across actions", async () => {
+test("desktop prewarms and reuses one persistent helper process across screenshot-era actions", async () => {
   const f = await fixture();
   try {
     await f.service.prewarm();
-    assert.equal(f.service.state().helperRunning, true);
-    assert.equal(f.service.state().helperReady, true);
+    assert.equal(
+      f.service.state()
+        .helperReady,
+      true,
+    );
 
-    const first = await f.service.run({
-      session: "desktop",
-      command: "windows",
-    });
-    const second = await f.service.run({
-      session: "desktop",
-      command: "key_press",
-      key: "esc",
-    });
+    const first =
+      await f.service.run({
+        session: "desktop",
+        command: "windows",
+      });
+    const second =
+      await f.service.run({
+        session: "desktop",
+        command: "key_press",
+        key: "esc",
+      });
 
-    const firstPid = (
-      first.result as { helperPid: number }
-    ).helperPid;
-    const secondPid = (
-      second.result as { helperPid: number }
-    ).helperPid;
+    const firstPid =
+      (
+        first.result as {
+          helperPid: number;
+        }
+      ).helperPid;
+    const secondPid =
+      (
+        second.result as {
+          helperPid: number;
+        }
+      ).helperPid;
 
-    assert.equal(firstPid, secondPid);
-    assert.equal(f.service.state().helperRunning, true);
+    assert.equal(
+      firstPid,
+      secondPid,
+    );
   } finally {
     await f.dispose();
   }
@@ -492,7 +407,10 @@ test("desktop prewarms and reuses one persistent helper process across actions",
 
 test("desktop resolves project-root virtualenv Python for live and release helpers", async () => {
   const root = await mkdtemp(
-    join(tmpdir(), "junius-desktop-venv-"),
+    join(
+      tmpdir(),
+      "junius-desktop-venv-",
+    ),
   );
   const liveHelper = join(
     root,
@@ -509,7 +427,8 @@ test("desktop resolves project-root virtualenv Python for live and release helpe
     "desktop_helper.py",
   );
   const pythonExecutable =
-    process.platform === "win32"
+    process.platform ===
+    "win32"
       ? join(
           root,
           ".venv",
@@ -525,16 +444,28 @@ test("desktop resolves project-root virtualenv Python for live and release helpe
 
   try {
     const { mkdir } =
-      await import("node:fs/promises");
-    await mkdir(dirname(liveHelper), {
-      recursive: true,
-    });
-    await mkdir(dirname(releaseHelper), {
-      recursive: true,
-    });
+      await import(
+        "node:fs/promises"
+      );
     await mkdir(
-      dirname(pythonExecutable),
-      { recursive: true },
+      dirname(liveHelper),
+      {
+        recursive: true,
+      },
+    );
+    await mkdir(
+      dirname(releaseHelper),
+      {
+        recursive: true,
+      },
+    );
+    await mkdir(
+      dirname(
+        pythonExecutable,
+      ),
+      {
+        recursive: true,
+      },
     );
     await writeFile(
       liveHelper,
@@ -560,7 +491,8 @@ test("desktop resolves project-root virtualenv Python for live and release helpe
         new DesktopComputerUseService({
           environment: {
             PATH: "",
-            JUNIUS_PROJECT_ROOT: root,
+            JUNIUS_PROJECT_ROOT:
+              root,
           },
           helperPath,
           platform: "win32",
@@ -568,7 +500,8 @@ test("desktop resolves project-root virtualenv Python for live and release helpe
 
       try {
         assert.equal(
-          service.state().pythonExecutable,
+          service.state()
+            .pythonExecutable,
           pythonExecutable,
         );
         assert.equal(
@@ -580,42 +513,71 @@ test("desktop resolves project-root virtualenv Python for live and release helpe
       }
     }
   } finally {
-    await rm(root, {
-      recursive: true,
-      force: true,
-    });
+    await rm(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
   }
 });
 
-test("desktop real Python helper can enumerate Windows repeatedly when installed", async (t) => {
-  const service = new DesktopComputerUseService();
+test("desktop real Python helper supports screenshot-only perception when installed", async (t) => {
+  const service =
+    new DesktopComputerUseService();
 
   try {
     if (!service.available) {
-      t.skip("Junius desktop Python environment is not installed.");
+      t.skip(
+        "Junius desktop Python environment is not installed.",
+      );
       return;
     }
 
-    const first = await service.run({
-      session: "integration",
-      command: "windows",
-    });
-    const second = await service.run({
-      session: "integration",
-      command: "windows",
-    });
+    const windows =
+      await service.run({
+        session:
+          "integration",
+        command: "windows",
+      });
+    const screenshot =
+      await service.run({
+        session:
+          "integration",
+        command:
+          "screenshot",
+      });
 
-    const firstResult = first.result as {
-      windows?: unknown;
-    };
-    const secondResult = second.result as {
-      windows?: unknown;
-    };
-
-    assert.equal(Array.isArray(firstResult.windows), true);
-    assert.equal(Array.isArray(secondResult.windows), true);
-    assert.equal(service.state().active, true);
-    assert.equal(service.state().helperRunning, true);
+    assert.equal(
+      Array.isArray(
+        (
+          windows.result as {
+            windows?: unknown;
+          }
+        ).windows,
+      ),
+      true,
+    );
+    assert.equal(
+      screenshot.image
+        ?.mimeType,
+      "image/jpeg",
+    );
+    assert.equal(
+      typeof screenshot.image
+        ?.data,
+      "string",
+    );
+    assert.equal(
+      service.state().active,
+      true,
+    );
+    assert.equal(
+      service.state()
+        .helperRunning,
+      true,
+    );
   } finally {
     await service.close();
   }

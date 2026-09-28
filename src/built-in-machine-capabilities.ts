@@ -161,7 +161,7 @@ export function builtInMachineCapabilityStatus(
     key,
     scope: "machine",
     description:
-      "Local Windows desktop computer use through UI Automation plus bounded screenshot, mouse, and keyboard actions.",
+      "Local Windows desktop computer use through screenshots plus bounded mouse and keyboard actions.",
     enabled,
     available:
       context.services.desktop.available,

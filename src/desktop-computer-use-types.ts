@@ -1,10 +1,6 @@
 export const DESKTOP_COMMANDS = [
   "windows",
   "screenshot",
-  "inspect",
-  "invoke",
-  "set_value",
-  "focus",
   "focus_window",
   "mouse_move",
   "mouse_click",
@@ -17,7 +13,8 @@ export const DESKTOP_COMMANDS = [
   "type",
 ] as const;
 
-export type DesktopCommand = (typeof DESKTOP_COMMANDS)[number];
+export type DesktopCommand =
+  (typeof DESKTOP_COMMANDS)[number];
 
 export type DesktopComputerUseErrorCode =
   | "desktop_disabled"
@@ -25,7 +22,6 @@ export type DesktopComputerUseErrorCode =
   | "invalid_session"
   | "command_not_allowed"
   | "arguments_not_allowed"
-  | "desktop_ref_not_found"
   | "spawn_failed"
   | "process_timeout"
   | "output_limit"
@@ -50,8 +46,6 @@ export interface DesktopRunRequest {
   readonly session: string;
   readonly command: DesktopCommand;
   readonly handle?: number;
-  readonly ref?: string;
-  readonly depth?: number;
   readonly x?: number;
   readonly y?: number;
   readonly button?: "left" | "right" | "middle";
@@ -74,6 +68,4 @@ export interface DesktopComputerUseOptions {
   readonly pythonExecutable?: string;
   readonly helperPath?: string;
   readonly platform?: NodeJS.Platform;
-  readonly sessionIdleMs?: number;
-  readonly maxSessions?: number;
 }

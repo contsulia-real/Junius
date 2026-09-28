@@ -16,7 +16,7 @@ The current implementation does not provide an OS security sandbox.
 - pnpm 12.6.0
 - OpenAI Secure MCP Tunnel `tunnel-client`
 - `playwright-cli` / `@playwright/cli` for browser capability
-- Windows desktop capability: the project `.venv` with Python plus `pywinauto`, `PyAutoGUI`, Pillow, and Windows bindings
+- Windows desktop capability: the project `.venv` with Python plus `PyAutoGUI`, Pillow, and Windows bindings
 
 ## Run
 
@@ -75,7 +75,7 @@ source change
 -> keep previous Worker during rollback/drain window
 ```
 
-If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their owning Worker while their Host route is active; those routes have a 30-minute idle TTL, refreshed by requests, so abandoned MCP sessions cannot pin routing state forever. For modern sessionless MCP calls, the Host also keeps resource affinity for Job IDs, named browser sessions, and Desktop UIA refs so hot swaps do not move process-local state to the wrong Worker. Resource affinity is bounded: browser bindings expire after 10 minutes of inactivity, Desktop UIA-ref bindings expire after 5 minutes of inactivity, and Jobs remain pinned indefinitely while running. When a Worker reports that a Job reached a terminal state, its result/output affinity first enters a 30-minute fallback retention window. After that Worker confirms the terminal history was persisted successfully, the Host releases the Job affinity immediately so later reads can route to any active Worker and lazy-load the shared history. Unbound terminal/persisted Job race hints also expire after the same 30-minute fallback window. Retiring Workers are never reaped before the rollback window ends, and only the newest 16 exited Worker records are retained for diagnostics.
+If source validation or candidate startup fails, the active Worker is unchanged. A newly promoted Worker that exits during the rollback window causes the Host to fall back to the previous live Worker. Existing MCP session IDs remain routed to their owning Worker while their Host route is active; those routes have a 30-minute idle TTL, refreshed by requests, so abandoned MCP sessions cannot pin routing state forever. For modern sessionless MCP calls, the Host keeps resource affinity for Job IDs and named browser sessions so hot swaps do not move process-local state to the wrong Worker. Desktop actions are stateless across Workers and therefore do not use resource affinity. Resource affinity is bounded: browser bindings expire after 10 minutes of inactivity, and Jobs remain pinned indefinitely while running. When a Worker reports that a Job reached a terminal state, its result/output affinity first enters a 30-minute fallback retention window. After that Worker confirms the terminal history was persisted successfully, the Host releases the Job affinity immediately so later reads can route to any active Worker and lazy-load the shared history. Unbound terminal/persisted Job race hints also expire after the same 30-minute fallback window. Retiring Workers are never reaped before the rollback window ends, and only the newest 16 exited Worker records are retained for diagnostics.
 
 Admin configuration mutations are synchronized across every live Worker before the public admin response is allowed to succeed. The Worker that handled the mutation persists the new Workspace or machine-capability state first; the Host then asks every other active/retiring Worker to reload that shared state through a private authenticated endpoint. A Worker that cannot reload is quarantined and removed from routing instead of continuing with stale authorization. Configuration changes racing with candidate startup advance a Host-side epoch; a candidate that may have loaded an older snapshot is refreshed to the latest epoch before promotion. This keeps old MCP sessions and Browser/Desktop affinity routes subject to current grants and machine-level enablement.
 
@@ -390,7 +390,7 @@ Machine Capability v1 is implemented and locally validated.
 
 Authorization UX v1 is implemented and locally validated.
 
-Desktop Computer Use v1 is implemented and locally validated with UI Automation plus screenshot/mouse/keyboard fallback.
+Desktop Computer Use v1 is implemented and locally validated with screenshot-based perception plus bounded mouse/keyboard control.
 
 OS-level sandboxing is not part of the current execution implementation.
 
@@ -496,7 +496,7 @@ The verified job completed with status `succeeded` and exit code `0`. The backgr
 node scripts/source-validation.mjs begin && pnpm check:bootstrap && pnpm typecheck && pnpm test && node scripts/source-validation.mjs commit
 ```
 
-The current full check covers 173 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
+The current full check covers 146 tests across the validated launcher/bootstrap chain, manual last-known-good Host bootstrap, Host/Worker proxying, layered latency tracing, bounded hot-swap affinity, Job terminal IPC and persistent terminal history, Windows process-tree termination, PATH-based launcher resolution, read batching, transactional Workspace writes, persistent browser-broker transport, and screenshot-only Windows desktop-helper behavior. The real Desktop Python integration uses Junius's project-local `.venv`.
 
 The black-box flow used the Job Manager path rather than waiting synchronously in `run_command`, and it did not modify project files, permissions, or configuration.
 
@@ -539,23 +539,15 @@ For modern MCP calls, Junius assigns a Host trace ID and the Worker reports its 
 
 Junius exposes Windows desktop automation through the stable `desktop` MCP tool.
 
-The preferred path is semantic Windows UI Automation:
+Desktop perception is screenshot-only. The tool can list top-level native windows, capture the full screen or one native window, focus a top-level window, and perform bounded coordinate mouse / keyboard / text input.
 
-```text
-windows -> inspect -> element refs -> invoke / set_value / focus
-```
-
-For games and custom-rendered interfaces where UI Automation is insufficient, Junius falls back to screenshots plus bounded mouse and keyboard actions.
-
-Desktop element refs are scoped to a named desktop session and are rebuilt by `inspect`. Screenshots may target the full screen or one native window. When a window handle is supplied for a mouse action, coordinates are window-relative and must remain inside that window's rectangle.
+When a window handle is supplied for a screenshot or mouse action, coordinates are window-relative and must remain inside that window's rectangle. Without a handle, screenshot and mouse coordinates are screen-relative. Junius does not maintain semantic element refs or inspect application accessibility trees.
 
 Text input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, so non-ASCII input is supported without relying on clipboard mutation.
 
-The Python helper now runs as a persistent JSONL server inside each Worker. Desktop Computer Use is bound to Junius's project-local `.venv` (`.venv/Scripts/python.exe` on Windows) rather than an arbitrary Python discovered from `PATH`; the helper script itself is the Junius-owned `python/desktop_helper.py`. After a Worker becomes ready, Junius opportunistically prewarms both the Desktop helper and the Playwright broker in the background. This loads Python/`pywinauto`/PyAutoGUI and the Playwright CLI client before the first action while still leaving the headed browser itself lazy until an actual browser `open` command. If the Desktop helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
+The Python helper runs as a persistent JSONL server inside each Worker. Desktop Computer Use is bound to Junius's project-local `.venv` (`.venv/Scripts/python.exe` on Windows) rather than an arbitrary Python discovered from `PATH`; the helper script itself is the Junius-owned `python/desktop_helper.py`. The helper uses Win32 APIs for top-level window metadata/focus and PyAutoGUI for screenshots and coordinate input. After a Worker becomes ready, Junius opportunistically prewarms both the Desktop helper and the Playwright broker in the background. If the Desktop helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
 
-Desktop UIA refs remain Worker-local. The Host therefore binds a named desktop session to the Worker that performed `inspect`; a later `inspect` is the explicit migration boundary to the current active Worker.
-
-Desktop is machine-scoped like browser. It has persisted `enabled`, runtime `available`, and derived `active` state and does not use Workspace grants.
+Desktop is stateless across Workers apart from its helper process; there is no Desktop ref/session affinity to preserve during hot swap. Desktop is machine-scoped like browser. It has persisted `enabled`, runtime `available`, and derived `active` state and does not use Workspace grants.
 
 ## Workspace batching and transactional writes
 

@@ -33,7 +33,7 @@ export const ADMIN_DASHBOARD_JS_RENDER_COMPUTER = String.raw`  function renderBr
       esc(data.desktop.helperPath) + '</div></div>' +
       '<div class="detail"><div class="key">Helper 进程</div><div class="value">' +
       (data.desktop.helperReady ? "已预热" : (data.desktop.helperRunning ? "预热中" : "等待预热")) + '</div></div>' +
-      '<div class="detail"><div class="key">自动化路径</div><div class="value">UI Automation + Screenshot / Mouse / Keyboard</div></div>';
+      '<div class="detail"><div class="key">控制路径</div><div class="value">Screenshot + Coordinate Mouse / Keyboard</div></div>';
   }
 
 `;

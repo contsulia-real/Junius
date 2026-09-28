@@ -141,16 +141,6 @@ export function routeKeyForTool(
     return `browser:${session}`;
   }
 
-  if (call.name === "desktop") {
-    const command = argumentString(call, "command");
-    if (
-      ["invoke", "set_value", "focus"].includes(command ?? "")
-    ) {
-      const session = argumentString(call, "session", "junius")!;
-      return `desktop:${session}`;
-    }
-  }
-
   return undefined;
 }
 
@@ -171,17 +161,6 @@ export function bindBeforeForward(
       );
     }
     return;
-  }
-
-  if (
-    call.name === "desktop" &&
-    argumentString(call, "command") === "inspect"
-  ) {
-    const session = argumentString(call, "session", "junius")!;
-    supervisor.bindResource(
-      `desktop:${session}`,
-      workerId,
-    );
   }
 }
 

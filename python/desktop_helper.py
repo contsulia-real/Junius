@@ -6,20 +6,20 @@ import io
 import json
 import sys
 from ctypes import wintypes
-from typing import Any
+from typing import Any, Callable
 
 import pyautogui
-from pywinauto import Desktop
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.03
 
-MAX_INSPECT_NODES = 500
-
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
+SW_RESTORE = 9
 ULONG_PTR = wintypes.WPARAM
+
+user32 = ctypes.windll.user32
 
 
 class KeyboardInput(ctypes.Structure):
@@ -45,202 +45,165 @@ class Input(ctypes.Structure):
 
 
 class DesktopHelperError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+    ) -> None:
         super().__init__(message)
         self.code = code
 
 
-def rect_dict(rect: Any) -> dict[str, int]:
-    return {
-        "left": int(rect.left),
-        "top": int(rect.top),
-        "right": int(rect.right),
-        "bottom": int(rect.bottom),
-        "width": int(rect.width()),
-        "height": int(rect.height()),
-    }
-
-
-def window_wrapper(handle: int, backend: str = "uia") -> Any:
-    try:
-        return Desktop(backend=backend).window(handle=handle).wrapper_object()
-    except Exception as error:
+def window_rect(
+    handle: int,
+) -> tuple[int, int, int, int]:
+    hwnd = wintypes.HWND(handle)
+    if not user32.IsWindow(hwnd):
         raise DesktopHelperError(
             "window_not_found",
             f"Window handle is not available: {handle}",
-        ) from error
+        )
+
+    rect = wintypes.RECT()
+    if not user32.GetWindowRect(
+        hwnd,
+        ctypes.byref(rect),
+    ):
+        raise DesktopHelperError(
+            "window_rect_failed",
+            f"Could not read window rectangle: {handle}",
+        )
+
+    return (
+        int(rect.left),
+        int(rect.top),
+        int(rect.right),
+        int(rect.bottom),
+    )
+
+
+def rect_dict(
+    rect: tuple[int, int, int, int],
+) -> dict[str, int]:
+    left, top, right, bottom = rect
+    return {
+        "left": left,
+        "top": top,
+        "right": right,
+        "bottom": bottom,
+        "width": max(0, right - left),
+        "height": max(0, bottom - top),
+    }
+
+
+def window_text(handle: int) -> str:
+    hwnd = wintypes.HWND(handle)
+    length = int(
+        user32.GetWindowTextLengthW(hwnd)
+    )
+    buffer = ctypes.create_unicode_buffer(
+        max(1, length + 1)
+    )
+    user32.GetWindowTextW(
+        hwnd,
+        buffer,
+        len(buffer),
+    )
+    return buffer.value
+
+
+def window_class_name(handle: int) -> str:
+    buffer = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(
+        wintypes.HWND(handle),
+        buffer,
+        len(buffer),
+    )
+    return buffer.value
 
 
 def list_windows() -> dict[str, Any]:
     windows: list[dict[str, Any]] = []
+    foreground = int(
+        user32.GetForegroundWindow() or 0
+    )
 
-    try:
-        wrappers = Desktop(backend="win32").windows(visible_only=True)
-    except Exception as error:
-        raise DesktopHelperError(
-            "windows_failed",
-            str(error),
-        ) from error
+    callback_type = ctypes.WINFUNCTYPE(
+        wintypes.BOOL,
+        wintypes.HWND,
+        wintypes.LPARAM,
+    )
 
-    for wrapper in wrappers:
+    def visit(
+        hwnd: wintypes.HWND,
+        _lparam: wintypes.LPARAM,
+    ) -> bool:
+        handle = int(hwnd)
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
         try:
-            title = wrapper.window_text()
-            rect = wrapper.rectangle()
+            rect = window_rect(handle)
             windows.append(
                 {
-                    "handle": int(wrapper.handle),
-                    "title": title,
-                    "className": wrapper.class_name(),
+                    "handle": handle,
+                    "title": window_text(handle),
+                    "className": window_class_name(
+                        handle
+                    ),
                     "rect": rect_dict(rect),
-                    "enabled": bool(wrapper.is_enabled()),
-                    "visible": bool(wrapper.is_visible()),
-                    "active": bool(wrapper.has_focus()),
+                    "enabled": bool(
+                        user32.IsWindowEnabled(hwnd)
+                    ),
+                    "visible": True,
+                    "active": (
+                        handle == foreground
+                    ),
                 }
             )
-        except Exception:
-            continue
+        except DesktopHelperError:
+            pass
+
+        return True
+
+    callback = callback_type(visit)
+    if not user32.EnumWindows(
+        callback,
+        0,
+    ):
+        raise DesktopHelperError(
+            "windows_failed",
+            "EnumWindows failed.",
+        )
 
     return {"windows": windows}
 
 
-def resolve_element(handle: int, path: list[int]) -> Any:
-    current = window_wrapper(handle, backend="uia")
-
-    try:
-        for index in path:
-            children = current.children()
-            if index < 0 or index >= len(children):
-                raise DesktopHelperError(
-                    "element_not_found",
-                    "Desktop element path is stale.",
-                )
-            current = children[index]
-    except DesktopHelperError:
-        raise
-    except Exception as error:
-        raise DesktopHelperError(
-            "element_not_found",
-            "Desktop element is no longer available.",
-        ) from error
-
-    return current
-
-
-def inspect_window(handle: int, depth: int) -> dict[str, Any]:
-    root = window_wrapper(handle, backend="uia")
-    elements: list[dict[str, Any]] = []
-
-    def visit(wrapper: Any, path: list[int], remaining: int) -> None:
-        if len(elements) >= MAX_INSPECT_NODES:
-            return
-
-        try:
-            info = wrapper.element_info
-            item: dict[str, Any] = {
-                "path": path,
-                "name": wrapper.window_text(),
-                "controlType": getattr(info, "control_type", None),
-                "automationId": getattr(info, "automation_id", None),
-                "className": getattr(info, "class_name", None),
-                "rect": rect_dict(wrapper.rectangle()),
-                "enabled": bool(wrapper.is_enabled()),
-                "visible": bool(wrapper.is_visible()),
-            }
-            elements.append(item)
-        except Exception:
-            return
-
-        if remaining <= 0:
-            return
-
-        try:
-            children = wrapper.children()
-        except Exception:
-            return
-
-        for index, child in enumerate(children):
-            if len(elements) >= MAX_INSPECT_NODES:
-                break
-            visit(child, [*path, index], remaining - 1)
-
-    visit(root, [], depth)
-
-    return {
-        "handle": handle,
-        "elements": elements,
-        "truncated": len(elements) >= MAX_INSPECT_NODES,
-    }
-
-
-def element_action(command: str, handle: int, path: list[int], text: str | None) -> dict[str, Any]:
-    element = resolve_element(handle, path)
-
-    try:
-        if command == "invoke":
-            invoke = getattr(element, "invoke", None)
-            if not callable(invoke):
-                raise DesktopHelperError(
-                    "pattern_not_supported",
-                    "Element does not expose an invoke action.",
-                )
-            invoke()
-
-        elif command == "set_value":
-            if text is None:
-                raise DesktopHelperError(
-                    "invalid_request",
-                    "set_value requires text.",
-                )
-
-            set_edit_text = getattr(element, "set_edit_text", None)
-            set_value = getattr(element, "set_value", None)
-
-            if callable(set_edit_text):
-                set_edit_text(text)
-            elif callable(set_value):
-                set_value(text)
-            else:
-                raise DesktopHelperError(
-                    "pattern_not_supported",
-                    "Element does not expose a writable value action.",
-                )
-
-        elif command == "focus":
-            element.set_focus()
-
-        else:
-            raise DesktopHelperError(
-                "command_not_allowed",
-                f"Unknown element action: {command}",
-            )
-    except DesktopHelperError:
-        raise
-    except Exception as error:
-        raise DesktopHelperError(
-            "desktop_action_failed",
-            str(error),
-        ) from error
-
-    return {"performed": command}
-
-
-def screenshot(handle: int | None) -> dict[str, Any]:
+def screenshot(
+    handle: int | None,
+) -> dict[str, Any]:
     if handle is None:
         width, height = pyautogui.size()
         origin_x = 0
         origin_y = 0
         image = pyautogui.screenshot()
     else:
-        wrapper = window_wrapper(handle, backend="win32")
-        rect = wrapper.rectangle()
-        width = max(1, int(rect.width()))
-        height = max(1, int(rect.height()))
-        origin_x = int(rect.left)
-        origin_y = int(rect.top)
+        left, top, right, bottom = (
+            window_rect(handle)
+        )
+        width = max(1, right - left)
+        height = max(1, bottom - top)
+        origin_x = left
+        origin_y = top
 
         try:
             image = pyautogui.screenshot(
-                region=(origin_x, origin_y, width, height)
+                region=(
+                    origin_x,
+                    origin_y,
+                    width,
+                    height,
+                )
             )
         except Exception as error:
             raise DesktopHelperError(
@@ -259,18 +222,22 @@ def screenshot(handle: int | None) -> dict[str, Any]:
     return {
         "image": {
             "mimeType": "image/jpeg",
-            "data": base64.b64encode(output.getvalue()).decode("ascii"),
+            "data": base64.b64encode(
+                output.getvalue()
+            ).decode("ascii"),
         },
         "region": {
             "left": origin_x,
             "top": origin_y,
-            "width": width,
-            "height": height,
+            "width": int(width),
+            "height": int(height),
         },
     }
 
 
-def point(request: dict[str, Any]) -> tuple[int, int]:
+def point(
+    request: dict[str, Any],
+) -> tuple[int, int]:
     x = int(request["x"])
     y = int(request["y"])
     handle = request.get("handle")
@@ -278,21 +245,30 @@ def point(request: dict[str, Any]) -> tuple[int, int]:
     if handle is None:
         return x, y
 
-    rect = window_wrapper(int(handle), backend="win32").rectangle()
-    width = int(rect.width())
-    height = int(rect.height())
+    left, top, right, bottom = window_rect(
+        int(handle)
+    )
+    width = right - left
+    height = bottom - top
 
-    if x < 0 or y < 0 or x >= width or y >= height:
+    if (
+        x < 0
+        or y < 0
+        or x >= width
+        or y >= height
+    ):
         raise DesktopHelperError(
             "point_outside_window",
             (
-                "Window-relative coordinates are outside the target window: "
-                f"({x}, {y}) not within 0..{max(0, width - 1)}, "
+                "Window-relative coordinates are outside "
+                "the target window: "
+                f"({x}, {y}) not within "
+                f"0..{max(0, width - 1)}, "
                 f"0..{max(0, height - 1)}."
             ),
         )
 
-    return int(rect.left) + x, int(rect.top) + y
+    return left + x, top + y
 
 
 def type_unicode(text: str) -> None:
@@ -301,14 +277,22 @@ def type_unicode(text: str) -> None:
 
     utf16 = text.encode("utf-16-le")
     units = [
-        int.from_bytes(utf16[index:index + 2], "little")
-        for index in range(0, len(utf16), 2)
+        int.from_bytes(
+            utf16[index : index + 2],
+            "little",
+        )
+        for index in range(
+            0,
+            len(utf16),
+            2,
+        )
     ]
 
     for unit in units:
         for flags in (
             KEYEVENTF_UNICODE,
-            KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+            KEYEVENTF_UNICODE
+            | KEYEVENTF_KEYUP,
         ):
             keyboard = KeyboardInput(
                 wVk=0,
@@ -317,8 +301,11 @@ def type_unicode(text: str) -> None:
                 time=0,
                 dwExtraInfo=0,
             )
-            event = Input(type=INPUT_KEYBOARD, ki=keyboard)
-            sent = ctypes.windll.user32.SendInput(
+            event = Input(
+                type=INPUT_KEYBOARD,
+                ki=keyboard,
+            )
+            sent = user32.SendInput(
                 1,
                 ctypes.byref(event),
                 ctypes.sizeof(Input),
@@ -326,11 +313,57 @@ def type_unicode(text: str) -> None:
             if sent != 1:
                 raise DesktopHelperError(
                     "unicode_input_failed",
-                    "Windows SendInput failed while typing Unicode text.",
+                    (
+                        "Windows SendInput failed "
+                        "while typing Unicode text."
+                    ),
                 )
 
 
-def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
+def focus_window(
+    handle: int,
+) -> dict[str, Any]:
+    hwnd = wintypes.HWND(handle)
+    if not user32.IsWindow(hwnd):
+        raise DesktopHelperError(
+            "window_not_found",
+            f"Window handle is not available: {handle}",
+        )
+
+    user32.ShowWindow(
+        hwnd,
+        SW_RESTORE,
+    )
+    user32.BringWindowToTop(hwnd)
+    focused = bool(
+        user32.SetForegroundWindow(hwnd)
+    )
+
+    if not focused:
+        raise DesktopHelperError(
+            "focus_failed",
+            (
+                "Windows rejected foreground focus "
+                f"for window: {handle}"
+            ),
+        )
+
+    return {
+        "handle": handle,
+        "active": (
+            int(
+                user32.GetForegroundWindow()
+                or 0
+            )
+            == handle
+        ),
+    }
+
+
+def input_action(
+    command: str,
+    request: dict[str, Any],
+) -> dict[str, Any]:
     try:
         if command == "mouse_move":
             x, y = point(request)
@@ -342,8 +375,18 @@ def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
             pyautogui.click(
                 x=x,
                 y=y,
-                clicks=int(request.get("clicks", 1)),
-                button=str(request.get("button", "left")),
+                clicks=int(
+                    request.get(
+                        "clicks",
+                        1,
+                    )
+                ),
+                button=str(
+                    request.get(
+                        "button",
+                        "left",
+                    )
+                ),
             )
             return {"x": x, "y": y}
 
@@ -352,7 +395,12 @@ def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
             pyautogui.mouseDown(
                 x=x,
                 y=y,
-                button=str(request.get("button", "left")),
+                button=str(
+                    request.get(
+                        "button",
+                        "left",
+                    )
+                ),
             )
             return {"x": x, "y": y}
 
@@ -361,37 +409,55 @@ def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
             pyautogui.mouseUp(
                 x=x,
                 y=y,
-                button=str(request.get("button", "left")),
+                button=str(
+                    request.get(
+                        "button",
+                        "left",
+                    )
+                ),
             )
             return {"x": x, "y": y}
 
         if command == "mouse_wheel":
             x, y = point(request)
             pyautogui.moveTo(x, y)
-            pyautogui.scroll(int(request["amount"]))
-            return {"x": x, "y": y, "amount": int(request["amount"])}
+            pyautogui.scroll(
+                int(request["amount"])
+            )
+            return {
+                "x": x,
+                "y": y,
+                "amount": int(
+                    request["amount"]
+                ),
+            }
 
         if command == "key_press":
-            pyautogui.press(str(request["key"]))
-            return {"key": str(request["key"])}
+            key = str(request["key"])
+            pyautogui.press(key)
+            return {"key": key}
 
         if command == "key_down":
-            pyautogui.keyDown(str(request["key"]))
-            return {"key": str(request["key"])}
+            key = str(request["key"])
+            pyautogui.keyDown(key)
+            return {"key": key}
 
         if command == "key_up":
-            pyautogui.keyUp(str(request["key"]))
-            return {"key": str(request["key"])}
+            key = str(request["key"])
+            pyautogui.keyUp(key)
+            return {"key": key}
 
         if command == "type":
             text = str(request["text"])
             type_unicode(text)
-            return {"characters": len(text)}
+            return {
+                "characters": len(text)
+            }
 
         if command == "focus_window":
-            handle = int(request["handle"])
-            window_wrapper(handle, backend="win32").set_focus()
-            return {"handle": handle}
+            return focus_window(
+                int(request["handle"])
+            )
 
     except DesktopHelperError:
         raise
@@ -407,7 +473,9 @@ def input_action(command: str, request: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def execute(request: dict[str, Any]) -> dict[str, Any]:
+def execute(
+    request: dict[str, Any],
+) -> dict[str, Any]:
     command = request.get("command")
 
     if command == "windows":
@@ -415,20 +483,10 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
 
     if command == "screenshot":
         handle = request.get("handle")
-        return screenshot(None if handle is None else int(handle))
-
-    if command == "inspect":
-        return inspect_window(
-            int(request["handle"]),
-            int(request.get("depth", 3)),
-        )
-
-    if command in {"invoke", "set_value", "focus"}:
-        return element_action(
-            str(command),
-            int(request["handle"]),
-            [int(index) for index in request["path"]],
-            None if "text" not in request else str(request["text"]),
+        return screenshot(
+            None
+            if handle is None
+            else int(handle)
         )
 
     if command in {
@@ -443,20 +501,31 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
         "type",
         "focus_window",
     }:
-        return input_action(str(command), request)
+        return input_action(
+            str(command),
+            request,
+        )
 
     raise DesktopHelperError(
         "command_not_allowed",
-        f"Desktop command is not allowed: {command}",
+        (
+            "Desktop command is not allowed: "
+            f"{command}"
+        ),
     )
 
 
-def execute_response(request: Any) -> dict[str, Any]:
+def execute_response(
+    request: Any,
+) -> dict[str, Any]:
     try:
         if not isinstance(request, dict):
             raise DesktopHelperError(
                 "invalid_request",
-                "Desktop helper request must be an object.",
+                (
+                    "Desktop helper request "
+                    "must be an object."
+                ),
             )
 
         return {
@@ -477,7 +546,9 @@ def execute_response(request: Any) -> dict[str, Any]:
         }
 
 
-def write_response(response: dict[str, Any]) -> None:
+def write_response(
+    response: dict[str, Any],
+) -> None:
     sys.stdout.write(
         json.dumps(
             response,
@@ -494,7 +565,10 @@ def one_shot_main() -> None:
             {
                 "ok": False,
                 "code": "invalid_request",
-                "message": "Desktop helper requires a JSON request on stdin.",
+                "message": (
+                    "Desktop helper requires a "
+                    "JSON request on stdin."
+                ),
             }
         )
         return
@@ -511,7 +585,9 @@ def one_shot_main() -> None:
         )
         return
 
-    write_response(execute_response(request))
+    write_response(
+        execute_response(request)
+    )
 
 
 def server_main() -> None:
@@ -536,14 +612,22 @@ def server_main() -> None:
 
         try:
             envelope = json.loads(raw)
-            if not isinstance(envelope, dict):
+            if not isinstance(
+                envelope,
+                dict,
+            ):
                 raise DesktopHelperError(
                     "invalid_request",
-                    "Desktop helper server envelope must be an object.",
+                    (
+                        "Desktop helper server "
+                        "envelope must be an object."
+                    ),
                 )
 
             request_id = envelope.get("id")
-            response = execute_response(envelope.get("request"))
+            response = execute_response(
+                envelope.get("request")
+            )
         except DesktopHelperError as error:
             response = {
                 "ok": False,

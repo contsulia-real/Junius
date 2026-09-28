@@ -2,9 +2,10 @@ import type { DesktopRunRequest } from "./desktop-computer-use-types.js";
 
 export const DESKTOP_SESSION_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
-const REF_PATTERN = /^d\d+$/u;
 
-function isFiniteInteger(value: number | undefined): value is number {
+function isFiniteInteger(
+  value: number | undefined,
+): value is number {
   return (
     value !== undefined &&
     Number.isInteger(value) &&
@@ -12,43 +13,35 @@ function isFiniteInteger(value: number | undefined): value is number {
   );
 }
 
-export function validateDesktopRequest(request: DesktopRunRequest): boolean {
+function validHandle(
+  handle: number | undefined,
+): boolean {
+  return (
+    handle === undefined ||
+    (isFiniteInteger(handle) &&
+      handle > 0)
+  );
+}
+
+export function validateDesktopRequest(
+  request: DesktopRunRequest,
+): boolean {
   switch (request.command) {
     case "windows":
-      return (
-        request.handle === undefined &&
-        request.ref === undefined
-      );
+      return request.handle === undefined;
 
     case "screenshot":
-      return (
-        request.handle === undefined ||
-        (isFiniteInteger(request.handle) && request.handle > 0)
-      );
-
-    case "inspect":
-      return (
-        isFiniteInteger(request.handle) &&
-        request.handle > 0 &&
-        (request.depth === undefined ||
-          (isFiniteInteger(request.depth) &&
-            request.depth >= 0 &&
-            request.depth <= 8))
-      );
-
-    case "invoke":
-    case "focus":
-      return request.ref !== undefined && REF_PATTERN.test(request.ref);
-
-    case "set_value":
-      return (
-        request.ref !== undefined &&
-        REF_PATTERN.test(request.ref) &&
-        request.text !== undefined
+      return validHandle(
+        request.handle,
       );
 
     case "focus_window":
-      return isFiniteInteger(request.handle) && request.handle > 0;
+      return (
+        isFiniteInteger(
+          request.handle,
+        ) &&
+        request.handle > 0
+      );
 
     case "mouse_move":
     case "mouse_down":
@@ -56,18 +49,22 @@ export function validateDesktopRequest(request: DesktopRunRequest): boolean {
       return (
         isFiniteInteger(request.x) &&
         isFiniteInteger(request.y) &&
-        (request.handle === undefined ||
-          (isFiniteInteger(request.handle) && request.handle > 0))
+        validHandle(
+          request.handle,
+        )
       );
 
     case "mouse_click":
       return (
         isFiniteInteger(request.x) &&
         isFiniteInteger(request.y) &&
-        (request.handle === undefined ||
-          (isFiniteInteger(request.handle) && request.handle > 0)) &&
+        validHandle(
+          request.handle,
+        ) &&
         (request.clicks === undefined ||
-          (isFiniteInteger(request.clicks) &&
+          (isFiniteInteger(
+            request.clicks,
+          ) &&
             request.clicks >= 1 &&
             request.clicks <= 4))
       );
@@ -76,9 +73,12 @@ export function validateDesktopRequest(request: DesktopRunRequest): boolean {
       return (
         isFiniteInteger(request.x) &&
         isFiniteInteger(request.y) &&
-        isFiniteInteger(request.amount) &&
-        (request.handle === undefined ||
-          (isFiniteInteger(request.handle) && request.handle > 0))
+        isFiniteInteger(
+          request.amount,
+        ) &&
+        validHandle(
+          request.handle,
+        )
       );
 
     case "key_press":
@@ -91,8 +91,10 @@ export function validateDesktopRequest(request: DesktopRunRequest): boolean {
       );
 
     case "type":
-      return request.text !== undefined && request.text.length <= 65_536;
+      return (
+        request.text !== undefined &&
+        request.text.length <=
+          65_536
+      );
   }
 }
-
-

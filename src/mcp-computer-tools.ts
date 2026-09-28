@@ -156,12 +156,12 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through Junius computer use. Use windows to discover top-level windows. Use inspect on a window to get semantic UI Automation element refs such as d3, then use invoke, set_value, or focus with those refs. For applications without usable UI Automation, including many games and custom-rendered interfaces, use screenshot and coordinate-based mouse/keyboard commands. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise. Element refs are scoped to the named desktop session and are refreshed by inspect.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. Use windows to discover top-level native windows, screenshot to understand the full screen or one window, and coordinate mouse/keyboard commands to act. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
           .describe(
-            "Named Junius desktop session. UI Automation element refs are scoped to this session.",
+            "Named Junius desktop call context used for audit and tracing only; desktop actions are otherwise stateless.",
           ),
         command: z.enum(DESKTOP_COMMANDS),
         handle: z
@@ -172,14 +172,6 @@ export function registerComputerTools(
           .describe(
             "Top-level native window handle. For screenshot and mouse commands, coordinates become relative to this window when supplied.",
           ),
-        ref: z
-          .string()
-          .regex(/^d\d+$/u)
-          .optional()
-          .describe(
-            "Desktop element ref returned by inspect, such as d7.",
-          ),
-        depth: z.number().int().min(0).max(8).optional(),
         x: z.number().int().optional(),
         y: z.number().int().optional(),
         button: z.enum(["left", "right", "middle"]).optional(),
@@ -202,8 +194,6 @@ export function registerComputerTools(
       session,
       command,
       handle,
-      ref,
-      depth,
       x,
       y,
       button,
@@ -217,12 +207,6 @@ export function registerComputerTools(
         ...(handle === undefined
           ? {}
           : { handle }),
-        ...(ref === undefined
-          ? {}
-          : { ref }),
-        ...(depth === undefined
-          ? {}
-          : { depth }),
         ...(x === undefined
           ? {}
           : { x }),
@@ -250,8 +234,6 @@ export function registerComputerTools(
           session,
           command,
           ...(handle === undefined ? {} : { handle }),
-          ...(ref === undefined ? {} : { ref }),
-          ...(depth === undefined ? {} : { depth }),
           ...(x === undefined ? {} : { x }),
           ...(y === undefined ? {} : { y }),
           ...(button === undefined ? {} : { button }),
