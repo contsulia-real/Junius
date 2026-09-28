@@ -1,6 +1,6 @@
 {
   "name": "junius",
-  "version": "0.1.0",
+  "version": "0.0.1@Alpha$ChatGPT",
   "private": true,
   "description": "Local MCP capability service for ChatGPT",
   "scripts": {

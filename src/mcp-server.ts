@@ -9,6 +9,7 @@ import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
 import { registerComputerTools } from "./mcp-computer-tools.js";
 import { registerJobTools } from "./mcp-job-tools.js";
 import { registerRunCommandTool } from "./mcp-command-tool.js";
+import { JUNIUS_VERSION } from "./project-version.js";
 
 export { formatRunCommandResult } from "./mcp-tool-shared.js";
 
@@ -23,7 +24,7 @@ export function createMcpServer(
   const server = new McpServer({
     name: "Junius",
     title: "Junius Local Capabilities",
-    version: "1.0.0",
+    version: JUNIUS_VERSION,
   });
 
   registerWorkspaceTools(server, commands, files);

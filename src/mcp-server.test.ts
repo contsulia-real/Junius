@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { formatRunCommandResult } from "./mcp-server.js";
+import { JUNIUS_VERSION } from "./project-version.js";
+
+test("Junius runtime version follows package.json", () => {
+  const packageJson = JSON.parse(
+    readFileSync(
+      new URL("../package.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { version?: unknown };
+
+  assert.equal(
+    JUNIUS_VERSION,
+    packageJson.version,
+  );
+});
 
 test("formatRunCommandResult preserves execution diagnostics without inventing execution data", () => {
   const failedExecution = JSON.parse(
