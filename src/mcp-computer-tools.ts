@@ -7,6 +7,7 @@ import {
 } from "./playwright-cli.js";
 import {
   DESKTOP_COMMANDS,
+  DESKTOP_KEY_MACRO_ACTIONS,
   type DesktopComputerUseService,
 } from "./desktop-computer-use.js";
 import {
@@ -156,7 +157,7 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. Use windows to discover top-level native windows, screenshot to understand the full screen or one window, and coordinate mouse/keyboard commands to act. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. Use windows to discover top-level native windows, screenshot to understand the full screen or one window, coordinate mouse/keyboard commands to act, key_macro for bounded keyboard sequences, and clipboard_read/clipboard_write for Unicode text clipboard access. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
@@ -179,6 +180,24 @@ export function registerComputerTools(
         amount: z.number().int().optional(),
         key: z.string().min(1).max(64).optional(),
         text: z.string().max(65_536).optional(),
+        steps: z
+          .array(
+            z.object({
+              action: z.enum(
+                DESKTOP_KEY_MACRO_ACTIONS,
+              ),
+              key: z
+                .string()
+                .min(1)
+                .max(64),
+            }),
+          )
+          .min(1)
+          .max(128)
+          .optional()
+          .describe(
+            "Keyboard macro steps executed locally in order. Any key_down still held by this macro is released before the macro returns, including on failure.",
+          ),
       }),
       _meta: {
         securitySchemes: [{ type: "noauth" }],
@@ -201,6 +220,7 @@ export function registerComputerTools(
       amount,
       key,
       text,
+      steps,
     }) => {
       const startedAt = performance.now();
       const auditMetadata = {
@@ -228,6 +248,9 @@ export function registerComputerTools(
         ...(text === undefined
           ? {}
           : { text: "[REDACTED]" }),
+        ...(steps === undefined
+          ? {}
+          : { stepCount: steps.length }),
       };
       try {
         const execution = await desktop.run({
@@ -241,6 +264,7 @@ export function registerComputerTools(
           ...(amount === undefined ? {} : { amount }),
           ...(key === undefined ? {} : { key }),
           ...(text === undefined ? {} : { text }),
+          ...(steps === undefined ? {} : { steps }),
         });
 
         audit?.record({

@@ -562,11 +562,11 @@ For modern MCP calls, Junius assigns a Host trace ID and the Worker reports its 
 
 Junius exposes Windows desktop automation through the stable `desktop` MCP tool.
 
-Desktop perception is screenshot-only. The tool can list top-level native windows, capture the full screen or one native window, focus a top-level window, and perform bounded coordinate mouse / keyboard / text input.
+Desktop perception is screenshot-only. The tool can list top-level native windows, capture the full screen or one native window, focus a top-level window, and perform bounded coordinate mouse / keyboard / text input. Keyboard sequences can be sent with `key_macro` in one local operation; any key pressed down by that macro and not explicitly released is released before the macro returns, including on failure.
 
 When a window handle is supplied for a screenshot or mouse action, coordinates are window-relative and must remain inside that window's rectangle. Without a handle, screenshot and mouse coordinates are screen-relative. Junius does not maintain semantic element refs or inspect application accessibility trees.
 
-Text input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, so non-ASCII input is supported without relying on clipboard mutation.
+Direct `type` input uses Windows Unicode `SendInput` events rather than `pyautogui.write`, but some applications reject injected Unicode input. Junius therefore also exposes explicit Unicode-text `clipboard_read` / `clipboard_write` primitives; callers can combine `clipboard_write` with a `key_macro` such as Ctrl+V when paste semantics are more reliable. Clipboard contents and Desktop text remain redacted from Audit.
 
 The Python helper runs as a persistent JSONL server inside each Worker. Desktop Computer Use is bound to Junius's project-local `.venv` (`.venv/Scripts/python.exe` on Windows) rather than an arbitrary Python discovered from `PATH`; the helper script itself is the Junius-owned `python/desktop_helper.py`. The helper uses Win32 APIs for top-level window metadata/focus and PyAutoGUI for screenshots and coordinate input. After a Worker becomes ready, Junius opportunistically prewarms both the Desktop helper and the Playwright broker in the background. If the Desktop helper times out, crashes, or violates its response protocol, Junius terminates it and the next request starts a clean helper process.
 

@@ -65,6 +65,9 @@ export function desktopHelperRequest(
     ...(request.text === undefined
       ? {}
       : { text: request.text }),
+    ...(request.steps === undefined
+      ? {}
+      : { steps: request.steps }),
   };
 }
 

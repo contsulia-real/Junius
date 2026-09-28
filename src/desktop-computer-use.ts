@@ -15,6 +15,7 @@ import {
 } from "./desktop-computer-use-policy.js";
 import {
   DESKTOP_COMMANDS,
+  DESKTOP_KEY_MACRO_ACTIONS,
   DesktopComputerUseError,
   type DesktopComputerUseOptions,
   type DesktopExecution,
@@ -343,6 +344,7 @@ export class DesktopComputerUseService {
 
 export {
   DESKTOP_COMMANDS,
+  DESKTOP_KEY_MACRO_ACTIONS,
   DesktopComputerUseError,
 };
 export type {
@@ -350,5 +352,7 @@ export type {
   DesktopComputerUseErrorCode,
   DesktopComputerUseOptions,
   DesktopExecution,
+  DesktopKeyMacroAction,
+  DesktopKeyMacroStep,
   DesktopRunRequest,
 } from "./desktop-computer-use-types.js";

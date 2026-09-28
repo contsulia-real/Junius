@@ -5,6 +5,7 @@ import ctypes
 import io
 import json
 import sys
+import time
 from ctypes import wintypes
 from typing import Any, Callable
 
@@ -18,8 +19,38 @@ KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
 SW_RESTORE = 9
 ULONG_PTR = wintypes.WPARAM
+CF_UNICODETEXT = 13
+GMEM_MOVEABLE = 0x0002
 
 user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+
+kernel32.GlobalAlloc.argtypes = [
+    wintypes.UINT,
+    ctypes.c_size_t,
+]
+kernel32.GlobalAlloc.restype = ctypes.c_void_p
+kernel32.GlobalLock.argtypes = [
+    ctypes.c_void_p,
+]
+kernel32.GlobalLock.restype = ctypes.c_void_p
+kernel32.GlobalUnlock.argtypes = [
+    ctypes.c_void_p,
+]
+kernel32.GlobalUnlock.restype = wintypes.BOOL
+kernel32.GlobalFree.argtypes = [
+    ctypes.c_void_p,
+]
+kernel32.GlobalFree.restype = ctypes.c_void_p
+user32.SetClipboardData.argtypes = [
+    wintypes.UINT,
+    ctypes.c_void_p,
+]
+user32.SetClipboardData.restype = ctypes.c_void_p
+user32.GetClipboardData.argtypes = [
+    wintypes.UINT,
+]
+user32.GetClipboardData.restype = ctypes.c_void_p
 
 
 class KeyboardInput(ctypes.Structure):
@@ -320,6 +351,169 @@ def type_unicode(text: str) -> None:
                 )
 
 
+def open_clipboard() -> None:
+    for _attempt in range(20):
+        if user32.OpenClipboard(None):
+            return
+        time.sleep(0.01)
+
+    raise DesktopHelperError(
+        "clipboard_open_failed",
+        "Windows clipboard is currently unavailable.",
+    )
+
+
+def clipboard_read() -> dict[str, Any]:
+    open_clipboard()
+    try:
+        if not user32.IsClipboardFormatAvailable(
+            CF_UNICODETEXT
+        ):
+            raise DesktopHelperError(
+                "clipboard_text_unavailable",
+                (
+                    "Windows clipboard does not contain "
+                    "Unicode text."
+                ),
+            )
+
+        handle = user32.GetClipboardData(
+            CF_UNICODETEXT
+        )
+        if not handle:
+            raise DesktopHelperError(
+                "clipboard_read_failed",
+                "Windows GetClipboardData failed.",
+            )
+
+        pointer = kernel32.GlobalLock(handle)
+        if not pointer:
+            raise DesktopHelperError(
+                "clipboard_read_failed",
+                "Windows GlobalLock failed for clipboard text.",
+            )
+
+        try:
+            text = ctypes.wstring_at(pointer)
+        finally:
+            kernel32.GlobalUnlock(handle)
+
+        return {
+            "text": text,
+            "characters": len(text),
+        }
+    finally:
+        user32.CloseClipboard()
+
+
+def clipboard_write(text: str) -> dict[str, Any]:
+    encoded = (text + "\0").encode("utf-16-le")
+    memory = kernel32.GlobalAlloc(
+        GMEM_MOVEABLE,
+        len(encoded),
+    )
+    if not memory:
+        raise DesktopHelperError(
+            "clipboard_write_failed",
+            "Windows GlobalAlloc failed for clipboard text.",
+        )
+
+    transferred = False
+    try:
+        pointer = kernel32.GlobalLock(memory)
+        if not pointer:
+            raise DesktopHelperError(
+                "clipboard_write_failed",
+                "Windows GlobalLock failed for clipboard text.",
+            )
+
+        try:
+            ctypes.memmove(
+                pointer,
+                encoded,
+                len(encoded),
+            )
+        finally:
+            kernel32.GlobalUnlock(memory)
+
+        open_clipboard()
+        try:
+            if not user32.EmptyClipboard():
+                raise DesktopHelperError(
+                    "clipboard_write_failed",
+                    "Windows EmptyClipboard failed.",
+                )
+
+            if not user32.SetClipboardData(
+                CF_UNICODETEXT,
+                memory,
+            ):
+                raise DesktopHelperError(
+                    "clipboard_write_failed",
+                    "Windows SetClipboardData failed.",
+                )
+            transferred = True
+        finally:
+            user32.CloseClipboard()
+    finally:
+        if not transferred:
+            kernel32.GlobalFree(memory)
+
+    return {
+        "characters": len(text),
+    }
+
+
+def key_macro(
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    held_keys: list[str] = []
+
+    try:
+        for step in steps:
+            action = str(step["action"])
+            key = str(step["key"])
+
+            if action == "key_press":
+                pyautogui.press(key)
+                continue
+
+            if action == "key_down":
+                pyautogui.keyDown(key)
+                held_keys.append(key)
+                continue
+
+            if action == "key_up":
+                pyautogui.keyUp(key)
+                for index in range(
+                    len(held_keys) - 1,
+                    -1,
+                    -1,
+                ):
+                    if held_keys[index] == key:
+                        del held_keys[index]
+                        break
+                continue
+
+            raise DesktopHelperError(
+                "invalid_macro_step",
+                (
+                    "Unsupported keyboard macro action: "
+                    f"{action}"
+                ),
+            )
+    finally:
+        for key in reversed(held_keys):
+            try:
+                pyautogui.keyUp(key)
+            except Exception:
+                pass
+
+    return {
+        "steps": len(steps),
+    }
+
+
 def focus_window(
     handle: int,
 ) -> dict[str, Any]:
@@ -447,6 +641,22 @@ def input_action(
             pyautogui.keyUp(key)
             return {"key": key}
 
+        if command == "key_macro":
+            steps = request["steps"]
+            if not isinstance(steps, list):
+                raise DesktopHelperError(
+                    "invalid_macro_steps",
+                    "Keyboard macro steps must be a list.",
+                )
+            return key_macro(steps)
+
+        if command == "clipboard_read":
+            return clipboard_read()
+
+        if command == "clipboard_write":
+            text = str(request["text"])
+            return clipboard_write(text)
+
         if command == "type":
             text = str(request["text"])
             type_unicode(text)
@@ -498,6 +708,9 @@ def execute(
         "key_press",
         "key_down",
         "key_up",
+        "key_macro",
+        "clipboard_read",
+        "clipboard_write",
         "type",
         "focus_window",
     }:

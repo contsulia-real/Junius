@@ -10,11 +10,28 @@ export const DESKTOP_COMMANDS = [
   "key_press",
   "key_down",
   "key_up",
+  "key_macro",
+  "clipboard_read",
+  "clipboard_write",
   "type",
 ] as const;
 
 export type DesktopCommand =
   (typeof DESKTOP_COMMANDS)[number];
+
+export const DESKTOP_KEY_MACRO_ACTIONS = [
+  "key_press",
+  "key_down",
+  "key_up",
+] as const;
+
+export type DesktopKeyMacroAction =
+  (typeof DESKTOP_KEY_MACRO_ACTIONS)[number];
+
+export interface DesktopKeyMacroStep {
+  readonly action: DesktopKeyMacroAction;
+  readonly key: string;
+}
 
 export type DesktopComputerUseErrorCode =
   | "desktop_disabled"
@@ -53,6 +70,7 @@ export interface DesktopRunRequest {
   readonly amount?: number;
   readonly key?: string;
   readonly text?: string;
+  readonly steps?: readonly DesktopKeyMacroStep[];
 }
 
 export interface DesktopExecution {

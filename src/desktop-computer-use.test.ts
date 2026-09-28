@@ -305,6 +305,138 @@ test("desktop exposes only screenshot and coordinate keyboard/mouse commands", a
   }
 });
 
+test("desktop key macros and clipboard text are bounded primitives", async () => {
+  const f = await fixture();
+
+  try {
+    const macro =
+      await f.service.run({
+        session: "desktop",
+        command: "key_macro",
+        steps: [
+          {
+            action: "key_down",
+            key: "ctrl",
+          },
+          {
+            action: "key_press",
+            key: "v",
+          },
+          {
+            action: "key_up",
+            key: "ctrl",
+          },
+        ],
+      });
+
+    assert.deepEqual(
+      (
+        macro.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command: "key_macro",
+        steps: [
+          {
+            action: "key_down",
+            key: "ctrl",
+          },
+          {
+            action: "key_press",
+            key: "v",
+          },
+          {
+            action: "key_up",
+            key: "ctrl",
+          },
+        ],
+      },
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "key_macro",
+        steps: [],
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "arguments_not_allowed",
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "key_macro",
+        steps: Array.from(
+          { length: 129 },
+          () => ({
+            action:
+              "key_press" as const,
+            key: "a",
+          }),
+        ),
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "arguments_not_allowed",
+    );
+
+    const write =
+      await f.service.run({
+        session: "desktop",
+        command: "clipboard_write",
+        text: "你好，Junius 👋",
+      });
+    assert.deepEqual(
+      (
+        write.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command: "clipboard_write",
+        text: "你好，Junius 👋",
+      },
+    );
+
+    const read =
+      await f.service.run({
+        session: "desktop",
+        command: "clipboard_read",
+      });
+    assert.deepEqual(
+      (
+        read.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command: "clipboard_read",
+      },
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "clipboard_write",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "arguments_not_allowed",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
 test("desktop disable stops helper and supports re-enable", async () => {
   const f = await fixture();
 

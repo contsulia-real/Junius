@@ -43,8 +43,10 @@ boundary. The management WebUI is not intended to be exposed to a LAN or the
 public Internet.
 
 Browser and Desktop capabilities can act on user-visible applications and may
-interact with authenticated sessions. Treat enabling those capabilities as
-granting ChatGPT the corresponding local interaction ability.
+interact with authenticated sessions. Desktop clipboard access can also read or
+replace Unicode text currently held by the user's Windows clipboard. Treat
+enabling those capabilities as granting ChatGPT the corresponding local
+interaction ability.
 
 For additional implementation details, see the Security boundary section in
 the README and `docs/architecture.md`.

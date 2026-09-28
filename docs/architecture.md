@@ -540,14 +540,14 @@ ChatGPT
 -> desktop MCP tool
 -> DesktopComputerUseService
 -> python/desktop_helper.py
--> screenshot / coordinate mouse / keyboard
+-> screenshot / coordinate mouse / keyboard macro / clipboard text
 ```
 
 Desktop perception is screenshot-only. `windows` exposes bounded top-level native window metadata, `screenshot` captures either the full screen or one window, and input actions operate through screen coordinates or window-relative coordinates. The helper rejects window-relative points outside the target window before moving or clicking.
 
 Top-level window enumeration, rectangle lookup, and `focus_window` use Win32 APIs directly. No accessibility tree is inspected and no semantic element refs are created.
 
-Text input uses Windows Unicode `SendInput` keyboard events rather than `pyautogui.write`. This supports arbitrary Unicode text without mutating the clipboard.
+Direct `type` input uses Windows Unicode `SendInput` keyboard events rather than `pyautogui.write`, but application-level input stacks can reject injected Unicode events. Desktop therefore keeps text entry primitives orthogonal: `clipboard_read` / `clipboard_write` expose Unicode clipboard text, while `key_macro` executes up to 128 ordered key press/down/up steps locally. A macro always releases keys that it pressed down and did not explicitly release, even if a later step fails. Higher-level paste behavior is composed by the caller rather than encoded as a dedicated Desktop action.
 
 Each Worker owns one lazily started persistent Python helper process. The helper is launched with `shell: false` in `--server` mode and speaks a request-ID JSONL protocol over stdio. A helper timeout, crash, output-limit violation, or malformed protocol response rejects outstanding requests and tears the helper process down so a later action can start a clean instance.
 
