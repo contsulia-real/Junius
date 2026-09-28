@@ -3,20 +3,14 @@ import {
   type ResourceBindingState,
 } from "./worker-affinity-registry.js";
 import type { ManagedWorker } from "./worker-process.js";
+import { parseWorkerJobIpcEvent } from "./worker-job-ipc.js";
+import {
+  WorkerRetirementManager,
+  type WorkerRecord,
+  type WorkerStatus,
+} from "./worker-retirement.js";
 
-export type WorkerStatus =
-  | "active"
-  | "retiring"
-  | "exited";
-
-interface WorkerRecord {
-  readonly worker: ManagedWorker;
-  promotedAt: string;
-  retiredAt?: string;
-  status: WorkerStatus;
-  inFlight: number;
-  retireTimer?: NodeJS.Timeout;
-}
+export type { WorkerStatus } from "./worker-retirement.js";
 
 export interface WorkerLease {
   readonly worker: ManagedWorker;
@@ -56,8 +50,8 @@ export class WorkerSupervisorLifecycle {
   readonly #records =
     new Map<string, WorkerRecord>();
   readonly #affinity: WorkerAffinityRegistry;
-  readonly #rollbackWindowMs: number;
   readonly #maxExitedRecords: number;
+  readonly #retirement: WorkerRetirementManager;
   readonly #onFailure: (message: string) => void;
 
   #activeWorkerId: string | undefined;
@@ -65,8 +59,6 @@ export class WorkerSupervisorLifecycle {
   constructor(
     options: WorkerSupervisorLifecycleOptions,
   ) {
-    this.#rollbackWindowMs =
-      options.rollbackWindowMs ?? 60_000;
     this.#maxExitedRecords = Math.max(
       0,
       Math.floor(
@@ -95,10 +87,25 @@ export class WorkerSupervisorLifecycle {
       onAffinityReleased: (workerId) => {
         const record = this.#records.get(workerId);
         if (record !== undefined) {
-          this.#maybeReap(record);
+          this.#retirement.maybeReap(record);
         }
       },
     });
+
+    this.#retirement =
+      new WorkerRetirementManager({
+        rollbackWindowMs:
+          options.rollbackWindowMs,
+        activeWorkerId: () =>
+          this.#activeWorkerId,
+        hasAffinity: (workerId) =>
+          this.#affinity.hasAffinity(
+            workerId,
+          ),
+        onReaped: () => {
+          this.#pruneExitedRecords();
+        },
+      });
   }
 
   get activeWorkerId(): string | undefined {
@@ -143,7 +150,7 @@ export class WorkerSupervisorLifecycle {
     this.#affinity.retireWorker(
       previous.worker.id,
     );
-    this.#scheduleReap(previous);
+    this.#retirement.schedule(previous);
   }
 
   liveWorkersExcluding(
@@ -201,7 +208,7 @@ export class WorkerSupervisorLifecycle {
           0,
           record.inFlight - 1,
         );
-        this.#maybeReap(record);
+        this.#retirement.maybeReap(record);
       },
     };
   }
@@ -296,11 +303,9 @@ export class WorkerSupervisorLifecycle {
   }
 
   async close(): Promise<void> {
-    for (const record of this.#records.values()) {
-      if (record.retireTimer !== undefined) {
-        clearTimeout(record.retireTimer);
-      }
-    }
+    this.#retirement.clearAll(
+      this.#records.values(),
+    );
 
     await Promise.allSettled(
       [...this.#records.values()].map(
@@ -347,10 +352,7 @@ export class WorkerSupervisorLifecycle {
     if (record === undefined) return;
 
     record.status = "exited";
-    if (record.retireTimer !== undefined) {
-      clearTimeout(record.retireTimer);
-      record.retireTimer = undefined;
-    }
+    this.#retirement.clear(record);
 
     this.#affinity.removeWorker(workerId);
 
@@ -383,10 +385,7 @@ export class WorkerSupervisorLifecycle {
       return;
     }
 
-    if (fallback.retireTimer !== undefined) {
-      clearTimeout(fallback.retireTimer);
-      fallback.retireTimer = undefined;
-    }
+    this.#retirement.clear(fallback);
     fallback.status = "active";
     fallback.retiredAt = undefined;
     fallback.promotedAt =
@@ -406,49 +405,27 @@ export class WorkerSupervisorLifecycle {
     workerId: string,
     message: unknown,
   ): void {
-    if (
-      typeof message !== "object" ||
-      message === null
-    ) {
+    const event =
+      parseWorkerJobIpcEvent(
+        workerId,
+        message,
+      );
+    if (event === undefined) {
       return;
     }
 
-    const candidate = message as {
-      readonly type?: string;
-      readonly workerId?: string;
-      readonly jobId?: string;
-    };
-
-    if (
-      candidate.workerId !== workerId ||
-      typeof candidate.jobId !== "string" ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
-        candidate.jobId,
-      )
-    ) {
-      return;
-    }
-
-    if (
-      candidate.type ===
-      "junius-job-terminal"
-    ) {
+    if (event.type === "terminal") {
       this.markJobTerminal(
         workerId,
-        candidate.jobId,
+        event.jobId,
       );
       return;
     }
 
-    if (
-      candidate.type ===
-      "junius-job-history-persisted"
-    ) {
-      this.markJobHistoryPersisted(
-        workerId,
-        candidate.jobId,
-      );
-    }
+    this.markJobHistoryPersisted(
+      workerId,
+      event.jobId,
+    );
   }
 
   #pruneExitedRecords(): void {
@@ -473,78 +450,6 @@ export class WorkerSupervisorLifecycle {
         record.worker.id,
       );
     }
-  }
-
-  #scheduleReap(
-    record: WorkerRecord,
-  ): void {
-    if (record.retireTimer !== undefined) {
-      clearTimeout(record.retireTimer);
-    }
-
-    record.retireTimer = setTimeout(() => {
-      record.retireTimer = undefined;
-      this.#maybeReap(record);
-    }, this.#rollbackWindowMs);
-  }
-
-  #maybeReap(record: WorkerRecord): void {
-    if (
-      record.status !== "retiring" ||
-      record.worker.id ===
-        this.#activeWorkerId
-    ) {
-      return;
-    }
-
-    if (record.retiredAt !== undefined) {
-      const reapAfter =
-        Date.parse(record.retiredAt) +
-        this.#rollbackWindowMs;
-      const remaining =
-        reapAfter - Date.now();
-
-      if (remaining > 0) {
-        if (
-          record.retireTimer !== undefined
-        ) {
-          clearTimeout(
-            record.retireTimer,
-          );
-        }
-        record.retireTimer =
-          setTimeout(() => {
-            record.retireTimer =
-              undefined;
-            this.#maybeReap(record);
-          }, remaining);
-        return;
-      }
-    }
-
-    if (
-      record.inFlight > 0 ||
-      this.#affinity.hasAffinity(
-        record.worker.id,
-      )
-    ) {
-      if (
-        record.retireTimer === undefined
-      ) {
-        record.retireTimer =
-          setTimeout(() => {
-            record.retireTimer =
-              undefined;
-            this.#maybeReap(record);
-          }, 5_000);
-      }
-      return;
-    }
-
-    void record.worker.close().finally(() => {
-      record.status = "exited";
-      this.#pruneExitedRecords();
-    });
   }
 
   #record(workerId: string): WorkerRecord {
