@@ -1,7 +1,4 @@
-import {
-  WorkerAffinityRegistry,
-  type ResourceBindingState,
-} from "./worker-affinity-registry.js";
+import { WorkerAffinityRegistry } from "./worker-affinity-registry.js";
 import type { ManagedWorker } from "./worker-process.js";
 import { parseWorkerJobIpcEvent } from "./worker-job-ipc.js";
 import {
@@ -11,27 +8,17 @@ import {
 } from "./worker-retirement.js";
 
 export type { WorkerStatus } from "./worker-retirement.js";
+import {
+  buildWorkerLifecycleState,
+  requiredWorkerRecord,
+  type WorkerLifecycleState,
+} from "./worker-lifecycle-state.js";
+
+export type { WorkerLifecycleState } from "./worker-lifecycle-state.js";
 
 export interface WorkerLease {
   readonly worker: ManagedWorker;
   release(): void;
-}
-
-export interface WorkerLifecycleState {
-  readonly activeWorkerId?: string;
-  readonly workers: readonly {
-    readonly id: string;
-    readonly pid: number;
-    readonly status: WorkerStatus;
-    readonly startedAt: string;
-    readonly promotedAt: string;
-    readonly retiredAt?: string;
-    readonly sessions: number;
-    readonly resources: number;
-    readonly inFlight: number;
-  }[];
-  readonly resourceBindings:
-    readonly ResourceBindingState[];
 }
 
 export interface WorkerSupervisorLifecycleOptions {
@@ -262,44 +249,11 @@ export class WorkerSupervisorLifecycle {
   }
 
   state(): WorkerLifecycleState {
-    return {
-      ...(this.#activeWorkerId === undefined
-        ? {}
-        : {
-            activeWorkerId:
-              this.#activeWorkerId,
-          }),
-      workers: [...this.#records.values()]
-        .map((record) => ({
-          id: record.worker.id,
-          pid: record.worker.pid,
-          status: record.status,
-          startedAt: record.worker.startedAt,
-          promotedAt: record.promotedAt,
-          ...(record.retiredAt === undefined
-            ? {}
-            : {
-                retiredAt:
-                  record.retiredAt,
-              }),
-          sessions:
-            this.#affinity.sessionCount(
-              record.worker.id,
-            ),
-          resources:
-            this.#affinity.resourceCount(
-              record.worker.id,
-            ),
-          inFlight: record.inFlight,
-        }))
-        .sort((left, right) =>
-          left.startedAt.localeCompare(
-            right.startedAt,
-          ),
-        ),
-      resourceBindings:
-        this.#affinity.resourceBindings(),
-    };
+    return buildWorkerLifecycleState(
+      this.#records,
+      this.#activeWorkerId,
+      this.#affinity,
+    );
   }
 
   async close(): Promise<void> {
@@ -453,13 +407,9 @@ export class WorkerSupervisorLifecycle {
   }
 
   #record(workerId: string): WorkerRecord {
-    const record =
-      this.#records.get(workerId);
-    if (record === undefined) {
-      throw new Error(
-        `worker_not_found: ${workerId}`,
-      );
-    }
-    return record;
+    return requiredWorkerRecord(
+      this.#records,
+      workerId,
+    );
   }
 }
