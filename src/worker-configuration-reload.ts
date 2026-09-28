@@ -14,7 +14,7 @@ export async function reloadWorkerConfiguration(
 
   try {
     const response = await fetch(
-      `http://127.0.0.1:${worker.adminPort}/__junius/config-reload`,
+      `http://127.0.0.1:${worker.controlPort}/__junius/config-reload`,
       {
         method: "POST",
         signal: controller.signal,

@@ -20,7 +20,7 @@ test("spawnManagedWorker ignores startup IPC for another worker id", async () =>
 import { createServer } from "node:http";
 
 const workerId = process.env.JUNIUS_WORKER_ID;
-const admin = createServer((req, res) => {
+const control = createServer((req, res) => {
   if (req.url === "/__junius/worker-health") {
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({
@@ -36,7 +36,7 @@ const admin = createServer((req, res) => {
 const mcp = createServer((_req, res) => res.end("ok"));
 
 await Promise.all([
-  new Promise((resolve) => admin.listen(0, "127.0.0.1", resolve)),
+  new Promise((resolve) => control.listen(0, "127.0.0.1", resolve)),
   new Promise((resolve) => mcp.listen(0, "127.0.0.1", resolve)),
 ]);
 
@@ -50,13 +50,13 @@ process.send?.({
   workerId,
   pid: process.pid,
   mcpPort: mcp.address().port,
-  adminPort: admin.address().port,
+  controlPort: control.address().port,
 });
 
 process.on("message", (message) => {
   if (message?.type !== "junius-worker-shutdown") return;
   Promise.all([
-    new Promise((resolve) => admin.close(resolve)),
+    new Promise((resolve) => control.close(resolve)),
     new Promise((resolve) => mcp.close(resolve)),
   ]).finally(() => process.exit(0));
 });
@@ -68,7 +68,7 @@ process.on("message", (message) => {
       workerEntryPath: entry,
       cwd: root,
       publicMcpOrigin: "http://127.0.0.1:48787",
-      publicAdminOrigin: "http://127.0.0.1:48788",
+      
       startupTimeoutMs: 2_000,
       execArgv: [],
     });
@@ -102,7 +102,7 @@ process.send?.({
   workerId: process.env.JUNIUS_WORKER_ID,
   pid: process.pid + 1,
   mcpPort: 40101,
-  adminPort: 40102,
+  controlPort: 40102,
 });
 setInterval(() => {}, 1000);
 `,
@@ -114,7 +114,7 @@ setInterval(() => {}, 1000);
         workerEntryPath: entry,
         cwd: root,
         publicMcpOrigin: "http://127.0.0.1:48787",
-        publicAdminOrigin: "http://127.0.0.1:48788",
+        
         startupTimeoutMs: 2_000,
         execArgv: [],
       }),
@@ -138,7 +138,7 @@ test("spawnManagedWorker starts an isolated healthy Junius worker", async () => 
       ),
       cwd: process.cwd(),
       publicMcpOrigin: "http://127.0.0.1:48787",
-      publicAdminOrigin: "http://127.0.0.1:48788",
+      
       environment: {
         ...process.env,
         JUNIUS_WORKSPACE_ID: "worker-test",
@@ -155,10 +155,10 @@ test("spawnManagedWorker starts an isolated healthy Junius worker", async () => 
       assert.equal(worker.exited(), false);
       assert.equal(worker.pid > 0, true);
       assert.equal(worker.mcpPort > 0, true);
-      assert.equal(worker.adminPort > 0, true);
+      assert.equal(worker.controlPort > 0, true);
 
       const privateHealthUrl =
-        `http://127.0.0.1:${worker.adminPort}/__junius/worker-health`;
+        `http://127.0.0.1:${worker.controlPort}/__junius/worker-health`;
 
       const unauthenticatedHealth =
         await fetch(privateHealthUrl);

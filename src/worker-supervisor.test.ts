@@ -37,7 +37,7 @@ function fakeWorker(id: string): {
       child,
       pid: Number(id.replace(/\D/gu, "")) || 1,
       mcpPort: 10_000 + Math.floor(Math.random() * 1_000),
-      adminPort: 20_000 + Math.floor(Math.random() * 1_000),
+      controlPort: 20_000 + Math.floor(Math.random() * 1_000),
       internalToken: `token-${id}-012345678901234567890123456789`,
       startedAt: new Date().toISOString(),
       stdout: () => "",
@@ -69,7 +69,7 @@ test("WorkerSupervisor keeps active worker when source validation fails", async 
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(false),
     spawnWorker: async () => {
@@ -103,7 +103,7 @@ test("WorkerSupervisor can boot from a release worker then reload from live sour
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnInitialWorker: async () => {
@@ -140,7 +140,7 @@ test("WorkerSupervisor skips validation and candidate startup when Host is alrea
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     canPromote: () => false,
     validate: async () => {
       validateCount += 1;
@@ -186,7 +186,7 @@ test("WorkerSupervisor refuses candidate promotion when Host becomes stale", asy
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     validate: async () => check(true),
     canPromote: () => canPromote,
     spawnWorker: async () => {
@@ -231,7 +231,7 @@ test("WorkerSupervisor promotes healthy candidate while existing session stays o
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,
@@ -273,7 +273,7 @@ test("WorkerSupervisor keeps resource affinity on retiring worker until released
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,
@@ -325,7 +325,7 @@ test("WorkerSupervisor expires idle browser affinity without violating rollback 
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 500,
     browserResourceIdleMs: 20,
     validate: async () => check(true),
@@ -364,7 +364,7 @@ test("WorkerSupervisor keeps jobs pinned until terminal IPC then expires retaine
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 5,
     jobResultRetentionMs: 100,
     validate: async () => check(true),
@@ -423,7 +423,7 @@ test("WorkerSupervisor releases terminal job affinity after history persistence"
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 30,
     jobResultRetentionMs: 1_000,
     validate: async () => check(true),
@@ -474,7 +474,7 @@ test("WorkerSupervisor skips job affinity when persisted history arrives before 
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     validate: async () => check(true),
     spawnWorker: async () => first.worker,
   });
@@ -516,7 +516,7 @@ test("WorkerSupervisor remembers terminal IPC that arrives before job binding", 
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     jobResultRetentionMs: 50,
     validate: async () => check(true),
     spawnWorker: async () => first.worker,
@@ -552,7 +552,7 @@ test("WorkerSupervisor ignores malformed or mismatched runtime Job IPC", async (
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     validate: async () => check(true),
     spawnWorker: async () => first.worker,
   });
@@ -601,7 +601,7 @@ test("WorkerSupervisor bounds idle MCP session routes and refreshes active affin
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 5,
     mcpSessionIdleMs: 30,
     validate: async () => check(true),
@@ -659,7 +659,7 @@ test("WorkerSupervisor expires unbound Job race hints", async () => {
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     jobResultRetentionMs: 20,
     validate: async () => check(true),
     spawnWorker: async () => first.worker,
@@ -732,7 +732,7 @@ test("WorkerSupervisor bounds retained exited worker diagnostics", async () => {
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 1,
     maxExitedRecords: 1,
     validate: async () => check(true),
@@ -776,7 +776,7 @@ test("WorkerSupervisor synchronizes configuration to retiring affinity workers",
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,
@@ -819,7 +819,7 @@ test("WorkerSupervisor quarantines a retiring worker that cannot reload configur
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,
@@ -872,7 +872,7 @@ test("WorkerSupervisor refreshes a candidate when configuration changes during s
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnInitialWorker: async () => first.worker,
@@ -911,7 +911,7 @@ test("WorkerSupervisor rolls back when newly active worker exits inside rollback
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => check(true),
     spawnWorker: async () => queue.shift()!,

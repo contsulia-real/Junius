@@ -16,7 +16,7 @@ interface WorkerReadyMessage {
   readonly workerId: string;
   readonly pid: number;
   readonly mcpPort: number;
-  readonly adminPort: number;
+  readonly controlPort: number;
 }
 
 interface WorkerStartupErrorMessage {
@@ -30,7 +30,7 @@ export interface ManagedWorker {
   readonly child: ChildProcess;
   readonly pid: number;
   readonly mcpPort: number;
-  readonly adminPort: number;
+  readonly controlPort: number;
   readonly internalToken: string;
   readonly startedAt: string;
   readonly stdout: () => string;
@@ -44,7 +44,6 @@ export interface SpawnWorkerOptions {
   readonly cwd: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly publicMcpOrigin: string;
-  readonly publicAdminOrigin: string;
   readonly startupTimeoutMs?: number;
   readonly execArgv?: readonly string[];
 }
@@ -77,8 +76,8 @@ function isReadyMessage(value: unknown): value is WorkerReadyMessage {
     Number.isInteger(record.pid) &&
     record.pid > 0 &&
     isValidPort(record.mcpPort) &&
-    isValidPort(record.adminPort) &&
-    record.mcpPort !== record.adminPort
+    isValidPort(record.controlPort) &&
+    record.mcpPort !== record.controlPort
   );
 }
 
@@ -100,7 +99,7 @@ function isStartupErrorMessage(
 
 async function assertHealthy(
   workerId: string,
-  adminPort: number,
+  controlPort: number,
   internalToken: string,
 ): Promise<void> {
   const controller = new AbortController();
@@ -108,7 +107,7 @@ async function assertHealthy(
 
   try {
     const response = await fetch(
-      `http://127.0.0.1:${adminPort}/__junius/worker-health`,
+      `http://127.0.0.1:${controlPort}/__junius/worker-health`,
       {
         signal: controller.signal,
         headers: {
@@ -182,7 +181,6 @@ export async function spawnManagedWorker(
       JUNIUS_HOST_PID: String(process.pid),
       JUNIUS_PROJECT_ROOT: options.cwd,
       JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
-      JUNIUS_PUBLIC_ADMIN_ORIGIN: options.publicAdminOrigin,
     },
     execArgv: [
       ...(options.execArgv ?? ["--import", "tsx"]),
@@ -281,7 +279,7 @@ export async function spawnManagedWorker(
 
     await assertHealthy(
       id,
-      ready.adminPort,
+      ready.controlPort,
       internalToken,
     );
   } catch (error) {
@@ -300,7 +298,7 @@ export async function spawnManagedWorker(
     child,
     pid: ready.pid,
     mcpPort: ready.mcpPort,
-    adminPort: ready.adminPort,
+    controlPort: ready.controlPort,
     internalToken,
     startedAt,
     stdout: () => stdout,

@@ -30,7 +30,6 @@ export type {
 export interface WorkerSupervisorOptions {
   readonly cwd: string;
   readonly publicMcpOrigin: string;
-  readonly publicAdminOrigin: string;
   readonly workerEntryPath?: string;
   readonly initialWorkerEntryPath?: string;
   readonly rollbackWindowMs?: number;
@@ -149,8 +148,6 @@ export class WorkerSupervisor {
             options.environment,
           publicMcpOrigin:
             options.publicMcpOrigin,
-          publicAdminOrigin:
-            options.publicAdminOrigin,
         }));
 
     this.#spawnInitialWorker =
@@ -165,8 +162,6 @@ export class WorkerSupervisor {
             options.environment,
           publicMcpOrigin:
             options.publicMcpOrigin,
-          publicAdminOrigin:
-            options.publicAdminOrigin,
         }));
 
     this.#reloadWorkerConfiguration =

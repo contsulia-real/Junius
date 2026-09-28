@@ -70,8 +70,8 @@ const config = loadHostConfig();
 const cwd = process.cwd();
 const publicMcpOrigin =
   `http://${config.mcpHost}:${config.mcpPort}`;
-const publicAdminOrigin =
-  `http://${config.adminHost}:${config.adminPort}`;
+const publicControlOrigin =
+  `http://${config.controlHost}:${config.controlPort}`;
 
 const jobHistory = new JobHistoryStore(
   resolveJobHistoryPath(),
@@ -86,7 +86,6 @@ let closing = false;
 const supervisor = new WorkerSupervisor({
   cwd,
   publicMcpOrigin,
-  publicAdminOrigin,
   rollbackWindowMs: parsePositiveInteger(
     process.env.JUNIUS_WORKER_ROLLBACK_MS,
     60_000,
@@ -260,17 +259,16 @@ const mcpHttpServer = createHttpServer((req, res) => {
     req,
     res,
     supervisor,
-    "mcp",
     latencyTraces,
   );
 });
 
-const adminHttpServer = createHttpServer((req, res) => {
+const controlHttpServer = createHttpServer((req, res) => {
   if (
     !allowPublicRequest(
       req,
       res,
-      publicAdminOrigin,
+      publicControlOrigin,
     )
   ) {
     return;
@@ -325,15 +323,15 @@ try {
     config.mcpHost,
   );
   await listen(
-    adminHttpServer,
-    config.adminPort,
-    config.adminHost,
+    controlHttpServer,
+    config.controlPort,
+    config.controlHost,
   );
 } catch (error) {
   for (const watcher of watchers) watcher.close();
   await Promise.allSettled([
     closeServer(mcpHttpServer),
-    closeServer(adminHttpServer),
+    closeServer(controlHttpServer),
     supervisor.close(),
   ]);
   throw error;
@@ -341,10 +339,10 @@ try {
 
 console.error(`Junius Host MCP: ${publicMcpOrigin}/mcp`);
 console.error(
-  `Junius Host Control: ${publicAdminOrigin}/__junius/host-health`,
+  `Junius Host Control: ${publicControlOrigin}/__junius/host-health`,
 );
 console.error(
-  `Junius Supervisor: ${publicAdminOrigin}/__junius/supervisor`,
+  `Junius Supervisor: ${publicControlOrigin}/__junius/supervisor`,
 );
 
 async function shutdown(signal: string): Promise<void> {
@@ -364,7 +362,7 @@ async function shutdown(signal: string): Promise<void> {
 
   await Promise.allSettled([
     closeServer(mcpHttpServer),
-    closeServer(adminHttpServer),
+    closeServer(controlHttpServer),
   ]);
   await supervisor.close();
 }

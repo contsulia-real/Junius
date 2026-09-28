@@ -36,7 +36,7 @@ export interface AgentWorkerOptions {
     string;
   readonly mcpListenPort?:
     number;
-  readonly adminListenPort?:
+  readonly controlListenPort?:
     number;
   readonly publicMcpOrigin?:
     string;
@@ -51,7 +51,7 @@ export interface AgentWorkerOptions {
 export interface AgentWorkerHandle {
   readonly workerId: string;
   readonly mcpPort: number;
-  readonly adminPort: number;
+  readonly controlPort: number;
   readonly publicMcpOrigin:
     string;
   reloadConfiguration():
@@ -195,7 +195,7 @@ export async function startAgentWorker(
 
   const {
     mcpHttpServer,
-    adminHttpServer,
+    controlHttpServer,
   } =
     createAgentWorkerHttpServers({
       workerId,
@@ -207,7 +207,7 @@ export async function startAgentWorker(
 
   let mcpPort:
     number | undefined;
-  let adminPort:
+  let controlPort:
     number | undefined;
 
   try {
@@ -219,13 +219,13 @@ export async function startAgentWorker(
           0,
         config.mcpHost,
       );
-    adminPort =
+    controlPort =
       await listen(
-        adminHttpServer,
+        controlHttpServer,
         options
-          .adminListenPort ??
+          .controlListenPort ??
           0,
-        config.adminHost,
+        config.controlHost,
       );
   } catch (error) {
     await Promise.allSettled([
@@ -233,7 +233,7 @@ export async function startAgentWorker(
         mcpHttpServer,
       ),
       closeServer(
-        adminHttpServer,
+        controlHttpServer,
       ),
       mcpRuntime.close(),
       jobs.close(),
@@ -254,7 +254,7 @@ export async function startAgentWorker(
   return {
     workerId,
     mcpPort,
-    adminPort,
+    controlPort,
     publicMcpOrigin,
     reloadConfiguration,
     async close() {
@@ -266,7 +266,7 @@ export async function startAgentWorker(
           mcpHttpServer,
         ),
         closeServer(
-          adminHttpServer,
+          controlHttpServer,
         ),
         mcpRuntime.close(),
         jobs.close(),

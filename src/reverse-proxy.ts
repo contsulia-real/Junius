@@ -17,18 +17,14 @@ export function proxyToActiveWorker(
   req: IncomingMessage,
   res: ServerResponse,
   supervisor: WorkerSupervisor,
-  kind: "mcp" | "admin",
   traces?: HostLatencyTraceStore,
 ): void {
   const requestSessionId =
-    kind === "mcp"
-      ? headerString(req.headers["mcp-session-id"])
-      : undefined;
+    headerString(
+      req.headers["mcp-session-id"],
+    );
 
-  if (
-    kind === "mcp" &&
-    req.method === "POST"
-  ) {
+  if (req.method === "POST") {
     void proxyModernMcp(
       req,
       res,
@@ -43,7 +39,6 @@ export function proxyToActiveWorker(
     req,
     res,
     supervisor,
-    kind,
     requestSessionId,
   );
 }

@@ -37,7 +37,7 @@ async function runBootstrap(
   forceValidate: boolean,
 ): Promise<BootstrapRun> {
   const mcpPort = await freePort();
-  const adminPort = await freePort();
+  const controlPort = await freePort();
   const fakeBin = join(root, "bin");
   const fakePnpm = join(fakeBin, "pnpm.js");
   const workspaceRoot = join(root, "workspace");
@@ -79,7 +79,7 @@ process.exit(result === "pass" ? 0 : 1);
           : {}),
         JUNIUS_RUNTIME_ROOT: runtimeRoot,
         JUNIUS_MCP_PORT: String(mcpPort),
-        JUNIUS_ADMIN_PORT: String(adminPort),
+        JUNIUS_CONTROL_PORT: String(controlPort),
         JUNIUS_WORKSPACE_ID: "bootstrap-test",
         JUNIUS_WORKSPACE_ROOT: workspaceRoot,
         JUNIUS_WORKSPACE_STATE_PATH: join(

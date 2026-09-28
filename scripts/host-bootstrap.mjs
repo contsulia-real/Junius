@@ -717,7 +717,7 @@ function spawnHost(release) {
 
 async function waitForHostHealth(child, releaseId) {
   const port = Number(
-    process.env.JUNIUS_ADMIN_PORT ?? "8788",
+    process.env.JUNIUS_CONTROL_PORT ?? "8788",
   );
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
   let lastError;

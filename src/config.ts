@@ -5,8 +5,8 @@ import { join } from "node:path";
 export interface RuntimeConfig {
   readonly mcpHost: string;
   readonly mcpPort: number;
-  readonly adminHost: string;
-  readonly adminPort: number;
+  readonly controlHost: string;
+  readonly controlPort: number;
   readonly workspaceId: string;
   readonly workspaceRoot: string;
   readonly workspaceStatePath: string;
@@ -94,9 +94,9 @@ export async function loadRuntimeConfig():
       process.env.JUNIUS_MCP_PORT,
       8787,
     ),
-    adminHost: "127.0.0.1",
-    adminPort: parsePort(
-      process.env.JUNIUS_ADMIN_PORT,
+    controlHost: "127.0.0.1",
+    controlPort: parsePort(
+      process.env.JUNIUS_CONTROL_PORT,
       8788,
     ),
     workspaceId:

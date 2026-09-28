@@ -71,7 +71,7 @@ async function targetWorker(
       child,
       pid: id === "worker-a" ? 101 : 202,
       mcpPort: port,
-      adminPort: port,
+      controlPort: port,
       internalToken: `token-${id}-012345678901234567890123456789`,
       startedAt: new Date().toISOString(),
       stdout: () => "",
@@ -262,7 +262,7 @@ async function statelessToolWorker(
       child,
       pid: id === "worker-a" ? 101 : 202,
       mcpPort: port,
-      adminPort: port,
+      controlPort: port,
       internalToken: `token-${id}-012345678901234567890123456789`,
       startedAt: new Date().toISOString(),
       stdout: () => "",
@@ -330,7 +330,7 @@ test("reverse proxy records layered modern MCP latency", async () => {
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => target.worker,
@@ -341,7 +341,7 @@ test("reverse proxy records layered modern MCP latency", async () => {
       req,
       res,
       supervisor,
-      "mcp",
+
       traces,
     );
   });
@@ -402,7 +402,7 @@ test("Workspace MCP mutations synchronize retiring Workers before returning", as
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => queue.shift()!,
@@ -413,7 +413,7 @@ test("Workspace MCP mutations synchronize retiring Workers before returning", as
       req,
       res,
       supervisor,
-      "mcp",
+
     );
   });
 
@@ -501,7 +501,7 @@ test("reverse proxy rejects oversized sessionful MCP request bodies", async () =
     child,
     pid: 101,
     mcpPort: port,
-    adminPort: port,
+    controlPort: port,
     internalToken:
       "token-worker-a-012345678901234567890123456789",
     startedAt: new Date().toISOString(),
@@ -519,7 +519,7 @@ test("reverse proxy rejects oversized sessionful MCP request bodies", async () =
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => worker,
@@ -530,7 +530,7 @@ test("reverse proxy rejects oversized sessionful MCP request bodies", async () =
       req,
       res,
       supervisor,
-      "mcp",
+
     );
   });
 
@@ -579,14 +579,14 @@ test("reverse proxy keeps existing MCP session on retiring worker after promotio
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => queue.shift()!,
   });
 
   const proxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "mcp");
+    proxyToActiveWorker(req, res, supervisor);
   });
 
   try {
@@ -632,13 +632,13 @@ test("reverse proxy bounds captured start_job responses", async () => {
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     validate: async () => successfulCheck(),
     spawnWorker: async () => target.worker,
   });
 
   const proxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "mcp");
+    proxyToActiveWorker(req, res, supervisor);
   });
 
   try {
@@ -681,14 +681,14 @@ test("reverse proxy keeps job operations on the worker that created the job", as
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => queue.shift()!,
   });
 
   const proxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "mcp");
+    proxyToActiveWorker(req, res, supervisor);
   });
 
   try {
@@ -748,14 +748,14 @@ test("reverse proxy keeps desktop control affinity across promotion until succes
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => queue.shift()!,
   });
 
   const proxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "mcp");
+    proxyToActiveWorker(req, res, supervisor);
   });
 
   try {
@@ -861,14 +861,14 @@ test("reverse proxy keeps browser session affinity until close", async () => {
   const supervisor = new WorkerSupervisor({
     cwd: process.cwd(),
     publicMcpOrigin: "http://127.0.0.1:8787",
-    publicAdminOrigin: "http://127.0.0.1:8788",
+    
     rollbackWindowMs: 10_000,
     validate: async () => successfulCheck(),
     spawnWorker: async () => queue.shift()!,
   });
 
   const proxy = createServer((req, res) => {
-    proxyToActiveWorker(req, res, supervisor, "mcp");
+    proxyToActiveWorker(req, res, supervisor);
   });
 
   try {

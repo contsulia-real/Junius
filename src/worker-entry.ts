@@ -41,7 +41,7 @@ try {
     config,
     workerId,
     mcpListenPort: 0,
-    adminListenPort: 0,
+    controlListenPort: 0,
     publicMcpOrigin,
     internalToken,
     onJobTerminal: (job) => {
@@ -67,7 +67,7 @@ try {
     workerId,
     pid: process.pid,
     mcpPort: worker.mcpPort,
-    adminPort: worker.adminPort,
+    controlPort: worker.controlPort,
   });
 } catch (error) {
   process.send?.({

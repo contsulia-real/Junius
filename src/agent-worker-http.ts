@@ -25,7 +25,7 @@ export interface AgentWorkerHttpServerOptions {
 export interface AgentWorkerHttpServers {
   readonly mcpHttpServer:
     Server;
-  readonly adminHttpServer:
+  readonly controlHttpServer:
     Server;
 }
 
@@ -172,7 +172,7 @@ export function createAgentWorkerHttpServers(
       },
     );
 
-  const adminHttpServer =
+  const controlHttpServer =
     createHttpServer(
       (req, res) => {
         if (
@@ -266,6 +266,6 @@ export function createAgentWorkerHttpServers(
 
   return {
     mcpHttpServer,
-    adminHttpServer,
+    controlHttpServer,
   };
 }

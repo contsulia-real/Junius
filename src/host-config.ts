@@ -1,8 +1,8 @@
 export interface HostConfig {
   readonly mcpHost: "127.0.0.1";
   readonly mcpPort: number;
-  readonly adminHost: "127.0.0.1";
-  readonly adminPort: number;
+  readonly controlHost: "127.0.0.1";
+  readonly controlPort: number;
 }
 
 function parsePort(
@@ -25,7 +25,10 @@ export function loadHostConfig(
   return {
     mcpHost: "127.0.0.1",
     mcpPort: parsePort(environment.JUNIUS_MCP_PORT, 8787),
-    adminHost: "127.0.0.1",
-    adminPort: parsePort(environment.JUNIUS_ADMIN_PORT, 8788),
+    controlHost: "127.0.0.1",
+    controlPort: parsePort(
+      environment.JUNIUS_CONTROL_PORT,
+      8788,
+    ),
   };
 }
