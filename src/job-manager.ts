@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { environmentForSpawn } from "./execution-environment.js";
+import type { AuditStore } from "./audit-store.js";
 import { isProcessPreparableCapability } from "./capabilities/types.js";
 import type { JobHistoryStore } from "./job-history-store.js";
 import {
@@ -34,6 +35,7 @@ export class JobManager {
     private readonly onTerminal?: (job: JobSnapshot) => void,
     history?: JobHistoryStore,
     onPersisted?: (job: JobSnapshot) => void,
+    private readonly audit?: AuditStore,
   ) {
     this.#persistence =
       new JobPersistenceCoordinator(
@@ -64,9 +66,33 @@ export class JobManager {
   ): JobSnapshot {
     const authorized = this.commands.authorize(workspace, key, args);
     if (!authorized.ok) {
+      this.audit?.record({
+        category: "job",
+        action: "start_job",
+        status: "failed",
+        workspace,
+        subject: key,
+        summary: authorized.code,
+        metadata: {
+          argCount: args.length,
+          code: authorized.code,
+        },
+      });
       throw new JobManagerError(
         authorized.code,
         authorized.message,
+      );
+    }
+
+    let auditArgs: readonly string[];
+    try {
+      auditArgs =
+        authorized.capability
+          .auditArguments?.(args) ??
+        [...args];
+    } catch {
+      auditArgs = args.map(
+        () => "[REDACTED]",
       );
     }
 
@@ -140,6 +166,21 @@ export class JobManager {
 
     this.#jobs.set(record.id, record);
 
+    this.audit?.record({
+      category: "job",
+      action: "start_job",
+      status: "started",
+      workspace,
+      subject: key,
+      summary: "Background job started.",
+      metadata: {
+        job: record.id,
+        pid: record.child.pid ?? -1,
+        argCount: args.length,
+        args: auditArgs,
+      },
+    });
+
     const appendStdout = (text: string) => {
       const appended = appendCaptured(record.stdout, text);
       record.stdout = appended.value;
@@ -188,6 +229,31 @@ export class JobManager {
       record.message = message;
       record.resolveCompletion();
       this.#persistence.persist(record);
+
+      this.audit?.record({
+        category: "job",
+        action: "job_terminal",
+        status:
+          status === "succeeded"
+            ? "succeeded"
+            : status === "cancelled"
+              ? "cancelled"
+              : "failed",
+        workspace,
+        subject: key,
+        summary: status,
+        metadata: {
+          job: record.id,
+          argCount: args.length,
+          args: auditArgs,
+          exitCode:
+            exitCode ?? -1,
+          stdoutChars:
+            record.stdout.length,
+          stderrChars:
+            record.stderr.length,
+        },
+      });
 
       try {
         this.onTerminal?.(snapshot(record));
@@ -284,7 +350,25 @@ export class JobManager {
 
     await waitForCompletion(record, 5_000);
 
-    return snapshot(record);
+    const result = snapshot(record);
+    this.audit?.record({
+      category: "job",
+      action: "cancel_job",
+      status:
+        result.status === "cancelled"
+          ? "cancelled"
+          : result.status === "failed"
+            ? "failed"
+            : "succeeded",
+      workspace: result.workspace,
+      subject: result.key,
+      summary: result.status,
+      metadata: {
+        job: result.id,
+      },
+    });
+
+    return result;
   }
 
   async close(): Promise<void> {

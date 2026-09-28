@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server";
+import type { AuditStore } from "./audit-store.js";
 import { z } from "zod";
 import {
   PLAYWRIGHT_CLI_COMMANDS,
@@ -14,10 +15,46 @@ import {
   stableIdSchema,
 } from "./mcp-tool-shared.js";
 
+function browserAuditArgs(
+  command: string,
+  args: readonly string[],
+): readonly string[] {
+  if (
+    command === "fill" ||
+    command === "type"
+  ) {
+    return args.map(
+      (value, index) =>
+        index === 0
+          ? value
+          : "[REDACTED]",
+    );
+  }
+
+  if (
+    (command === "open" ||
+      command === "goto") &&
+    args[0] !== undefined
+  ) {
+    try {
+      const url = new URL(args[0]);
+      return [
+        url.origin + url.pathname,
+        ...args.slice(1),
+      ];
+    } catch {
+      return ["[URL]"];
+    }
+  }
+
+  return [...args];
+}
+
 export function registerComputerTools(
   server: McpServer,
   playwrightCli: PlaywrightCliService,
   desktop: DesktopComputerUseService,
+  audit?: AuditStore,
 ): void {
   server.registerTool(
     "playwright_cli",
@@ -51,12 +88,31 @@ export function registerComputerTools(
       },
     },
     async ({ session, command, args }) => {
+      const startedAt = performance.now();
       try {
         const execution = await playwrightCli.run(
           session,
           command,
           args,
         );
+
+        audit?.record({
+          category: "browser",
+          action: command,
+          status: "succeeded",
+          subject: session,
+          durationMs:
+            execution.durationMs,
+          metadata: {
+            args:
+              browserAuditArgs(
+                command,
+                args,
+              ),
+            transport:
+              execution.transport,
+          },
+        });
 
         return {
           content: [
@@ -70,6 +126,26 @@ export function registerComputerTools(
           ],
         };
       } catch (error) {
+        audit?.record({
+          category: "browser",
+          action: command,
+          status: "failed",
+          subject: session,
+          durationMs:
+            performance.now() -
+            startedAt,
+          summary:
+            error instanceof Error
+              ? error.message
+              : String(error),
+          metadata: {
+            args:
+              browserAuditArgs(
+                command,
+                args,
+              ),
+          },
+        });
         return playwrightCliToolError(error);
       }
     },
@@ -136,6 +212,39 @@ export function registerComputerTools(
       key,
       text,
     }) => {
+      const startedAt = performance.now();
+      const auditMetadata = {
+        ...(handle === undefined
+          ? {}
+          : { handle }),
+        ...(ref === undefined
+          ? {}
+          : { ref }),
+        ...(depth === undefined
+          ? {}
+          : { depth }),
+        ...(x === undefined
+          ? {}
+          : { x }),
+        ...(y === undefined
+          ? {}
+          : { y }),
+        ...(button === undefined
+          ? {}
+          : { button }),
+        ...(clicks === undefined
+          ? {}
+          : { clicks }),
+        ...(amount === undefined
+          ? {}
+          : { amount }),
+        ...(key === undefined
+          ? {}
+          : { key }),
+        ...(text === undefined
+          ? {}
+          : { text: "[REDACTED]" }),
+      };
       try {
         const execution = await desktop.run({
           session,
@@ -150,6 +259,16 @@ export function registerComputerTools(
           ...(amount === undefined ? {} : { amount }),
           ...(key === undefined ? {} : { key }),
           ...(text === undefined ? {} : { text }),
+        });
+
+        audit?.record({
+          category: "desktop",
+          action: command,
+          status: "succeeded",
+          subject: session,
+          durationMs:
+            execution.durationMs,
+          metadata: auditMetadata,
         });
 
         const content: Array<
@@ -178,6 +297,20 @@ export function registerComputerTools(
 
         return { content };
       } catch (error) {
+        audit?.record({
+          category: "desktop",
+          action: command,
+          status: "failed",
+          subject: session,
+          durationMs:
+            performance.now() -
+            startedAt,
+          summary:
+            error instanceof Error
+              ? error.message
+              : String(error),
+          metadata: auditMetadata,
+        });
         return desktopToolError(error);
       }
     },

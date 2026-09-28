@@ -1,4 +1,5 @@
 import type { WorkspaceManager } from "./workspace-manager.js";
+import type { AuditStore } from "./audit-store.js";
 import {
   WorkspaceFileError,
 } from "./workspace-file-error.js";
@@ -44,6 +45,7 @@ export class WorkspaceFilesService {
   constructor(
     private readonly manager: WorkspaceManager,
     private readonly protectedPaths: readonly string[] = [],
+    private readonly audit?: AuditStore,
   ) {}
 
   async ls(
@@ -84,22 +86,95 @@ export class WorkspaceFilesService {
   async write(
     workspace: string,
     files: readonly WriteRequest[],
+    auditAction:
+      "write" | "workspace_apply" =
+      "write",
   ): Promise<readonly WriteResult[]> {
+    const startedAt = performance.now();
+    const requestedPaths =
+      files.map((file) => file.path);
+
     if (files.length < 1 || files.length > MAX_WRITE_FILES) {
+      this.audit?.record({
+        category: "workspace",
+        action: auditAction,
+        status: "failed",
+        workspace,
+        summary: "invalid_path",
+        metadata: {
+          paths: requestedPaths,
+        },
+      });
       throw new WorkspaceFileError(
         "invalid_path",
         `write accepts 1-${MAX_WRITE_FILES} files per call.`,
       );
     }
 
-    return transactionalWrite(
-      getResolver(
-        this.manager,
+    try {
+      const results =
+        await transactionalWrite(
+          getResolver(
+            this.manager,
+            workspace,
+            this.protectedPaths,
+          ),
+          files,
+        );
+
+      this.audit?.record({
+        category: "workspace",
+        action: auditAction,
+        status: "succeeded",
         workspace,
-        this.protectedPaths,
-      ),
-      files,
-    );
+        summary:
+          `${results.length} file(s) changed.`,
+        durationMs:
+          performance.now() -
+          startedAt,
+        metadata: {
+          paths: results.map(
+            (result) =>
+              result.path +
+              (result.created
+                ? " [created]"
+                : " [edited]"),
+          ),
+          created:
+            results.filter(
+              (result) =>
+                result.created,
+            ).length,
+          bytes:
+            results.reduce(
+              (total, result) =>
+                total +
+                result.bytes,
+              0,
+            ),
+        },
+      });
+
+      return results;
+    } catch (error) {
+      this.audit?.record({
+        category: "workspace",
+        action: auditAction,
+        status: "failed",
+        workspace,
+        summary:
+          error instanceof Error
+            ? error.message
+            : String(error),
+        durationMs:
+          performance.now() -
+          startedAt,
+        metadata: {
+          paths: requestedPaths,
+        },
+      });
+      throw error;
+    }
   }
 
   async rg(

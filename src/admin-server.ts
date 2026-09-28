@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { AuditStore } from "./audit-store.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import {
   ADMIN_DASHBOARD_CSS,
@@ -51,6 +52,7 @@ export async function handleAdminRequest(
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
   desktop: DesktopComputerUseService,
+  audit: AuditStore,
   origin: string,
   adminToken: string,
 ): Promise<void> {
@@ -113,6 +115,8 @@ export async function handleAdminRequest(
       workspaces: workspaceAdminState(workspaces, machineCapabilities),
       jobs: await jobs.list(100),
       jobHistory: await jobs.historyStats(),
+      audit: await audit.list(200),
+      auditStats: await audit.stats(),
       ...(url.pathname === "/state"
         ? { adminToken }
         : {}),
@@ -167,6 +171,32 @@ export async function handleAdminRequest(
         await machineCapabilities.upsertCustom(
           await readJsonBody(req),
         );
+      audit.record({
+        category: "configuration",
+        action: "capability_upsert",
+        status: "succeeded",
+        subject: capability.key,
+        summary: "Custom machine capability saved.",
+        metadata: {
+          executable:
+            capability.launcher?.executable ??
+            "",
+          environment:
+            capability.definition
+              ?.environmentPolicy
+              ?.inherit ?? "unknown",
+          environmentSetNames:
+            Object.keys(
+              capability.definition
+                ?.environmentPolicy
+                ?.set ?? {},
+            ),
+          auditArguments:
+            capability.definition
+              ?.auditPolicy
+              ?.arguments ?? "full",
+        },
+      });
       sendJson(res, 201, { capability });
     } catch (error) {
       sendJson(res, 400, {
@@ -189,6 +219,16 @@ export async function handleAdminRequest(
         await machineCapabilities.removeCustom(
           segments[1],
         );
+      if (removed) {
+        audit.record({
+          category: "configuration",
+          action: "capability_remove",
+          status: "succeeded",
+          subject: segments[1],
+          summary:
+            "Custom machine capability removed.",
+        });
+      }
       sendJson(res, removed ? 200 : 404, {
         removed,
         key: segments[1],
@@ -233,6 +273,20 @@ export async function handleAdminRequest(
         body.enabled,
       );
 
+      audit.record({
+        category: "configuration",
+        action:
+          body.enabled
+            ? "capability_enable"
+            : "capability_disable",
+        status: "succeeded",
+        subject: capability.key,
+        summary:
+          body.enabled
+            ? "Machine capability enabled."
+            : "Machine capability disabled.",
+      });
+
       sendJson(res, 200, { capability });
     } catch (error) {
       const message =
@@ -263,6 +317,14 @@ export async function handleAdminRequest(
         registration.rootPath,
       );
       await workspaceStateStore.save(workspaces);
+      audit.record({
+        category: "configuration",
+        action: "workspace_register",
+        status: "succeeded",
+        workspace: registration.id,
+        subject: registration.rootPath,
+        summary: "Workspace registered.",
+      });
       sendJson(res, 201, {
         workspace: workspaces
           .list()
@@ -286,6 +348,13 @@ export async function handleAdminRequest(
     const removed = workspaces.remove(id);
     if (removed) {
       await workspaceStateStore.save(workspaces);
+      audit.record({
+        category: "configuration",
+        action: "workspace_remove",
+        status: "succeeded",
+        workspace: id,
+        summary: "Workspace removed.",
+      });
     }
     sendJson(res, removed ? 200 : 404, {
       removed,
@@ -314,6 +383,14 @@ export async function handleAdminRequest(
     if (req.method === "DELETE") {
       profile.revoke(key);
       await workspaceStateStore.save(workspaces);
+      audit.record({
+        category: "configuration",
+        action: "grant_revoke",
+        status: "succeeded",
+        workspace: workspaceId,
+        subject: key,
+        summary: "Workspace capability grant revoked.",
+      });
       sendJson(res, 200, {
         workspace: workspaceId,
         grants: profile.grants(),
@@ -363,6 +440,25 @@ export async function handleAdminRequest(
           arguments: argumentGrants,
         });
         await workspaceStateStore.save(workspaces);
+
+        audit.record({
+          category: "configuration",
+          action: "grant_set",
+          status: "succeeded",
+          workspace: workspaceId,
+          subject: key,
+          summary:
+            "Workspace capability grant updated.",
+          metadata: {
+            ruleCount:
+              argumentGrants.length,
+            ruleModes:
+              argumentGrants.map(
+                (grant) =>
+                  grant.mode,
+              ),
+          },
+        });
 
         sendJson(res, 200, {
           workspace: workspaceId,

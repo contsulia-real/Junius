@@ -22,6 +22,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
         <button data-view="workspaces" class="nav-item">工作区</button>
         <button data-view="capabilities" class="nav-item">能力</button>
         <button data-view="jobs" class="nav-item">后台任务</button>
+        <button data-view="activity" class="nav-item">活动记录</button>
         <button data-view="browser" class="nav-item">浏览器</button>
         <button data-view="desktop" class="nav-item">桌面</button>
       </nav>
@@ -122,7 +123,7 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
             </div>
 
             <details class="capability-section advanced-section">
-              <summary>环境变量与运行限制</summary>
+              <summary>环境变量、Audit 与运行限制</summary>
               <div class="form-row advanced-grid">
                 <label>
                   <span>环境继承</span>
@@ -151,6 +152,18 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
                 <label>
                   <span>最大输出 bytes</span>
                   <input name="maxOutputBytes" type="number" min="1024" max="16777216" value="65536">
+                </label>
+                <label>
+                  <span>Audit 参数记录</span>
+                  <select id="capability-audit-arguments" name="auditArguments">
+                    <option value="full">记录参数</option>
+                    <option value="redact_all">全部脱敏</option>
+                    <option value="redact_selected">指定索引脱敏</option>
+                  </select>
+                </label>
+                <label class="grow">
+                  <span>脱敏参数索引（0-based）</span>
+                  <input name="auditRedactIndexes" placeholder="例如：1, 3">
                 </label>
               </div>
 
@@ -203,6 +216,19 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
               <pre id="job-stderr"></pre>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="view-activity" class="view">
+        <div class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>活动记录</h2>
+              <p>统一查看 Junius 最近执行过的操作与配置变更；敏感正文不会写入 Audit。</p>
+            </div>
+          </div>
+          <div id="audit-summary" class="detail-grid"></div>
+          <div id="audit-list" class="stack audit-list"></div>
         </div>
       </section>
 

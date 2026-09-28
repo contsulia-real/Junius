@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
+import {
+  AuditStore,
+  resolveAuditPath,
+  resolveAuditRetention,
+} from "./audit-store.js";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { CapabilityRegistry } from "./capabilities/registry.js";
@@ -93,6 +98,10 @@ export async function startAgentWorker(
     options.publicAdminOrigin ??
     `http://${config.adminHost}:${config.adminPort}`;
 
+  const audit = new AuditStore(
+    resolveAuditPath(),
+    resolveAuditRetention(),
+  );
   const registry = new CapabilityRegistry();
   const browser = new PlaywrightCliService();
   const desktop = new DesktopComputerUseService();
@@ -117,7 +126,11 @@ export async function startAgentWorker(
     reloadConfiguration,
   } = workspaceRuntime;
 
-  const commands = new RunCommandService(registry, workspaces);
+  const commands = new RunCommandService(
+    registry,
+    workspaces,
+    audit,
+  );
   const files = new WorkspaceFilesService(
     workspaces,
     [
@@ -125,7 +138,9 @@ export async function startAgentWorker(
       config.workspaceStatePath,
       config.machineCapabilityStatePath,
       resolveBrowserStatePath(),
+      audit.rootPath,
     ],
+    audit,
   );
   const jobs = new JobManager(
     commands,
@@ -135,6 +150,7 @@ export async function startAgentWorker(
       resolveJobHistoryRetention(),
     ),
     options.onJobHistoryPersisted,
+    audit,
   );
   const mcpRuntime = await createMcpRuntime(
     commands,
@@ -142,6 +158,7 @@ export async function startAgentWorker(
     jobs,
     browser,
     desktop,
+    audit,
   );
   const adminToken = randomBytes(32).toString("base64url");
 
@@ -162,6 +179,7 @@ export async function startAgentWorker(
     jobs,
     browser,
     desktop,
+    audit,
     reloadConfiguration,
   });
 
@@ -217,6 +235,7 @@ export async function startAgentWorker(
         jobs.close(),
         browser.close(),
         desktop.close(),
+        audit.close(),
       ]);
     },
   };

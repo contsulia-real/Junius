@@ -3,6 +3,7 @@ export const ADMIN_DASHBOARD_JS_RENDER_ROOT = String.raw`  function render() {
     renderWorkspaces();
     renderCapabilities();
     renderJobs();
+    renderAudit();
     renderBrowser();
     renderDesktop();
   }

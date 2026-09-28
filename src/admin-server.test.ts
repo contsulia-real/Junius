@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { handleAdminRequest } from "./admin-server.js";
+import { AuditStore } from "./audit-store.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import { JobHistoryStore } from "./job-history-store.js";
@@ -22,6 +23,13 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "junius-admin-"));
   const statePath = join(root, "workspace-state.json");
   const registry = new CapabilityRegistry();
+  const audit = new AuditStore(
+    join(root, "audit"),
+    {
+      maxEntries: 50,
+      maxAgeMs: 60_000,
+    },
+  );
 
   const browser = new PlaywrightCliService({
     ...process.env,
@@ -73,6 +81,7 @@ async function fixture() {
       jobs,
       browser,
       desktop,
+      audit,
       origin,
       adminToken,
     );
@@ -99,6 +108,7 @@ async function fixture() {
       server.close();
       await once(server, "close");
       await jobs.close();
+      await audit.close();
       await rm(root, { recursive: true, force: true });
     },
   };
@@ -144,6 +154,18 @@ test("admin server serves the local WebUI and runtime state", async () => {
         retention: {
           maxEntries?: number;
           maxAgeMs?: number;
+        };
+      };
+      audit: {
+        category: string;
+        action: string;
+        status: string;
+      }[];
+      auditStats: {
+        entries: number;
+        retention: {
+          maxEntries: number;
+          maxAgeMs: number;
         };
       };
       adminToken: string;
@@ -212,6 +234,14 @@ test("admin server serves the local WebUI and runtime state", async () => {
     assert.equal(body.jobHistory.capturedBytes, 0);
     assert.deepEqual(body.jobHistory.retention, {
       maxEntries: 25,
+    });
+    assert.deepEqual(body.audit, []);
+    assert.deepEqual(body.auditStats, {
+      entries: 0,
+      retention: {
+        maxEntries: 50,
+        maxAgeMs: 60_000,
+      },
     });
     assert.equal(body.adminToken, "test-admin-token");
     assert.equal(body.browser.enabled, true);

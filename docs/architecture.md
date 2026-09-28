@@ -182,7 +182,7 @@ The Workspace settings panel also surfaces the corresponding machine-capability 
 
 New grants can only target capabilities that are active in the live Capability Registry. Removing one rule preserves the remaining rules for that capability; removing the final rule revokes the capability grant.
 
-Authorization UX v1 is implemented and awaiting local WebUI validation.
+Authorization UX v1 is implemented and has been validated through the local WebUI and live command execution.
 
 ## Capability Registry
 
@@ -301,6 +301,14 @@ The WebUI may register custom Workspace-scoped process capabilities, but this do
 Disabling an active Workspace-scoped process capability unregisters it immediately. Updating a custom definition reconciles that registry entry in place across Workers through the normal configuration barrier. Deleting a custom capability unregisters it and removes its machine definition. Workspace grants referencing disabled, changed, or deleted keys are intentionally preserved rather than rewritten. Browser and desktop keep their stable MCP surfaces but reject execution in their service layer while disabled. Re-enabling restores execution when the underlying runtime is available.
 
 Disabling a capability prevents new synchronous commands and jobs from starting through that capability. It does not terminate jobs that were already started.
+
+## Activity Audit
+
+Audit is a shared observational subsystem, not an authorization layer. Worker operations emit bounded event summaries through `AuditStore.record()`; the call returns immediately and persistence continues best-effort. Audit persistence failures are logged locally but do not change the result of the underlying command, Job, file write, Browser/Desktop action, or configuration mutation.
+
+The default Audit root is `<runtime-root>/audit`. Each event is persisted as its own timestamp/UUID JSON file, which avoids a single read-modify-write log file across simultaneously live active and retiring Workers. Readers merge persisted records with each Worker's bounded recent-event cache. Pruning is best-effort and defaults to 1000 entries and 7 days. The Audit root is included in Workspace-file protected paths.
+
+Sensitive data is intentionally excluded or reduced before persistence: stdout/stderr content, file contents/edit text, screenshots, Browser/Desktop text input, and explicit environment-variable values are not stored. Browser navigation removes query/hash. A custom process capability may expose an Audit argv policy of `full`, `redact_all`, or `redact_selected`; selected indexes are zero-based. Workspace-grant configuration events record rule count/modes rather than argument literals.
 
 ## Execution path
 

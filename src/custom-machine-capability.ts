@@ -56,6 +56,18 @@ const argumentGrantSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
+export const customMachineCapabilityAuditSchema =
+  z.object({
+    arguments: z.enum([
+      "full",
+      "redact_all",
+      "redact_selected",
+    ]).default("full"),
+    redactIndexes: z.array(
+      z.number().int().min(0).max(127),
+    ).max(128).default([]),
+  });
+
 const customMachineCapabilityBaseSchema =
   z.object({
     key: z.string().regex(
@@ -98,6 +110,12 @@ export const customMachineCapabilityDefinitionSchema =
           denyNames: [],
           denyPrefixes: [],
           set: {},
+        }),
+    auditPolicy:
+      customMachineCapabilityAuditSchema
+        .default({
+          arguments: "full",
+          redactIndexes: [],
         }),
   });
 
@@ -252,6 +270,33 @@ function inheritedCustomEnvironment(
   );
 }
 
+function customAuditArguments(
+  definition: CustomMachineCapabilityDefinition,
+  args: readonly string[],
+): readonly string[] {
+  if (
+    definition.auditPolicy.arguments ===
+    "redact_all"
+  ) {
+    return args.map(() => "[REDACTED]");
+  }
+  if (
+    definition.auditPolicy.arguments ===
+    "redact_selected"
+  ) {
+    const indexes = new Set(
+      definition.auditPolicy.redactIndexes,
+    );
+    return args.map(
+      (arg, index) =>
+        indexes.has(index)
+          ? "[REDACTED]"
+          : arg,
+    );
+  }
+  return [...args];
+}
+
 export function createCustomMachineCapability(
   definition: CustomMachineCapabilityDefinition,
   environment: NodeJS.ProcessEnv = process.env,
@@ -282,6 +327,11 @@ export function createCustomMachineCapability(
     inheritedEnvironmentDenyPrefixes:
       definition.environmentPolicy
         .denyPrefixes,
+    auditArguments: (args) =>
+      customAuditArguments(
+        definition,
+        args,
+      ),
   });
 }
 

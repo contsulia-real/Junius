@@ -48,6 +48,9 @@ h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spa
 .item-main { min-width: 0; }
 .item-title { font-weight: 650; overflow-wrap: anywhere; }
 .item-meta { color: var(--muted); font-size: 13px; margin-top: 5px; overflow-wrap: anywhere; }
+.audit-list { margin-top: 16px; }
+.audit-item .item-main { flex: 1; }
+.audit-meta { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
 .item-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 .workspace-card { display: block; padding: 0; overflow: hidden; }

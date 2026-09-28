@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
+import {
+  AuditStore,
+  resolveAuditPath,
+  resolveAuditRetention,
+} from "./audit-store.js";
 import { handleAdminRequest } from "./admin-server.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import { loadRuntimeConfig } from "./config.js";
@@ -31,6 +36,10 @@ import { WorkspaceProfile } from "./workspace-profile.js";
 import { WorkspaceStateStore } from "./workspace-state-store.js";
 
 const config = await loadRuntimeConfig();
+const audit = new AuditStore(
+  resolveAuditPath(),
+  resolveAuditRetention(),
+);
 const registry = new CapabilityRegistry();
 
 const playwrightCliService = new PlaywrightCliService();
@@ -89,7 +98,11 @@ if (persistedWorkspaces === undefined) {
   );
 }
 
-const runCommandService = new RunCommandService(registry, workspaceManager);
+const runCommandService = new RunCommandService(
+  registry,
+  workspaceManager,
+  audit,
+);
 const workspaceFilesService =
   new WorkspaceFilesService(
     workspaceManager,
@@ -98,7 +111,9 @@ const workspaceFilesService =
       config.workspaceStatePath,
       config.machineCapabilityStatePath,
       resolveBrowserStatePath(),
+      audit.rootPath,
     ],
+    audit,
   );
 const jobManager = new JobManager(
   runCommandService,
@@ -107,6 +122,8 @@ const jobManager = new JobManager(
     resolveJobHistoryPath(),
     resolveJobHistoryRetention(),
   ),
+  undefined,
+  audit,
 );
 const mcpRuntime = await createMcpRuntime(
   runCommandService,
@@ -114,6 +131,7 @@ const mcpRuntime = await createMcpRuntime(
   jobManager,
   playwrightCliService,
   desktopComputerUseService,
+  audit,
 );
 
 const mcpOrigin = `http://${config.mcpHost}:${config.mcpPort}`;
@@ -164,6 +182,7 @@ const adminHttpServer = createHttpServer((req, res) => {
     jobManager,
     playwrightCliService,
     desktopComputerUseService,
+    audit,
     adminOrigin,
     adminToken,
   ).catch((error: unknown) => {
@@ -204,6 +223,7 @@ async function shutdown(signal: string): Promise<void> {
   await jobManager.close();
   await playwrightCliService.close();
   await desktopComputerUseService.close();
+  await audit.close();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

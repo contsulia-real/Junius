@@ -10,6 +10,7 @@ import { WorkspaceFilesService } from "./workspace-files.js";
 import { JobManager } from "./job-manager.js";
 import { PlaywrightCliService } from "./playwright-cli.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
+import type { AuditStore } from "./audit-store.js";
 
 export interface McpRuntime {
   handle(request: Request): Promise<Response>;
@@ -22,9 +23,17 @@ export async function createMcpRuntime(
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
   desktop: DesktopComputerUseService,
+  audit?: AuditStore,
 ): Promise<McpRuntime> {
   const modernHandler = createMcpHandler(
-    () => createMcpServer(commands, files, jobs, playwrightCli, desktop),
+    () => createMcpServer(
+      commands,
+      files,
+      jobs,
+      playwrightCli,
+      desktop,
+      audit,
+    ),
     {
     legacy: "reject",
     onerror(error) {
@@ -33,7 +42,15 @@ export async function createMcpRuntime(
     },
   );
 
-  const legacyServer = createMcpServer(commands, files, jobs, playwrightCli, desktop);
+  const legacyServer =
+    createMcpServer(
+      commands,
+      files,
+      jobs,
+      playwrightCli,
+      desktop,
+      audit,
+    );
   const legacyTransport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: randomUUID,
   });

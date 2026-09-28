@@ -61,6 +61,11 @@ test("MachineCapabilityStateStore round-trips v3 built-in and custom capability 
               CUSTOM_VALUE: "1",
             },
           },
+          auditPolicy: {
+            arguments:
+              "full" as const,
+            redactIndexes: [],
+          },
         },
       },
     };

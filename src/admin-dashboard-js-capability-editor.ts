@@ -130,6 +130,44 @@ export const ADMIN_DASHBOARD_JS_CAPABILITY_EDITOR = String.raw`
     form.elements.environmentAllowNames.disabled = !allowlist;
   }
 
+  function readCapabilityAuditPolicy(form) {
+    var mode = form.elements.auditArguments.value;
+    var indexes = String(
+      form.elements.auditRedactIndexes.value || ""
+    )
+      .split(/[\s,]+/)
+      .map(function (value) { return value.trim(); })
+      .filter(Boolean)
+      .map(function (value) {
+        var index = Number(value);
+        if (
+          !Number.isInteger(index) ||
+          index < 0 ||
+          index > 127
+        ) {
+          throw new Error("Audit 脱敏索引必须是 0-127 的整数。");
+        }
+        return index;
+      })
+      .filter(function (value, index, values) {
+        return values.indexOf(value) === index;
+      });
+
+    return {
+      arguments: mode,
+      redactIndexes:
+        mode === "redact_selected"
+          ? indexes
+          : []
+    };
+  }
+
+  function syncAuditControls() {
+    var form = document.getElementById("capability-form");
+    form.elements.auditRedactIndexes.disabled =
+      form.elements.auditArguments.value !== "redact_selected";
+  }
+
   function renderExecutableCandidates(items) {
     var node = document.getElementById("capability-executable-results");
     if (!items || !items.length) {
@@ -171,11 +209,14 @@ export const ADMIN_DASHBOARD_JS_CAPABILITY_EDITOR = String.raw`
     form.elements.environmentAllowNames.value = "";
     form.elements.environmentDenyNames.value = "";
     form.elements.environmentDenyPrefixes.value = "";
+    form.elements.auditArguments.value = "full";
+    form.elements.auditRedactIndexes.value = "";
     renderCapabilityPolicyRows([
       { mode: "exact", args: [] }
     ]);
     renderEnvironmentOverrides({});
     syncEnvironmentControls();
+    syncAuditControls();
     document.getElementById(
       "capability-executable-results"
     ).classList.add("hidden");
@@ -198,6 +239,10 @@ export const ADMIN_DASHBOARD_JS_CAPABILITY_EDITOR = String.raw`
       denyPrefixes: [],
       set: {}
     };
+    var auditPolicy = definition.auditPolicy || {
+      arguments: "full",
+      redactIndexes: []
+    };
 
     form.elements.key.value = definition.key;
     form.elements.key.readOnly = true;
@@ -215,10 +260,15 @@ export const ADMIN_DASHBOARD_JS_CAPABILITY_EDITOR = String.raw`
       (environment.denyNames || []).join(", ");
     form.elements.environmentDenyPrefixes.value =
       (environment.denyPrefixes || []).join(", ");
+    form.elements.auditArguments.value =
+      auditPolicy.arguments || "full";
+    form.elements.auditRedactIndexes.value =
+      (auditPolicy.redactIndexes || []).join(", ");
 
     renderCapabilityPolicyRows(definition.argumentPolicy || []);
     renderEnvironmentOverrides(environment.set || {});
     syncEnvironmentControls();
+    syncAuditControls();
     document.getElementById(
       "capability-executable-results"
     ).classList.add("hidden");
@@ -263,6 +313,13 @@ export const ADMIN_DASHBOARD_JS_CAPABILITY_EDITOR = String.raw`
     ).addEventListener(
       "change",
       syncEnvironmentControls
+    );
+
+    document.getElementById(
+      "capability-audit-arguments"
+    ).addEventListener(
+      "change",
+      syncAuditControls
     );
 
     document.addEventListener("click", function (event) {

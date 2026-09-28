@@ -11,6 +11,7 @@ export const ADMIN_DASHBOARD_JS_BASE = String.raw`
     workspaces: ["工作区", "项目根目录与工作区授权"],
     capabilities: ["能力", "机器级已注册能力"],
     jobs: ["后台任务", "后台进程生命周期"],
+    activity: ["活动记录", "统一执行与配置审计"],
     browser: ["浏览器", "本地 playwright-cli 适配器"],
     desktop: ["桌面", "Windows Computer Use"]
   };

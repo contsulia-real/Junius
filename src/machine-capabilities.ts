@@ -386,6 +386,15 @@ export class MachineCapabilityManager {
                 .set,
             },
           },
+          auditPolicy: {
+            arguments:
+              custom.auditPolicy
+                .arguments,
+            redactIndexes: [
+              ...custom.auditPolicy
+                .redactIndexes,
+            ],
+          },
         },
       };
     }

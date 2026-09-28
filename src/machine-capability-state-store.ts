@@ -108,6 +108,15 @@ function clonePreference(
                   .set,
               },
             },
+            auditPolicy: {
+              arguments:
+                preference.custom.auditPolicy
+                  .arguments,
+              redactIndexes: [
+                ...preference.custom.auditPolicy
+                  .redactIndexes,
+              ],
+            },
           },
         }),
   };
@@ -169,6 +178,10 @@ export class MachineCapabilityStateStore {
                   ...value.custom,
                   environmentPolicy:
                     legacyCustomMachineCapabilityEnvironment(),
+                  auditPolicy: {
+                    arguments: "full",
+                    redactIndexes: [],
+                  },
                 },
               },
         ]),

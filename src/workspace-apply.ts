@@ -26,7 +26,11 @@ export async function runWorkspaceApply(
   const startedAt = performance.now();
 
   const writeStartedAt = performance.now();
-  const writeResults = await files.write(workspace, writes);
+  const writeResults = await files.write(
+    workspace,
+    writes,
+    "workspace_apply",
+  );
   const writeDurationMs = Math.round(
     performance.now() - writeStartedAt,
   );

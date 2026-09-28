@@ -3,6 +3,7 @@ import type {
   CapabilityExecution,
   CapabilityExecutionContext,
 } from "./capabilities/types.js";
+import type { AuditStore } from "./audit-store.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import {
   WorkspaceManager,
@@ -115,6 +116,7 @@ export class RunCommandService {
   constructor(
     private readonly registry: CapabilityRegistry,
     private readonly workspaceManager: WorkspaceManager,
+    private readonly audit?: AuditStore,
   ) {}
 
   listWorkspaces(): readonly WorkspaceState[] {
@@ -140,16 +142,85 @@ export class RunCommandService {
     key: string,
     args: readonly string[],
   ): Promise<RunCommandResult> {
-    const authorized = this.authorize(workspace, key, args);
+    const startedAt = performance.now();
+    const capability =
+      this.registry.get(key);
+    const auditArgs =
+      this.#auditArguments(
+        capability,
+        args,
+      );
+    const authorized =
+      this.authorize(
+        workspace,
+        key,
+        args,
+      );
 
     if (!authorized.ok) {
+      this.audit?.record({
+        category: "command",
+        action: "run_command",
+        status: "failed",
+        workspace,
+        subject: key,
+        summary: authorized.code,
+        durationMs:
+          performance.now() -
+          startedAt,
+        metadata: {
+          argCount: args.length,
+          ...(auditArgs === undefined
+            ? {}
+            : { args: auditArgs }),
+          code: authorized.code,
+        },
+      });
       return authorized;
     }
 
-    const execution = await authorized.capability.execute(
-      args,
-      authorized.context,
-    );
+    const execution =
+      await authorized.capability.execute(
+        args,
+        authorized.context,
+      );
+
+    this.audit?.record({
+      category: "command",
+      action: "run_command",
+      status:
+        execution.ok
+          ? "succeeded"
+          : "failed",
+      workspace,
+      subject: key,
+      summary:
+        execution.ok
+          ? "Capability execution succeeded."
+          : execution.code,
+      durationMs: execution.durationMs,
+      metadata: {
+        argCount: args.length,
+        ...(auditArgs === undefined
+          ? {}
+          : { args: auditArgs }),
+        exitCode:
+          execution.exitCode ??
+          -1,
+        stdoutChars:
+          execution.stdout.length,
+        stderrChars:
+          execution.stderr.length,
+        ...(
+          execution.ok
+            ? {}
+            : {
+                code:
+                  execution.code,
+              }
+        ),
+      },
+    });
 
     if (!execution.ok) {
       return {
@@ -168,5 +239,24 @@ export class RunCommandService {
       key,
       execution,
     };
+  }
+
+  #auditArguments(
+    capability: Capability | undefined,
+    args: readonly string[],
+  ): readonly string[] | undefined {
+    if (capability === undefined) {
+      return undefined;
+    }
+
+    try {
+      return capability.auditArguments?.(
+        args,
+      ) ?? [...args];
+    } catch {
+      return args.map(
+        () => "[REDACTED]",
+      );
+    }
   }
 }

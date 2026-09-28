@@ -51,6 +51,10 @@ export interface Capability {
   readonly key: string;
   readonly description: string;
 
+  auditArguments?(
+    args: readonly string[],
+  ): readonly string[];
+
   execute(
     args: readonly string[],
     context: CapabilityExecutionContext,

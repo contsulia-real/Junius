@@ -4,6 +4,7 @@ import type { WorkspaceFilesService } from "./workspace-files.js";
 import type { JobManager } from "./job-manager.js";
 import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { DesktopComputerUseService } from "./desktop-computer-use.js";
+import type { AuditStore } from "./audit-store.js";
 import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
 import { registerComputerTools } from "./mcp-computer-tools.js";
 import { registerJobTools } from "./mcp-job-tools.js";
@@ -17,6 +18,7 @@ export function createMcpServer(
   jobs: JobManager,
   playwrightCli: PlaywrightCliService,
   desktop: DesktopComputerUseService,
+  audit?: AuditStore,
 ): McpServer {
   const server = new McpServer({
     name: "Junius",
@@ -25,7 +27,12 @@ export function createMcpServer(
   });
 
   registerWorkspaceTools(server, commands, files);
-  registerComputerTools(server, playwrightCli, desktop);
+  registerComputerTools(
+    server,
+    playwrightCli,
+    desktop,
+    audit,
+  );
   registerJobTools(server, jobs);
   registerRunCommandTool(server, commands);
 

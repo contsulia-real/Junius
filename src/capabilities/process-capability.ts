@@ -36,6 +36,9 @@ export interface ProcessCapabilityOptions {
   readonly inheritedEnvironment?: NodeJS.ProcessEnv;
   readonly inheritedEnvironmentDenyPrefixes?: readonly string[];
   readonly inheritedEnvironmentDenyNames?: readonly string[];
+  readonly auditArguments?: (
+    args: readonly string[],
+  ) => readonly string[];
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -68,6 +71,8 @@ export class ProcessCapability implements Capability {
   readonly #inheritedEnvironment: NodeJS.ProcessEnv;
   readonly #inheritedEnvironmentDenyPrefixes: readonly string[];
   readonly #inheritedEnvironmentDenyNames: ReadonlySet<string>;
+  readonly #auditArguments?:
+    ProcessCapabilityOptions["auditArguments"];
 
   constructor(options: ProcessCapabilityOptions) {
     this.key = options.key;
@@ -92,6 +97,15 @@ export class ProcessCapability implements Capability {
       (options.inheritedEnvironmentDenyNames ?? [])
         .map((name) => name.toUpperCase()),
     );
+    this.#auditArguments =
+      options.auditArguments;
+  }
+
+  auditArguments(
+    args: readonly string[],
+  ): readonly string[] {
+    return this.#auditArguments?.(args) ??
+      [...args];
   }
 
   prepareProcess(

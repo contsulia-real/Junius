@@ -4,6 +4,7 @@ import {
 } from "node:http";
 import { handleAdminRequest } from "./admin-server.js";
 import type { CapabilityRegistry } from "./capabilities/registry.js";
+import type { AuditStore } from "./audit-store.js";
 import type { DesktopComputerUseService } from "./desktop-computer-use.js";
 import {
   sendJson,
@@ -34,6 +35,7 @@ export interface AgentWorkerHttpServerOptions {
   readonly jobs: JobManager;
   readonly browser: PlaywrightCliService;
   readonly desktop: DesktopComputerUseService;
+  readonly audit: AuditStore;
   readonly reloadConfiguration: () => Promise<void>;
 }
 
@@ -70,6 +72,7 @@ export function createAgentWorkerHttpServers(
     jobs,
     browser,
     desktop,
+    audit,
     reloadConfiguration,
   } = options;
 
@@ -203,6 +206,7 @@ export function createAgentWorkerHttpServers(
         jobs,
         browser,
         desktop,
+        audit,
         publicAdminOrigin,
         adminToken,
       ).catch((error: unknown) => {

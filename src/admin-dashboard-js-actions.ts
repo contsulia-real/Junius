@@ -138,6 +138,7 @@ export const ADMIN_DASHBOARD_JS_ACTIONS = String.raw`  function parseArgs(text) 
         fixedArgs: parseArgs(form.elements.fixedArgs.value),
         argumentPolicy: readCapabilityPolicyRows(),
         environmentPolicy: readCapabilityEnvironmentPolicy(form),
+        auditPolicy: readCapabilityAuditPolicy(form),
         timeoutMs: Number(form.elements.timeoutMs.value),
         maxOutputBytes: Number(form.elements.maxOutputBytes.value)
       };

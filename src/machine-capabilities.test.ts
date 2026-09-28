@@ -412,12 +412,28 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
           CUSTOM_VALUE: "set",
         },
       },
+      auditPolicy: {
+        arguments: "redact_selected",
+        redactIndexes: [1],
+      },
     });
 
     assert.equal(created.custom, true);
     assert.equal(created.available, true);
     assert.equal(created.active, true);
     assert.equal(registry.has("custom_node"), true);
+    assert.deepEqual(
+      registry
+        .get("custom_node")
+        ?.auditArguments?.([
+          "-p",
+          "secret-value",
+        ]),
+      [
+        "-p",
+        "[REDACTED]",
+      ],
+    );
 
     assert.deepEqual(
       manager.workspaceGrantCompatibility("custom_node", {
