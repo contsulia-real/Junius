@@ -693,6 +693,8 @@ def execute(
     command = request.get("command")
 
     allowed_commands = {
+        "control_begin",
+        "control_end",
         "windows",
         "screenshot",
         "focus_window",
@@ -710,14 +712,49 @@ def execute(
         "type",
     }
 
-    if command in allowed_commands:
+    session = str(
+        request.get("session", "")
+    )
+
+    if command == "control_begin":
         try:
-            ACTIVITY_INDICATOR.touch()
+            ACTIVITY_INDICATOR.begin(session)
         except RuntimeError as error:
             raise DesktopHelperError(
                 "activity_indicator_failed",
                 str(error),
             ) from error
+        return {
+            "active": True,
+            "session": session,
+        }
+
+    if command == "control_end":
+        try:
+            ACTIVITY_INDICATOR.end(session)
+        except RuntimeError as error:
+            raise DesktopHelperError(
+                "activity_indicator_failed",
+                str(error),
+            ) from error
+        return {
+            "active": False,
+            "session": session,
+        }
+
+    if (
+        command in allowed_commands
+        and not ACTIVITY_INDICATOR.is_active(
+            session
+        )
+    ):
+        raise DesktopHelperError(
+            "control_not_started",
+            (
+                "Desktop control_begin must be called "
+                "before desktop actions for this session."
+            ),
+        )
 
     if command == "windows":
         return list_windows()

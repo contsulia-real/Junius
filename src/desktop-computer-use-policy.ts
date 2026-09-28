@@ -23,10 +23,30 @@ function validHandle(
   );
 }
 
+function hasNoActionArguments(
+  request: DesktopRunRequest,
+): boolean {
+  return (
+    request.handle === undefined &&
+    request.x === undefined &&
+    request.y === undefined &&
+    request.button === undefined &&
+    request.clicks === undefined &&
+    request.amount === undefined &&
+    request.key === undefined &&
+    request.text === undefined &&
+    request.steps === undefined
+  );
+}
+
 export function validateDesktopRequest(
   request: DesktopRunRequest,
 ): boolean {
   switch (request.command) {
+    case "control_begin":
+    case "control_end":
+      return hasNoActionArguments(request);
+
     case "windows":
       return request.handle === undefined;
 

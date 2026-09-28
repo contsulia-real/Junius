@@ -157,12 +157,12 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. Use windows to discover top-level native windows, screenshot to understand the full screen or one window, coordinate mouse/keyboard commands to act, key_macro for bounded keyboard sequences, and clipboard_read/clipboard_write for Unicode text clipboard access. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. For every desktop-control task, call control_begin once before the first desktop action and always call control_end for the same session before finishing, including when the task succeeds, cannot be completed, or encounters an error. The user-visible Junius takeover indicator remains active for that entire control scope. Use windows to discover top-level native windows, screenshot to understand the full screen or one window, coordinate mouse/keyboard commands to act, key_macro for bounded keyboard sequences, and clipboard_read/clipboard_write for Unicode text clipboard access. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
           .describe(
-            "Named Junius desktop call context used for audit and tracing only; desktop actions are otherwise stateless.",
+            "Named Junius desktop control scope. Use the same session from control_begin through control_end; it is also recorded for audit/tracing.",
           ),
         command: z.enum(DESKTOP_COMMANDS),
         handle: z

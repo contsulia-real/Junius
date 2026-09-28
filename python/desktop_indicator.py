@@ -9,8 +9,6 @@ from ctypes import wintypes
 ACTIVITY_INDICATOR_TEXT = (
     "ChatGPT 正通过 Junius 操作电脑"
 )
-ACTIVITY_INDICATOR_IDLE_SECONDS = 8.0
-
 WS_POPUP = 0x80000000
 WS_BORDER = 0x00800000
 SS_CENTER = 0x00000001
@@ -230,25 +228,27 @@ class DesktopActivityIndicator:
         self._wake = threading.Event()
         self._ready = threading.Event()
         self._shown = threading.Event()
+        self._hidden = threading.Event()
+        self._hidden.set()
         self._started = False
         self._visible = False
-        self._deadline = 0.0
+        self._active_sessions: set[str] = set()
         self._windows: list[int] = []
         self._error: str | None = None
 
-    def touch(self) -> None:
+    def begin(self, session: str) -> None:
         start_thread = False
         should_wait_for_show = False
 
         with self._lock:
-            self._deadline = (
-                time.monotonic()
-                + ACTIVITY_INDICATOR_IDLE_SECONDS
+            was_active = bool(
+                self._active_sessions
             )
+            self._active_sessions.add(session)
             if not self._started:
                 self._started = True
                 start_thread = True
-            elif not self._visible:
+            elif not was_active or not self._visible:
                 self._shown.clear()
                 should_wait_for_show = True
 
@@ -282,6 +282,36 @@ class DesktopActivityIndicator:
             error = self._error
         if error is not None:
             raise RuntimeError(error)
+
+    def end(self, session: str) -> None:
+        should_wait_for_hide = False
+
+        with self._lock:
+            self._active_sessions.discard(session)
+            if (
+                self._started
+                and self._visible
+                and not self._active_sessions
+            ):
+                self._hidden.clear()
+                should_wait_for_hide = True
+
+        self._wake.set()
+
+        if should_wait_for_hide:
+            if not self._hidden.wait(timeout=0.25):
+                raise RuntimeError(
+                    (
+                        "Timed out while hiding the "
+                        "Junius desktop activity indicator."
+                    )
+                )
+
+    def is_active(self, session: str) -> bool:
+        with self._lock:
+            return (
+                session in self._active_sessions
+            )
 
     def _register_window_class(self) -> None:
         window_class = WndClassW()
@@ -490,17 +520,23 @@ class DesktopActivityIndicator:
                 kind="edge_left",
                 title="Junius Activity Glow Left",
                 x=x,
-                y=y,
+                y=y + EDGE_THICKNESS,
                 width=EDGE_THICKNESS,
-                height=height,
+                height=max(
+                    1,
+                    height - (2 * EDGE_THICKNESS),
+                ),
             ),
             self._create_window(
                 kind="edge_right",
                 title="Junius Activity Glow Right",
                 x=x + width - EDGE_THICKNESS,
-                y=y,
+                y=y + EDGE_THICKNESS,
                 width=EDGE_THICKNESS,
-                height=height,
+                height=max(
+                    1,
+                    height - (2 * EDGE_THICKNESS),
+                ),
             ),
         ]
 
@@ -552,7 +588,10 @@ class DesktopActivityIndicator:
             self._visible = visible
 
         if visible:
+            self._hidden.clear()
             self._shown.set()
+        else:
+            self._hidden.set()
 
     def _update_pulse(self) -> None:
         now = time.monotonic()
@@ -611,9 +650,8 @@ class DesktopActivityIndicator:
                 self._pump_messages()
 
                 with self._lock:
-                    active = (
-                        time.monotonic()
-                        < self._deadline
+                    active = bool(
+                        self._active_sessions
                     )
                     visible = self._visible
 

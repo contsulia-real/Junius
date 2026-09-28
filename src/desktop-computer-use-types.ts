@@ -1,4 +1,6 @@
 export const DESKTOP_COMMANDS = [
+  "control_begin",
+  "control_end",
   "windows",
   "screenshot",
   "focus_window",

@@ -41,6 +41,7 @@ export function desktopHelperRequest(
 ): Record<string, unknown> {
   return {
     command: request.command,
+    session: request.session,
     ...(request.handle === undefined
       ? {}
       : { handle: request.handle }),

@@ -295,6 +295,7 @@ test("desktop exposes only screenshot and coordinate keyboard/mouse commands", a
       ).received,
       {
         command: "mouse_click",
+        session: "desktop",
         handle: 42,
         x: 10,
         y: 20,
@@ -337,6 +338,7 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
       ).received,
       {
         command: "key_macro",
+        session: "desktop",
         steps: [
           {
             action: "key_down",
@@ -401,6 +403,7 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
       ).received,
       {
         command: "clipboard_write",
+        session: "desktop",
         text: "你好，Junius 👋",
       },
     );
@@ -418,6 +421,7 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
       ).received,
       {
         command: "clipboard_read",
+        session: "desktop",
       },
     );
 
@@ -667,6 +671,20 @@ test("desktop real Python helper supports screenshot-only perception when instal
       return;
     }
 
+    const control =
+      await service.run({
+        session:
+          "integration",
+        command: "control_begin",
+      });
+    assert.deepEqual(
+      control.result,
+      {
+        active: true,
+        session: "integration",
+      },
+    );
+
     const windows =
       await service.run({
         session:
@@ -795,15 +813,19 @@ test("desktop real Python helper supports screenshot-only perception when instal
       glowWindows.find(
         (window) =>
           window.rect?.left === screenLeft &&
-          window.rect?.top === screenTop &&
-          window.rect?.bottom === screenBottom,
+          window.rect?.top ===
+            screenTop + 12 &&
+          window.rect?.bottom ===
+            screenBottom - 12,
       );
     const rightGlow =
       glowWindows.find(
         (window) =>
           window.rect?.right === screenRight &&
-          window.rect?.top === screenTop &&
-          window.rect?.bottom === screenBottom,
+          window.rect?.top ===
+            screenTop + 12 &&
+          window.rect?.bottom ===
+            screenBottom - 12,
       );
 
     assert.notEqual(topGlow?.rect, undefined);
@@ -852,7 +874,7 @@ test("desktop real Python helper supports screenshot-only perception when instal
     );
     assert.equal(
       leftGlow?.rect?.height,
-      screenshotRegion?.height,
+      (screenshotRegion?.height ?? 0) - 24,
     );
     assert.equal(
       rightGlow?.rect?.right,
@@ -860,7 +882,36 @@ test("desktop real Python helper supports screenshot-only perception when instal
     );
     assert.equal(
       rightGlow?.rect?.height,
-      screenshotRegion?.height,
+      (screenshotRegion?.height ?? 0) - 24,
+    );
+
+    const ended =
+      await service.run({
+        session:
+          "integration",
+        command: "control_end",
+      });
+    assert.deepEqual(
+      ended.result,
+      {
+        active: false,
+        session: "integration",
+      },
+    );
+
+    await assert.rejects(
+      service.run({
+        session:
+          "integration",
+        command: "windows",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code === "helper_failed" &&
+        error.message.includes(
+          "control_begin",
+        ),
     );
 
     assert.equal(
