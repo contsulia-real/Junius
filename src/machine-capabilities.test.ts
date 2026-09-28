@@ -447,7 +447,7 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
     const execution = await registry.get("custom_node")!.execute(
       [
         "-p",
-        "JSON.stringify([process.env.KEEP_VALUE, process.env.SECRET_VALUE || null, process.env.CUSTOM_VALUE])",
+        "JSON.stringify([process.env.PATH || null, process.env.KEEP_VALUE, process.env.SECRET_VALUE || null, process.env.CUSTOM_VALUE])",
       ],
       { cwd: root },
     );
@@ -458,6 +458,7 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
           execution.stdout.trim(),
         ),
         [
+          null,
           "kept",
           null,
           "set",

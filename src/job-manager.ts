@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
+import { environmentForSpawn } from "./execution-environment.js";
 import { isProcessPreparableCapability } from "./capabilities/types.js";
 import type { JobHistoryStore } from "./job-history-store.js";
 import {
@@ -98,7 +99,9 @@ export class JobManager {
         [...prepared.process.args],
         {
           cwd: prepared.process.cwd,
-          env: prepared.process.env,
+          env: environmentForSpawn(
+            prepared.process.env,
+          ),
           shell: false,
           windowsHide: prepared.process.windowsHide,
           stdio: ["ignore", "pipe", "pipe"],

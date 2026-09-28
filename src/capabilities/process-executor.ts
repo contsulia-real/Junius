@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { environmentForSpawn } from "../execution-environment.js";
 import { terminateProcessTree } from "../process-termination.js";
 import type {
   CapabilityExecution,
@@ -27,7 +28,9 @@ export async function executePreparedProcess(
       [...prepared.args],
       {
         cwd: prepared.cwd,
-        env: prepared.env,
+        env: environmentForSpawn(
+          prepared.env,
+        ),
         shell: false,
         windowsHide: prepared.windowsHide,
         stdio: ["ignore", "pipe", "pipe"],

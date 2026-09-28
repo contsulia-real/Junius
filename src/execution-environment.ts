@@ -1,3 +1,27 @@
+export function environmentForSpawn(
+  environment: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  if (platform !== "win32") {
+    return environment;
+  }
+
+  const hasPath = Object.keys(
+    environment,
+  ).some(
+    (name) =>
+      name.toUpperCase() === "PATH",
+  );
+  if (hasPath) {
+    return environment;
+  }
+
+  return {
+    ...environment,
+    PATH: "",
+  };
+}
+
 export function withoutEnvironmentVariables(
   environment: NodeJS.ProcessEnv,
   options: {
