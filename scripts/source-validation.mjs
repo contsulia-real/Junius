@@ -15,12 +15,18 @@ import {
 } from "node:path";
 
 const VALIDATION_VERSION = 1;
+const PENDING_MAX_AGE_MS =
+  24 * 60 * 60 * 1_000;
 const projectRoot = process.cwd();
 const runtimeRoot = resolve(
   process.env.JUNIUS_RUNTIME_ROOT ??
     join(projectRoot, ".junius", "runtime"),
 );
-const pendingPath = join(
+const pendingRoot = join(
+  runtimeRoot,
+  "source-validation.pending",
+);
+const legacyPendingPath = join(
   runtimeRoot,
   "source-validation.pending.json",
 );
@@ -28,6 +34,30 @@ const validatedPath = join(
   runtimeRoot,
   "source-validation.json",
 );
+
+function transactionKey() {
+  const explicit =
+    process.env
+      .JUNIUS_SOURCE_VALIDATION_TRANSACTION
+      ?.trim();
+
+  const raw =
+    explicit && explicit.length > 0
+      ? explicit
+      : `ppid-${process.ppid}`;
+
+  return raw.replace(
+    /[^A-Za-z0-9._-]/gu,
+    "_",
+  );
+}
+
+function pendingPath() {
+  return join(
+    pendingRoot,
+    transactionKey() + ".json",
+  );
+}
 
 async function exists(path) {
   try {
@@ -126,22 +156,88 @@ async function writeJsonAtomic(path, value) {
   await rename(temporaryPath, path);
 }
 
+async function prunePendingTransactions() {
+  let entries;
+  try {
+    entries = await readdir(
+      pendingRoot,
+      { withFileTypes: true },
+    );
+  } catch {
+    return;
+  }
+
+  const cutoff =
+    Date.now() - PENDING_MAX_AGE_MS;
+
+  await Promise.allSettled(
+    entries
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.endsWith(".json"),
+      )
+      .map(async (entry) => {
+        const path = join(
+          pendingRoot,
+          entry.name,
+        );
+
+        let startedAt;
+        try {
+          const pending = JSON.parse(
+            await readFile(path, "utf8"),
+          );
+          startedAt = Date.parse(
+            pending?.startedAt ?? "",
+          );
+        } catch {
+          startedAt = Number.NaN;
+        }
+
+        if (
+          !Number.isFinite(startedAt) ||
+          startedAt < cutoff
+        ) {
+          await rm(path, { force: true });
+        }
+      }),
+  );
+}
+
 async function begin() {
   const fingerprint =
     await fingerprintSource(projectRoot);
-  await writeJsonAtomic(pendingPath, {
-    ...environmentStamp(fingerprint),
-    startedAt: new Date().toISOString(),
-  });
+
+  await prunePendingTransactions();
+  await rm(
+    legacyPendingPath,
+    { force: true },
+  );
+
+  await writeJsonAtomic(
+    pendingPath(),
+    {
+      ...environmentStamp(fingerprint),
+      transactionId: randomUUID(),
+      transactionKey:
+        transactionKey(),
+      startedAt:
+        new Date().toISOString(),
+    },
+  );
 }
 
 async function commit() {
+  const path = pendingPath();
+
   let pending;
   try {
     pending = JSON.parse(
-      await readFile(pendingPath, "utf8"),
+      await readFile(path, "utf8"),
     );
   } catch {
+    await rm(path, { force: true });
     throw new Error(
       "source_validation_begin_missing",
     );
@@ -158,7 +254,7 @@ async function commit() {
     pending?.platform !== expected.platform ||
     pending?.arch !== expected.arch
   ) {
-    await rm(pendingPath, { force: true });
+    await rm(path, { force: true });
     throw new Error(
       "source_changed_during_full_validation",
     );
@@ -168,7 +264,7 @@ async function commit() {
     ...expected,
     validatedAt: new Date().toISOString(),
   });
-  await rm(pendingPath, { force: true });
+  await rm(path, { force: true });
 }
 
 const command = process.argv[2];

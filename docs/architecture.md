@@ -62,7 +62,7 @@ The Host owns the public listeners and is not run with `tsx watch`. Worker proce
 Worker replacement is guarded rather than automatic process restart:
 
 1. debounce a Worker-side source change;
-2. run the full `pnpm run check` source validation;
+2. run the full `pnpm run check` source validation; each check owns an independent pending validation transaction, so overlapping Host-triggered and manual checks cannot clobber one another;
 3. spawn a candidate Worker from the current source tree;
 4. require the candidate ready IPC message;
 5. require its private HTTP health endpoint to respond correctly;
