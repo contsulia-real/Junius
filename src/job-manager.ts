@@ -5,7 +5,6 @@ import { isProcessPreparableCapability } from "./capabilities/types.js";
 import type { JobHistoryStore } from "./job-history-store.js";
 import {
   appendCaptured,
-  persistedSnapshot,
   snapshot,
   terminal,
   waitForCompletion,
@@ -18,16 +17,16 @@ import {
 } from "./job-manager-types.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { JobPersistenceCoordinator } from "./job-persistence.js";
+import {
+  JobQueryService,
+  type JobOutputSlice,
+} from "./job-query.js";
 import { RunCommandService } from "./run-command.js";
-
-const DEFAULT_READ_CHARS = 64 * 1024;
-const MAX_READ_CHARS = 256 * 1024;
-const DEFAULT_WAIT_MS = 30_000;
-const MAX_WAIT_MS = 60_000;
 
 export class JobManager {
   readonly #jobs = new Map<string, JobRecord>();
   readonly #persistence: JobPersistenceCoordinator;
+  readonly #queries: JobQueryService;
 
   constructor(
     private readonly commands: RunCommandService,
@@ -49,6 +48,11 @@ export class JobManager {
             }
           },
         },
+      );
+    this.#queries =
+      new JobQueryService(
+        this.#jobs,
+        this.#persistence,
       );
   }
 
@@ -221,177 +225,51 @@ export class JobManager {
   }
 
   async historyStats() {
-    return this.#persistence.stats();
+    return this.#queries.historyStats();
   }
 
   async list(
     terminalLimit?: number,
   ): Promise<readonly JobSnapshot[]> {
-    const live = [...this.#jobs.values()].map(
-      snapshot,
+    return this.#queries.list(
+      terminalLimit,
     );
-    const running = live
-      .filter((job) => job.status === "running")
-      .sort((left, right) =>
-        right.startedAt.localeCompare(left.startedAt),
-      );
-    const liveTerminal = live
-      .filter((job) => job.status !== "running")
-      .sort((left, right) =>
-        right.startedAt.localeCompare(left.startedAt),
-      );
-
-    const boundedLimit =
-      terminalLimit === undefined
-        ? undefined
-        : Math.max(
-            0,
-            Math.floor(terminalLimit),
-          );
-
-    const merged = new Map<string, JobSnapshot>();
-
-    const historyRecords =
-      await this.#persistence.listMetadata(
-        boundedLimit === undefined
-          ? undefined
-          : boundedLimit +
-              liveTerminal.length,
-      );
-
-    for (const record of historyRecords) {
-      merged.set(
-        record.id,
-        persistedSnapshot(record),
-      );
-    }
-
-    for (const job of liveTerminal) {
-      merged.set(job.id, job);
-    }
-
-    const terminal = [...merged.values()].sort(
-      (left, right) =>
-        right.startedAt.localeCompare(left.startedAt),
-    );
-
-    return [
-      ...running,
-      ...(boundedLimit === undefined
-        ? terminal
-        : terminal.slice(0, boundedLimit)),
-    ];
   }
 
-  async get(id: string): Promise<JobSnapshot> {
-    const record = this.#jobs.get(id);
-    if (record !== undefined) {
-      return snapshot(record);
-    }
-
-    return persistedSnapshot(
-      await this.#persistence.loadMetadata(id),
-    );
+  async get(
+    id: string,
+  ): Promise<JobSnapshot> {
+    return this.#queries.get(id);
   }
 
   async wait(
     id: string,
-    timeoutMs = DEFAULT_WAIT_MS,
+    timeoutMs?: number,
   ): Promise<JobSnapshot> {
-    const record = this.#jobs.get(id);
-    if (record === undefined) {
-      return persistedSnapshot(
-        await this.#persistence.loadMetadata(id),
-      );
-    }
-
-    if (terminal(record.status)) {
-      return snapshot(record);
-    }
-
-    const boundedTimeout = Math.max(
-      0,
-      Math.min(timeoutMs, MAX_WAIT_MS),
+    return this.#queries.wait(
+      id,
+      timeoutMs,
     );
-
-    await waitForCompletion(record, boundedTimeout);
-
-    return snapshot(record);
   }
 
   async readOutput(
     id: string,
     stream: "stdout" | "stderr",
-    offset = 0,
-    limit = DEFAULT_READ_CHARS,
-  ): Promise<{
-    readonly job: JobSnapshot;
-    readonly stream: "stdout" | "stderr";
-    readonly offset: number;
-    readonly nextOffset: number;
-    readonly content: string;
-    readonly eof: boolean;
-    readonly truncated: boolean;
-  }> {
-    const live = this.#jobs.get(id);
-
-    let job: JobSnapshot;
-    let text: string;
-    let truncated: boolean;
-    let isTerminal: boolean;
-
-    if (live !== undefined) {
-      job = snapshot(live);
-      text = stream === "stdout" ? live.stdout : live.stderr;
-      truncated =
-        stream === "stdout"
-          ? live.stdoutTruncated
-          : live.stderrTruncated;
-      isTerminal = terminal(live.status);
-    } else {
-      const persisted = await this.#persistence.loadRecord(id);
-      job = persistedSnapshot(persisted);
-      text =
-        stream === "stdout"
-          ? persisted.stdout
-          : persisted.stderr;
-      truncated =
-        stream === "stdout"
-          ? persisted.stdoutTruncated
-          : persisted.stderrTruncated;
-      isTerminal = true;
-    }
-
-    const safeOffset = Math.max(
-      0,
-      Math.min(offset, text.length),
-    );
-    const safeLimit = Math.max(
-      1,
-      Math.min(limit, MAX_READ_CHARS),
-    );
-    const nextOffset = Math.min(
-      text.length,
-      safeOffset + safeLimit,
-    );
-
-    return {
-      job,
+    offset?: number,
+    limit?: number,
+  ): Promise<JobOutputSlice> {
+    return this.#queries.readOutput(
+      id,
       stream,
-      offset: safeOffset,
-      nextOffset,
-      content: text.slice(safeOffset, nextOffset),
-      eof: isTerminal && nextOffset >= text.length,
-      truncated,
-    };
+      offset,
+      limit,
+    );
   }
 
   async cancel(id: string): Promise<JobSnapshot> {
     const record = this.#jobs.get(id);
     if (record === undefined) {
-      return persistedSnapshot(
-        await this.#persistence.loadMetadata(id),
-      );
+      return this.#queries.get(id);
     }
 
     if (terminal(record.status)) {
