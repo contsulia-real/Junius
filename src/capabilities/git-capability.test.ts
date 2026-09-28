@@ -15,7 +15,7 @@ import {
   resolveGitLauncher,
 } from "./git-capability.js";
 
-test("git capability allows repository development and synchronization commands", () => {
+test("git capability policy allows bounded development commands and rejects destructive shapes", () => {
   const allowed: readonly (readonly string[])[] = [
     ["--version"],
     ["init"],
@@ -50,29 +50,28 @@ test("git capability allows repository development and synchronization commands"
       `expected git args to be allowed: ${JSON.stringify(args)}`,
     );
   }
+
+    const rejected: readonly (readonly string[])[] = [
+      ["clean", "-fdx"],
+      ["reset", "--hard", "HEAD"],
+      ["checkout", "--", "."],
+      ["config", "--local", "alias.pwn", "!powershell"],
+      ["remote", "add", "origin", "-dangerous"],
+      ["push", "--mirror", "origin"],
+      ["push", "--delete", "origin", "main"],
+      ["add", "-f", "."],
+      ["commit", "--amend", "--no-edit"],
+    ];
+  
+    for (const args of rejected) {
+      assert.equal(
+        isAllowedGitArgs(args),
+        false,
+        `expected git args to be rejected: ${JSON.stringify(args)}`,
+      );
+    }
 });
 
-test("git capability rejects destructive and arbitrary command shapes", () => {
-  const rejected: readonly (readonly string[])[] = [
-    ["clean", "-fdx"],
-    ["reset", "--hard", "HEAD"],
-    ["checkout", "--", "."],
-    ["config", "--local", "alias.pwn", "!powershell"],
-    ["remote", "add", "origin", "-dangerous"],
-    ["push", "--mirror", "origin"],
-    ["push", "--delete", "origin", "main"],
-    ["add", "-f", "."],
-    ["commit", "--amend", "--no-edit"],
-  ];
-
-  for (const args of rejected) {
-    assert.equal(
-      isAllowedGitArgs(args),
-      false,
-      `expected git args to be rejected: ${JSON.stringify(args)}`,
-    );
-  }
-});
 
 async function writeGitConfig(
   root: string,

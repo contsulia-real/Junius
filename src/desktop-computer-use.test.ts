@@ -308,7 +308,7 @@ test("desktop screenshot separates MCP image data from metadata", async () => {
   }
 });
 
-test("desktop adapter rejects unknown refs before launching helper", async () => {
+test("desktop adapter rejects invalid refs and command arguments before unsafe actions", async () => {
   const f = await fixture();
   try {
     await assert.rejects(
@@ -321,16 +321,11 @@ test("desktop adapter rejects unknown refs before launching helper", async () =>
         error instanceof DesktopComputerUseError &&
         error.code === "desktop_ref_not_found",
     );
+    assert.equal(
+      f.service.state().helperRunning,
+      false,
+    );
 
-    assert.equal(f.service.state().helperRunning, false);
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("desktop adapter validates command-specific arguments", async () => {
-  const f = await fixture();
-  try {
     await assert.rejects(
       f.service.run({
         session: "desktop",
@@ -364,6 +359,16 @@ test("desktop disable clears refs, stops helper, and supports re-enable", async 
     assert.equal(f.service.state().sessionCount, 0);
     assert.equal(f.service.state().helperRunning, false);
 
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "windows",
+      }),
+      (error: unknown) =>
+        error instanceof DesktopComputerUseError &&
+        error.code === "desktop_disabled",
+    );
+
     await f.service.setEnabled(true);
     assert.equal(f.service.state().enabled, true);
     assert.equal(f.service.state().active, true);
@@ -376,29 +381,6 @@ test("desktop disable clears refs, stops helper, and supports re-enable", async 
     assert.equal(resumed.command, "inspect");
     assert.equal(f.service.state().helperRunning, true);
     assert.equal(f.service.state().sessionCount, 1);
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("desktop rejects execution when machine capability is disabled", async () => {
-  const f = await fixture();
-  try {
-    await f.service.setEnabled(false);
-
-    await assert.rejects(
-      f.service.run({
-        session: "desktop",
-        command: "windows",
-      }),
-      (error: unknown) =>
-        error instanceof DesktopComputerUseError &&
-        error.code === "desktop_disabled",
-    );
-
-    assert.equal(f.service.state().enabled, false);
-    assert.equal(f.service.state().active, false);
-    assert.equal(f.service.state().helperRunning, false);
   } finally {
     await f.dispose();
   }
@@ -508,51 +490,14 @@ test("desktop prewarms and reuses one persistent helper process across actions",
   }
 });
 
-test("desktop resolves the project-local virtualenv Python", async () => {
+test("desktop resolves project-root virtualenv Python for live and release helpers", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-desktop-venv-"),
   );
-  const helper = join(root, "python", "desktop_helper.py");
-  const pythonExecutable =
-    process.platform === "win32"
-      ? join(root, ".venv", "Scripts", "python.exe")
-      : join(root, ".venv", "bin", "python");
-
-  try {
-    const { mkdir } = await import("node:fs/promises");
-    await mkdir(join(root, "python"), { recursive: true });
-    await mkdir(join(root, ".venv", process.platform === "win32" ? "Scripts" : "bin"), {
-      recursive: true,
-    });
-    await writeFile(helper, "# helper\n", "utf8");
-    await writeFile(pythonExecutable, "fake", "utf8");
-
-    const service = new DesktopComputerUseService({
-      environment: {
-        PATH: "",
-        JUNIUS_PROJECT_ROOT: root,
-      },
-      helperPath: helper,
-      platform: "win32",
-    });
-
-    try {
-      assert.equal(
-        service.state().pythonExecutable,
-        pythonExecutable,
-      );
-      assert.equal(service.available, true);
-    } finally {
-      await service.close();
-    }
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("desktop release helper still uses project-root virtualenv Python", async () => {
-  const root = await mkdtemp(
-    join(tmpdir(), "junius-desktop-release-"),
+  const liveHelper = join(
+    root,
+    "python",
+    "desktop_helper.py",
   );
   const releaseHelper = join(
     root,
@@ -565,39 +510,80 @@ test("desktop release helper still uses project-root virtualenv Python", async (
   );
   const pythonExecutable =
     process.platform === "win32"
-      ? join(root, ".venv", "Scripts", "python.exe")
-      : join(root, ".venv", "bin", "python");
+      ? join(
+          root,
+          ".venv",
+          "Scripts",
+          "python.exe",
+        )
+      : join(
+          root,
+          ".venv",
+          "bin",
+          "python",
+        );
 
   try {
-    const { mkdir } = await import("node:fs/promises");
-    await mkdir(dirname(releaseHelper), { recursive: true });
+    const { mkdir } =
+      await import("node:fs/promises");
+    await mkdir(dirname(liveHelper), {
+      recursive: true,
+    });
+    await mkdir(dirname(releaseHelper), {
+      recursive: true,
+    });
     await mkdir(
       dirname(pythonExecutable),
       { recursive: true },
     );
-    await writeFile(releaseHelper, "# helper\n", "utf8");
-    await writeFile(pythonExecutable, "fake", "utf8");
+    await writeFile(
+      liveHelper,
+      "# helper\n",
+      "utf8",
+    );
+    await writeFile(
+      releaseHelper,
+      "# helper\n",
+      "utf8",
+    );
+    await writeFile(
+      pythonExecutable,
+      "fake",
+      "utf8",
+    );
 
-    const service = new DesktopComputerUseService({
-      environment: {
-        PATH: "",
-        JUNIUS_PROJECT_ROOT: root,
-      },
-      helperPath: releaseHelper,
-      platform: "win32",
-    });
+    for (const helperPath of [
+      liveHelper,
+      releaseHelper,
+    ]) {
+      const service =
+        new DesktopComputerUseService({
+          environment: {
+            PATH: "",
+            JUNIUS_PROJECT_ROOT: root,
+          },
+          helperPath,
+          platform: "win32",
+        });
 
-    try {
-      assert.equal(
-        service.state().pythonExecutable,
-        pythonExecutable,
-      );
-      assert.equal(service.available, true);
-    } finally {
-      await service.close();
+      try {
+        assert.equal(
+          service.state().pythonExecutable,
+          pythonExecutable,
+        );
+        assert.equal(
+          service.available,
+          true,
+        );
+      } finally {
+        await service.close();
+      }
     }
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
   }
 });
 

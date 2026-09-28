@@ -10,31 +10,63 @@ import { join } from "node:path";
 import test from "node:test";
 import { MachineCapabilityStateStore } from "./machine-capability-state-store.js";
 
-test("MachineCapabilityStateStore round-trips enabled state", async () => {
+test("MachineCapabilityStateStore round-trips v2 built-in and custom capability state", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "junius-machine-cap-state-"),
   );
-  const filePath = join(directory, "state.json");
+  const filePath = join(
+    directory,
+    "state.json",
+  );
 
   try {
-    const store = new MachineCapabilityStateStore(filePath);
+    const store =
+      new MachineCapabilityStateStore(
+        filePath,
+      );
 
-    await store.save({
+    const expected = {
       node: { enabled: false },
       pnpm: { enabled: true },
-    });
+      custom_node: {
+        enabled: true,
+        custom: {
+          key: "custom_node",
+          description: "Custom Node",
+          executable: process.execPath,
+          fixedArgs: [],
+          argumentPolicy: [
+            {
+              mode: "exact" as const,
+              args: ["--version"],
+            },
+          ],
+          timeoutMs: 15_000,
+          maxOutputBytes: 65_536,
+        },
+      },
+    };
 
-    assert.deepEqual(await store.load(), {
-      node: { enabled: false },
-      pnpm: { enabled: true },
-    });
+    await store.save(expected);
+    assert.deepEqual(
+      await store.load(),
+      expected,
+    );
 
-    const raw = JSON.parse(await readFile(filePath, "utf8")) as {
+    const raw = JSON.parse(
+      await readFile(
+        filePath,
+        "utf8",
+      ),
+    ) as {
       version: number;
     };
     assert.equal(raw.version, 2);
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, {
+      recursive: true,
+      force: true,
+    });
   }
 });
 
@@ -66,55 +98,6 @@ test("MachineCapabilityStateStore migrates v1 state on read", async () => {
       await readFile(filePath, "utf8"),
     ) as { version: number };
     assert.equal(raw.version, 2);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("MachineCapabilityStateStore round-trips custom definitions", async () => {
-  const directory = await mkdtemp(
-    join(tmpdir(), "junius-machine-cap-state-"),
-  );
-  const filePath = join(directory, "state.json");
-
-  try {
-    const store = new MachineCapabilityStateStore(filePath);
-    await store.save({
-      custom_node: {
-        enabled: true,
-        custom: {
-          key: "custom_node",
-          description: "Custom Node",
-          executable: process.execPath,
-          fixedArgs: [],
-          argumentPolicy: [
-            { mode: "exact", args: ["--version"] },
-          ],
-          timeoutMs: 15_000,
-          maxOutputBytes: 65_536,
-        },
-      },
-    });
-
-    assert.deepEqual(
-      await store.load(),
-      {
-        custom_node: {
-          enabled: true,
-          custom: {
-            key: "custom_node",
-            description: "Custom Node",
-            executable: process.execPath,
-            fixedArgs: [],
-            argumentPolicy: [
-              { mode: "exact", args: ["--version"] },
-            ],
-            timeoutMs: 15_000,
-            maxOutputBytes: 65_536,
-          },
-        },
-      },
-    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

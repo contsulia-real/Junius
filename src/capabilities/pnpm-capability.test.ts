@@ -54,7 +54,7 @@ test("pnpm capability strips inherited Node preload environment", () => {
   }
 });
 
-test("pnpm capability allows selected scripts and package-management commands", () => {
+test("pnpm capability policy allows bounded commands and blocks escape or arbitrary execution", () => {
   for (const args of [
     ["--version"],
     ["typecheck"],
@@ -86,9 +86,7 @@ test("pnpm capability allows selected scripts and package-management commands", 
     ]),
     true,
   );
-});
 
-test("pnpm capability blocks Workspace escape, global package management, and arbitrary execution", () => {
   for (const args of [
     ["install", "--dir", ".."],
     ["install", "--dir=.."],

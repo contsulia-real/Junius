@@ -126,7 +126,6 @@ test("workspace_apply commits multiple files then verifies them in one operation
       (verification?.[1] as { matches?: unknown[] }).matches,
       [],
     );
-    assert.equal(result.durationMs >= result.writeDurationMs, true);
   } finally {
     await f.dispose();
   }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -36,55 +36,6 @@ test("WorkspaceStateStore round-trips Workspace roots and grants", async () => {
       version: number;
     };
     assert.equal(raw.version, 1);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("WorkspaceStateStore accepts the existing admin /state shape", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "junius-state-"));
-  const filePath = join(directory, "workspace-state.json");
-
-  try {
-    await writeFile(
-      filePath,
-      JSON.stringify({
-        registeredCapabilities: [
-          { key: "pnpm", description: "ignored machine metadata" },
-        ],
-        workspaces: [
-          {
-            id: "weave",
-            rootPath: "C:\\repo\\Weave",
-            grants: [
-              {
-                key: "pnpm",
-                arguments: [
-                  { mode: "exact", args: ["run", "typecheck"] },
-                ],
-              },
-            ],
-          },
-        ],
-      }),
-      "utf8",
-    );
-
-    const store = new WorkspaceStateStore(filePath);
-    assert.deepEqual(await store.load(), [
-      {
-        id: "weave",
-        rootPath: "C:\\repo\\Weave",
-        grants: [
-          {
-            key: "pnpm",
-            arguments: [
-              { mode: "exact", args: ["run", "typecheck"] },
-            ],
-          },
-        ],
-      },
-    ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

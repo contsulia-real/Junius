@@ -38,7 +38,7 @@ function record(
   };
 }
 
-test("resolveJobHistoryPath honors JUNIUS_RUNTIME_ROOT", () => {
+test("job history configuration resolves runtime path and opt-in retention", () => {
   const runtimeRoot = join(
     tmpdir(),
     "junius-custom-runtime",
@@ -54,9 +54,7 @@ test("resolveJobHistoryPath honors JUNIUS_RUNTIME_ROOT", () => {
     ),
     join(resolve(runtimeRoot), "jobs"),
   );
-});
 
-test("resolveJobHistoryRetention is opt-in and ignores invalid values", () => {
   assert.deepEqual(
     resolveJobHistoryRetention({}),
     {},

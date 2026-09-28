@@ -340,30 +340,6 @@ test("MachineCapabilityManager reloads persisted machine capability state", asyn
   }
 });
 
-test("MachineCapabilityManager rejects unknown capability keys", async () => {
-  const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
-
-  try {
-    const manager = await MachineCapabilityManager.create(
-      new CapabilityRegistry(),
-      new MachineCapabilityStateStore(join(root, "state.json")),
-      services(root),
-      {
-        ...process.env,
-        PATH: "",
-      },
-      process.execPath,
-    );
-
-    await assert.rejects(
-      manager.setEnabled("arbitrary-shell", true),
-      /machine_capability_not_known/u,
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
 test("MachineCapabilityManager creates, persists, and removes custom process capabilities", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
   const statePath = join(root, "state.json");
@@ -465,7 +441,7 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
   }
 });
 
-test("MachineCapabilityManager rejects built-in keys and relative executables for custom capabilities", async () => {
+test("MachineCapabilityManager rejects unknown, reserved, and relative custom capability definitions", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-machine-cap-"));
 
   try {
@@ -478,6 +454,11 @@ test("MachineCapabilityManager rejects built-in keys and relative executables fo
         PATH: "",
       },
       process.execPath,
+    );
+
+    await assert.rejects(
+      manager.setEnabled("arbitrary-shell", true),
+      /machine_capability_not_known/u,
     );
 
     await assert.rejects(

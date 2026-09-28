@@ -20,35 +20,46 @@ const fakeCapability: Capability = {
   },
 };
 
-test("run_command rejects unknown Workspace IDs", async () => {
-  const registry = new CapabilityRegistry();
-  registry.register(fakeCapability);
-
-  const service = new RunCommandService(
-    registry,
+test("run_command rejects unknown Workspace and capability identifiers", async () => {
+  const registered = new CapabilityRegistry();
+  registered.register(fakeCapability);
+  const missingWorkspace = new RunCommandService(
+    registered,
     new WorkspaceManager(),
   );
-
-  const result = await service.run("missing", "demo", []);
-
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.code, "workspace_not_registered");
-  }
-});
-
-test("run_command rejects unregistered capability keys", async () => {
-  const profile = new WorkspaceProfile(process.cwd());
-  const service = new RunCommandService(
-    new CapabilityRegistry(),
-    new WorkspaceManager([{ id: "alpha", profile }]),
+  const workspaceResult = await missingWorkspace.run(
+    "missing",
+    "demo",
+    [],
   );
+  assert.equal(workspaceResult.ok, false);
+  if (!workspaceResult.ok) {
+    assert.equal(
+      workspaceResult.code,
+      "workspace_not_registered",
+    );
+  }
 
-  const result = await service.run("alpha", "missing", []);
-
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.code, "capability_not_registered");
+  const missingCapability = new RunCommandService(
+    new CapabilityRegistry(),
+    new WorkspaceManager([
+      {
+        id: "alpha",
+        profile: new WorkspaceProfile(process.cwd()),
+      },
+    ]),
+  );
+  const capabilityResult = await missingCapability.run(
+    "alpha",
+    "missing",
+    [],
+  );
+  assert.equal(capabilityResult.ok, false);
+  if (!capabilityResult.ok) {
+    assert.equal(
+      capabilityResult.code,
+      "capability_not_registered",
+    );
   }
 });
 

@@ -40,7 +40,27 @@ test("WorkspaceProfile returns copies of grants", () => {
   assert.deepEqual(grants, [
     {
       key: "node",
-      arguments: [{ mode: "exact", args: ["--version"] }],
+      arguments: [
+        {
+          mode: "exact",
+          args: ["--version"],
+        },
+      ],
+    },
+  ]);
+
+  (grants[0]!.arguments[0]!.args as string[])
+    .push("mutated");
+
+  assert.deepEqual(profile.grants(), [
+    {
+      key: "node",
+      arguments: [
+        {
+          mode: "exact",
+          args: ["--version"],
+        },
+      ],
     },
   ]);
 });

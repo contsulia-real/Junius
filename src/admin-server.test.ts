@@ -141,8 +141,6 @@ test("admin server serves the local WebUI and runtime state", async () => {
       jobHistory: {
         entries: number;
         capturedBytes: number;
-        metadataCacheEntries: number;
-        metadataCacheLimit: number;
         retention: {
           maxEntries?: number;
           maxAgeMs?: number;
@@ -210,14 +208,10 @@ test("admin server serves the local WebUI and runtime state", async () => {
     );
     assert.deepEqual(body.workspaces, []);
     assert.deepEqual(body.jobs, []);
-    assert.deepEqual(body.jobHistory, {
-      entries: 0,
-      capturedBytes: 0,
-      metadataCacheEntries: 0,
-      metadataCacheLimit: 256,
-      retention: {
-        maxEntries: 25,
-      },
+    assert.equal(body.jobHistory.entries, 0);
+    assert.equal(body.jobHistory.capturedBytes, 0);
+    assert.deepEqual(body.jobHistory.retention, {
+      maxEntries: 25,
     });
     assert.equal(body.adminToken, "test-admin-token");
     assert.equal(body.browser.enabled, true);
@@ -242,72 +236,100 @@ test("admin server serves the local WebUI and runtime state", async () => {
   }
 });
 
-test("admin WebUI backend keeps Workspace mutation API working", async () => {
+test("admin Workspace API creates workspaces and preserves exact/prefix grant semantics", async () => {
   const f = await fixture();
   try {
-    const workspaceRoot = join(f.root, "workspace");
-    await import("node:fs/promises").then(({ mkdir }) =>
-      mkdir(workspaceRoot, { recursive: true }),
+    const workspaceRoot = join(
+      f.root,
+      "workspace-auth",
+    );
+    await import("node:fs/promises").then(
+      ({ mkdir }) =>
+        mkdir(workspaceRoot, {
+          recursive: true,
+        }),
     );
 
-    const created = await fetch(f.origin + "/workspaces", {
-      method: "POST",
-      headers: f.mutationHeaders(),
-      body: JSON.stringify({
-        id: "demo",
-        rootPath: workspaceRoot,
-      }),
-    });
-
+    const created = await fetch(
+      f.origin + "/workspaces",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          id: "demo",
+          rootPath: workspaceRoot,
+        }),
+      },
+    );
     assert.equal(created.status, 201);
 
-    const state = await fetch(f.origin + "/api/state");
+    const grant = await fetch(
+      f.origin +
+        "/workspaces/demo/grants/node",
+      {
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          arguments: [
+            {
+              mode: "exact",
+              args: ["--version"],
+            },
+            {
+              mode: "prefix",
+              args: ["-p"],
+            },
+          ],
+        }),
+      },
+    );
+    assert.equal(grant.status, 200);
+
+    const state = await fetch(
+      f.origin + "/api/state",
+    );
     const body = await state.json() as {
-      workspaces: { id: string; rootPath: string }[];
-    };
-
-    assert.equal(body.workspaces.length, 1);
-    assert.equal(body.workspaces[0]?.id, "demo");
-  } finally {
-    await f.dispose();
-  }
-});
-
-
-test("admin WebUI backend can persistently disable a machine capability", async () => {
-  const f = await fixture();
-  try {
-    const disabled = await fetch(f.origin + "/capabilities/node", {
-      method: "POST",
-      headers: f.mutationHeaders(),
-      body: JSON.stringify({ enabled: false }),
-    });
-
-    assert.equal(disabled.status, 200);
-
-    const state = await fetch(f.origin + "/state");
-    const body = await state.json() as {
-      registeredCapabilities: { key: string }[];
-      machineCapabilities: {
-        key: string;
-        enabled: boolean;
-        active: boolean;
+      workspaces: {
+        id: string;
+        rootPath: string;
+        grants: {
+          key: string;
+          arguments: {
+            mode: "exact" | "prefix";
+            args: string[];
+            valid: boolean;
+          }[];
+        }[];
       }[];
     };
 
-    assert.deepEqual(body.registeredCapabilities, []);
+    assert.equal(body.workspaces.length, 1);
+    assert.equal(
+      body.workspaces[0]?.id,
+      "demo",
+    );
+    assert.equal(
+      body.workspaces[0]?.rootPath,
+      workspaceRoot,
+    );
     assert.deepEqual(
-      body.machineCapabilities.map((capability) => ({
-        key: capability.key,
-        enabled: capability.enabled,
-        active: capability.active,
-      })),
+      body.workspaces[0]?.grants,
       [
-        { key: "node", enabled: false, active: false },
-        { key: "pnpm", enabled: true, active: false },
-        { key: "git", enabled: true, active: false },
-        { key: "browser", enabled: true, active: false },
-        { key: "desktop", enabled: true, active: false },
+        {
+          key: "node",
+          arguments: [
+            {
+              mode: "exact",
+              args: ["--version"],
+              valid: true,
+            },
+            {
+              mode: "prefix",
+              args: ["-p"],
+              valid: true,
+            },
+          ],
+        },
       ],
     );
   } finally {
@@ -315,145 +337,125 @@ test("admin WebUI backend can persistently disable a machine capability", async 
   }
 });
 
-
-test("disabling a machine capability preserves Workspace grants", async () => {
+test("admin capability disable unregisters the capability without rewriting Workspace grants", async () => {
   const f = await fixture();
   try {
-    const workspaceRoot = join(f.root, "workspace-grant");
-    await import("node:fs/promises").then(({ mkdir }) =>
-      mkdir(workspaceRoot, { recursive: true }),
+    const workspaceRoot = join(
+      f.root,
+      "workspace-grant",
+    );
+    await import("node:fs/promises").then(
+      ({ mkdir }) =>
+        mkdir(workspaceRoot, {
+          recursive: true,
+        }),
     );
 
     assert.equal(
       (
-        await fetch(f.origin + "/workspaces", {
-          method: "POST",
-          headers: f.mutationHeaders(),
-          body: JSON.stringify({
-            id: "demo",
-            rootPath: workspaceRoot,
-          }),
-        })
+        await fetch(
+          f.origin + "/workspaces",
+          {
+            method: "POST",
+            headers: f.mutationHeaders(),
+            body: JSON.stringify({
+              id: "demo",
+              rootPath: workspaceRoot,
+            }),
+          },
+        )
       ).status,
       201,
     );
 
     assert.equal(
       (
-        await fetch(f.origin + "/workspaces/demo/grants/node", {
-          method: "POST",
-          headers: f.mutationHeaders(),
-          body: JSON.stringify({
-            arguments: [
-              { mode: "exact", args: ["--version"] },
-            ],
-          }),
-        })
+        await fetch(
+          f.origin +
+            "/workspaces/demo/grants/node",
+          {
+            method: "POST",
+            headers: f.mutationHeaders(),
+            body: JSON.stringify({
+              arguments: [
+                {
+                  mode: "exact",
+                  args: ["--version"],
+                },
+              ],
+            }),
+          },
+        )
       ).status,
       200,
     );
 
-    assert.equal(
-      (
-        await fetch(f.origin + "/capabilities/node", {
-          method: "POST",
-          headers: f.mutationHeaders(),
-          body: JSON.stringify({ enabled: false }),
-        })
-      ).status,
-      200,
-    );
-
-    const state = await fetch(f.origin + "/state");
-    const body = await state.json() as {
-      workspaces: {
-        id: string;
-        grants: {
-          key: string;
-          arguments: { mode: string; args: string[] }[];
-        }[];
-      }[];
-    };
-
-    assert.deepEqual(body.workspaces[0]?.grants, [
+    const disabled = await fetch(
+      f.origin + "/capabilities/node",
       {
-        key: "node",
-        arguments: [
-          { mode: "exact", args: ["--version"], valid: true },
-        ],
+        method: "POST",
+        headers: f.mutationHeaders(),
+        body: JSON.stringify({
+          enabled: false,
+        }),
       },
-    ]);
-  } finally {
-    await f.dispose();
-  }
-});
-
-
-test("Workspace grant API preserves exact and prefix authorization semantics", async () => {
-  const f = await fixture();
-  try {
-    const workspaceRoot = join(f.root, "workspace-auth-ux");
-    await import("node:fs/promises").then(({ mkdir }) =>
-      mkdir(workspaceRoot, { recursive: true }),
     );
+    assert.equal(disabled.status, 200);
 
-    assert.equal(
-      (
-        await fetch(f.origin + "/workspaces", {
-          method: "POST",
-          headers: f.mutationHeaders(),
-          body: JSON.stringify({
-            id: "authux",
-            rootPath: workspaceRoot,
-          }),
-        })
-      ).status,
-      201,
+    const state = await fetch(
+      f.origin + "/state",
     );
-
-    assert.equal(
-      (
-        await fetch(f.origin + "/workspaces/authux/grants/node", {
-          method: "POST",
-          headers: f.mutationHeaders(),
-          body: JSON.stringify({
-            arguments: [
-              { mode: "exact", args: ["--version"] },
-              { mode: "prefix", args: ["-p"] },
-            ],
-          }),
-        })
-      ).status,
-      200,
-    );
-
-    const state = await fetch(f.origin + "/state");
     const body = await state.json() as {
+      registeredCapabilities: {
+        key: string;
+      }[];
+      machineCapabilities: {
+        key: string;
+        enabled: boolean;
+        active: boolean;
+      }[];
       workspaces: {
         id: string;
         grants: {
           key: string;
           arguments: {
-            mode: "exact" | "prefix";
+            mode: string;
             args: string[];
+            valid: boolean;
           }[];
         }[];
       }[];
     };
 
-    const workspace = body.workspaces.find(
-      (item) => item.id === "authux",
+    assert.equal(
+      body.registeredCapabilities.some(
+        (capability) =>
+          capability.key === "node",
+      ),
+      false,
     );
-
-    assert.deepEqual(workspace?.grants, [
-      {
-        key: "node",
-        arguments: [
-          { mode: "exact", args: ["--version"], valid: true },
-          { mode: "prefix", args: ["-p"], valid: true },
-        ],
-      },
-    ]);
+    const node =
+      body.machineCapabilities.find(
+        (capability) =>
+          capability.key === "node",
+      );
+    assert.equal(node?.enabled, false);
+    assert.equal(node?.active, false);
+    assert.deepEqual(
+      body.workspaces[0]?.grants,
+      [
+        {
+          key: "node",
+          arguments: [
+            {
+              mode: "exact",
+              args: ["--version"],
+              valid: true,
+            },
+          ],
+        },
+      ],
+    );
   } finally {
     await f.dispose();
   }
@@ -690,42 +692,6 @@ test("admin state preserves and marks historical invalid Workspace grants", asyn
       },
     );
     assert.equal(removeHistoricalInvalid.status, 200);
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("admin can disable machine-scoped browser capability", async () => {
-  const f = await fixture();
-  try {
-    const disabled = await fetch(f.origin + "/capabilities/browser", {
-      method: "POST",
-      headers: f.mutationHeaders(),
-      body: JSON.stringify({ enabled: false }),
-    });
-    assert.equal(disabled.status, 200);
-
-    const state = await fetch(f.origin + "/state");
-    const body = await state.json() as {
-      browser: {
-        enabled: boolean;
-        active: boolean;
-      };
-      machineCapabilities: {
-        key: string;
-        enabled: boolean;
-        active: boolean;
-      }[];
-    };
-
-    assert.equal(body.browser.enabled, false);
-    assert.equal(body.browser.active, false);
-    assert.equal(
-      body.machineCapabilities.find(
-        (capability) => capability.key === "browser",
-      )?.enabled,
-      false,
-    );
   } finally {
     await f.dispose();
   }

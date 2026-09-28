@@ -33,7 +33,7 @@ async function fixture(): Promise<{
   };
 }
 
-test("ls lists Workspace-relative entries", async () => {
+test("Workspace file service lists, reads, overwrites, and creates Workspace-relative files", async () => {
   const f = await fixture();
   try {
     const entries = await f.service.ls("demo", ".", 2);
@@ -45,40 +45,43 @@ test("ls lists Workspace-relative entries", async () => {
         [join("src", "a.ts"), "file"],
       ],
     );
-  } finally {
-    await f.dispose();
-  }
-});
 
-test("read returns line ranges", async () => {
-  const f = await fixture();
-  try {
-    const [result] = await f.service.read("demo", [
-      { path: "src/a.ts", startLine: 2, endLine: 3 },
+    const [read] = await f.service.read("demo", [
+      {
+        path: "src/a.ts",
+        startLine: 2,
+        endLine: 3,
+      },
     ]);
+    assert.equal(read?.content, "two\nthree\n");
+    assert.equal(read?.startLine, 2);
+    assert.equal(read?.endLine, 3);
 
-    assert.equal(result?.content, "two\nthree\n");
-    assert.equal(result?.startLine, 2);
-    assert.equal(result?.endLine, 3);
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("write can overwrite an existing file without a prior read", async () => {
-  const f = await fixture();
-  try {
-    const [written] = await f.service.write("demo", [
+    const [overwritten] = await f.service.write("demo", [
       {
         path: "README.md",
         content: "# Changed\n",
       },
     ]);
-
-    assert.equal(written?.created, false);
+    assert.equal(overwritten?.created, false);
     assert.equal(
       await readFile(join(f.root, "README.md"), "utf8"),
       "# Changed\n",
+    );
+
+    const [created] = await f.service.write("demo", [
+      {
+        path: "generated/nested.txt",
+        content: "ok\n",
+      },
+    ]);
+    assert.equal(created?.created, true);
+    assert.equal(
+      await readFile(
+        join(f.root, "generated", "nested.txt"),
+        "utf8",
+      ),
+      "ok\n",
     );
   } finally {
     await f.dispose();
@@ -112,26 +115,6 @@ test("write validates all files before changing any of them", async () => {
     assert.equal(
       await readFile(join(f.root, "README.md"), "utf8"),
       "# Demo\n",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("write can create a new nested file inside the Workspace", async () => {
-  const f = await fixture();
-  try {
-    const [written] = await f.service.write("demo", [
-      {
-        path: "generated/nested.txt",
-        content: "ok\n",
-      },
-    ]);
-
-    assert.equal(written?.created, true);
-    assert.equal(
-      await readFile(join(f.root, "generated", "nested.txt"), "utf8"),
-      "ok\n",
     );
   } finally {
     await f.dispose();
@@ -488,16 +471,16 @@ test("rg cannot re-include protected .junius state with user globs", async () =>
   }
 });
 
-test("ls does not recurse through Workspace symlinks or junctions outside the root", async () => {
+test("Workspace read-only traversal does not follow links outside the root", async () => {
   const f = await fixture();
   const outside = await mkdtemp(
-    join(tmpdir(), "junius-ls-outside-"),
+    join(tmpdir(), "junius-readonly-outside-"),
   );
 
   try {
     await writeFile(
       join(outside, "secret.txt"),
-      "outside-secret\n",
+      "outside-needle\n",
       "utf8",
     );
     await mkdir(join(f.root, "nested"), {
@@ -516,7 +499,6 @@ test("ls does not recurse through Workspace symlinks or junctions outside the ro
       ".",
       4,
     );
-
     const external = listed.find(
       (entry) =>
         entry.path
@@ -534,32 +516,6 @@ test("ls does not recurse through Workspace symlinks or junctions outside the ro
       ),
       false,
     );
-  } finally {
-    await f.dispose();
-    await rm(outside, {
-      recursive: true,
-      force: true,
-    });
-  }
-});
-
-test("rg does not follow Workspace symlinks or junctions outside the root", async () => {
-  const f = await fixture();
-  const outside = await mkdtemp(
-    join(tmpdir(), "junius-rg-outside-"),
-  );
-
-  try {
-    await writeFile(
-      join(outside, "secret.txt"),
-      "outside-needle\n",
-      "utf8",
-    );
-    await symlink(
-      outside,
-      join(f.root, "external"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
 
     const matches = await f.service.rg("demo", {
       query: "outside-needle",
@@ -569,7 +525,6 @@ test("rg does not follow Workspace symlinks or junctions outside the root", asyn
       caseSensitive: true,
       maxResults: 20,
     });
-
     assert.deepEqual(matches, []);
   } finally {
     await f.dispose();
@@ -684,7 +639,7 @@ test("Workspace file tools reject unregistered Workspaces", async () => {
 });
 
 
-test("write supports exact-text edits without replacing the whole file", async () => {
+test("write applies unique exact-text edits and rejects ambiguous matches", async () => {
   const f = await fixture();
   try {
     const [written] = await f.service.write("demo", [
@@ -698,21 +653,20 @@ test("write supports exact-text edits without replacing the whole file", async (
         ],
       },
     ]);
-
     assert.equal(written?.created, false);
     assert.equal(
-      await readFile(join(f.root, "src", "a.ts"), "utf8"),
+      await readFile(
+        join(f.root, "src", "a.ts"),
+        "utf8",
+      ),
       "one\nchanged\nthree\n",
     );
-  } finally {
-    await f.dispose();
-  }
-});
 
-test("write rejects ambiguous exact-text edits", async () => {
-  const f = await fixture();
-  try {
-    await writeFile(join(f.root, "dup.txt"), "same\nsame\n", "utf8");
+    await writeFile(
+      join(f.root, "dup.txt"),
+      "same\nsame\n",
+      "utf8",
+    );
     await assert.rejects(
       f.service.write("demo", [
         {

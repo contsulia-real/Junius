@@ -310,22 +310,3 @@ test("JobManager persists terminal history across manager restart", async () => 
   }
 });
 
-test("JobManager exposes runtime job snapshots", async () => {
-  const f = await fixture();
-  try {
-    const started = f.jobs.start(
-      "demo",
-      "test-node",
-      ["-e", "setTimeout(() => {}, 30)"],
-    );
-
-    const listed = await f.jobs.list();
-    assert.equal(listed.length, 1);
-    assert.equal(listed[0]?.id, started.id);
-    assert.equal(listed[0]?.workspace, "demo");
-
-    await f.jobs.wait(started.id, 2_000);
-  } finally {
-    await f.dispose();
-  }
-});

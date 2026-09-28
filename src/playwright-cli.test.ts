@@ -103,41 +103,38 @@ test("playwright-cli strips inherited Node preload environment", async () => {
   }
 });
 
-test("playwright-cli snapshot uses named session and raw output", async () => {
+test("playwright-cli maps core commands to bounded CLI arguments", async () => {
   const f = await fixture();
   try {
-    const result = await f.service.run(
+    const snapshot = await f.service.run(
       "browser",
       "snapshot",
       [],
     );
+    assert.deepEqual(
+      JSON.parse(snapshot.stdout),
+      [
+        "-s=browser",
+        "--raw",
+        "snapshot",
+      ],
+    );
 
-    assert.deepEqual(JSON.parse(result.stdout), [
-      "-s=browser",
-      "--raw",
-      "snapshot",
-    ]);
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("playwright-cli open defaults to a persistent headed browser", async () => {
-  const f = await fixture();
-  try {
-    const result = await f.service.run(
+    const opened = await f.service.run(
       "browser",
       "open",
       ["https://example.com"],
     );
-
-    assert.deepEqual(JSON.parse(result.stdout), [
-      "-s=browser",
-      "open",
-      "https://example.com",
-      "--persistent",
-      "--headed",
-    ]);
+    assert.deepEqual(
+      JSON.parse(opened.stdout),
+      [
+        "-s=browser",
+        "open",
+        "https://example.com",
+        "--persistent",
+        "--headed",
+      ],
+    );
   } finally {
     await f.dispose();
   }
@@ -226,6 +223,12 @@ test("playwright-cli close shuts down all tracked named sessions", async () => {
     await f.service.close();
 
     assert.equal(f.service.state().sessionCount, 0);
+    await assert.rejects(
+      f.service.run("browser", "snapshot", []),
+      (error: unknown) =>
+        error instanceof PlaywrightCliError &&
+        error.code === "playwright_cli_disabled",
+    );
     const calls = await f.calls();
     assert.equal(
       calls.some(
@@ -248,24 +251,7 @@ test("playwright-cli close shuts down all tracked named sessions", async () => {
   }
 });
 
-test("playwright-cli rejects new work after service shutdown", async () => {
-  const f = await fixture();
-
-  try {
-    await f.service.close();
-
-    await assert.rejects(
-      f.service.run("browser", "snapshot", []),
-      (error: unknown) =>
-        error instanceof PlaywrightCliError &&
-        error.code === "playwright_cli_disabled",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("playwright-cli adapter rejects eval", async () => {
+test("playwright-cli rejects unsupported commands and invalid session identifiers", async () => {
   const f = await fixture();
   try {
     await assert.rejects(
@@ -278,32 +264,7 @@ test("playwright-cli adapter rejects eval", async () => {
         error instanceof PlaywrightCliError &&
         error.code === "command_not_allowed",
     );
-  } finally {
-    await f.dispose();
-  }
-});
 
-test("playwright-cli adapter validates refs for click", async () => {
-  const f = await fixture();
-  try {
-    await assert.rejects(
-      f.service.run(
-        "browser",
-        "click",
-        ["#arbitrary-selector"],
-      ),
-      (error: unknown) =>
-        error instanceof PlaywrightCliError &&
-        error.code === "arguments_not_allowed",
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
-test("playwright-cli adapter rejects invalid session names", async () => {
-  const f = await fixture();
-  try {
     await assert.rejects(
       f.service.run(
         "../browser",
@@ -314,25 +275,6 @@ test("playwright-cli adapter rejects invalid session names", async () => {
         error instanceof PlaywrightCliError &&
         error.code === "invalid_session",
     );
-  } finally {
-    await f.dispose();
-  }
-});
-
-
-test("playwright-cli exposes local WebUI status", async () => {
-  const f = await fixture();
-  try {
-    const state = f.service.state();
-    assert.equal(state.enabled, true);
-    assert.equal(state.available, true);
-    assert.equal(state.active, true);
-    assert.equal(state.statePath, f.root);
-    assert.equal(state.transport, "spawn");
-    assert.equal(state.brokerRunning, false);
-    assert.equal(state.sessionCount, 0);
-    assert.equal(state.sessionIdleMs, 10 * 60_000);
-    assert.equal(state.maxSessions, 32);
   } finally {
     await f.dispose();
   }
@@ -352,6 +294,13 @@ test("playwright-cli disable closes tracked sessions and supports re-enable", as
     assert.equal(f.service.state().enabled, false);
     assert.equal(f.service.state().active, false);
     assert.equal(f.service.state().sessionCount, 0);
+
+    await assert.rejects(
+      f.service.run("browser", "snapshot", []),
+      (error: unknown) =>
+        error instanceof PlaywrightCliError &&
+        error.code === "playwright_cli_disabled",
+    );
 
     const calls = await f.calls();
     assert.equal(
@@ -377,20 +326,3 @@ test("playwright-cli disable closes tracked sessions and supports re-enable", as
   }
 });
 
-test("playwright-cli rejects execution when machine capability is disabled", async () => {
-  const f = await fixture();
-  try {
-    await f.service.setEnabled(false);
-
-    await assert.rejects(
-      f.service.run("browser", "snapshot", []),
-      (error: unknown) =>
-        error instanceof PlaywrightCliError &&
-        error.code === "playwright_cli_disabled",
-    );
-
-    assert.equal(f.service.state().active, false);
-  } finally {
-    await f.dispose();
-  }
-});

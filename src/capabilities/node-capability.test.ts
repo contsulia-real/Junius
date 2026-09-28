@@ -97,22 +97,15 @@ test("resolveNodeExecutable follows PATH order", async () => {
       }),
       join(second, fileName),
     );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
-test("resolveNodeExecutable returns undefined when PATH has no node", async () => {
-  const root = await mkdtemp(
-    join(tmpdir(), "junius-node-path-empty-"),
-  );
-
-  try {
     assert.equal(
-      resolveNodeExecutable({ PATH: root }),
+      resolveNodeExecutable({
+        PATH: join(root, "missing"),
+      }),
       undefined,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
+

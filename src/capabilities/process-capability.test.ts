@@ -10,7 +10,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ProcessCapability } from "./process-capability.js";
 
-test("ProcessCapability uses shell:false execution with allowed arguments", async () => {
+test("ProcessCapability executes allowed arguments and rejects policy violations", async () => {
   const capability = new ProcessCapability({
     key: "node",
     description: "test node",
@@ -27,30 +27,22 @@ test("ProcessCapability uses shell:false execution with allowed arguments", asyn
   if (result.ok) {
     assert.match(result.stdout.trim(), /^v\d+\./);
   }
-});
 
-test("ProcessCapability rejects arguments outside its policy", async () => {
-  const capability = new ProcessCapability({
-    key: "node",
-    description: "test node",
-    executable: process.execPath,
-    allowedArgVectors: [["--version"]],
-  });
-
-  const result = await capability.execute(
+  const denied = await capability.execute(
     ["-e", "console.log('should not run')"],
     { cwd: process.cwd() },
   );
-
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.code, "arguments_not_allowed");
+  assert.equal(denied.ok, false);
+  if (!denied.ok) {
+    assert.equal(denied.code, "arguments_not_allowed");
   }
 });
 
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) =>
+    setTimeout(resolve, ms),
+  );
 }
 
 async function descendantFixture() {
@@ -59,7 +51,10 @@ async function descendantFixture() {
   );
   const childPath = join(root, "child.cjs");
   const parentPath = join(root, "parent.cjs");
-  const heartbeatPath = join(root, "heartbeat.txt");
+  const heartbeatPath = join(
+    root,
+    "heartbeat.txt",
+  );
 
   await writeFile(
     childPath,
@@ -110,9 +105,15 @@ setInterval(() => {}, 1_000);
 async function assertHeartbeatStopped(
   heartbeatPath: string,
 ): Promise<void> {
-  const before = await readFile(heartbeatPath, "utf8");
+  const before = await readFile(
+    heartbeatPath,
+    "utf8",
+  );
   await delay(250);
-  const after = await readFile(heartbeatPath, "utf8");
+  const after = await readFile(
+    heartbeatPath,
+    "utf8",
+  );
   assert.equal(after, before);
 }
 
