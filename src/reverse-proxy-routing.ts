@@ -141,6 +141,11 @@ export function routeKeyForTool(
     return `browser:${session}`;
   }
 
+  if (call.name === "desktop") {
+    const session = argumentString(call, "session", "junius")!;
+    return `desktop:${session}`;
+  }
+
   return undefined;
 }
 
@@ -175,6 +180,40 @@ export function releaseAfterForward(
     const session = argumentString(call, "session", "junius")!;
     supervisor.releaseResource(`browser:${session}`);
   }
+}
+
+export function toolCallSucceeded(
+  responseBody: string,
+): boolean {
+  for (const message of jsonRpcMessages(responseBody)) {
+    if (
+      typeof message !== "object" ||
+      message === null ||
+      !("result" in message)
+    ) {
+      continue;
+    }
+
+    const result = (
+      message as {
+        result?: unknown;
+      }
+    ).result;
+
+    if (
+      typeof result !== "object" ||
+      result === null
+    ) {
+      return false;
+    }
+
+    return (
+      !("isError" in result) ||
+      (result as { isError?: unknown }).isError !== true
+    );
+  }
+
+  return false;
 }
 
 function jsonRpcMessages(

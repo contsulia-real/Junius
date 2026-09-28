@@ -24,7 +24,6 @@ export interface WorkerLease {
 export interface WorkerSupervisorLifecycleOptions {
   readonly rollbackWindowMs?: number;
   readonly browserResourceIdleMs?: number;
-  readonly desktopResourceIdleMs?: number;
   readonly jobResultRetentionMs?: number;
   readonly mcpSessionIdleMs?: number;
   readonly maxExitedRecords?: number;
@@ -68,8 +67,6 @@ export class WorkerSupervisorLifecycle {
     this.#affinity = new WorkerAffinityRegistry({
       browserResourceIdleMs:
         options.browserResourceIdleMs,
-      desktopResourceIdleMs:
-        options.desktopResourceIdleMs,
       jobResultRetentionMs:
         options.jobResultRetentionMs,
       mcpSessionIdleMs:

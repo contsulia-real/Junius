@@ -2,7 +2,6 @@ import { WorkerJobAffinityHints } from "./worker-job-affinity-hints.js";
 
 export interface WorkerResourceAffinityOptions {
   readonly browserIdleMs?: number;
-  readonly desktopIdleMs?: number;
   readonly jobResultRetentionMs?: number;
   readonly isWorkerAvailable: (workerId: string) => boolean;
   readonly onAffinityReleased?: (workerId: string) => void;
@@ -27,12 +26,10 @@ interface ResourceBinding {
 }
 
 const DEFAULT_BROWSER_RESOURCE_IDLE_MS = 10 * 60_000;
-const DEFAULT_DESKTOP_RESOURCE_IDLE_MS = 5 * 60_000;
 export class WorkerResourceAffinity {
   readonly #routes = new Map<string, ResourceBinding>();
   readonly #jobHints: WorkerJobAffinityHints;
   readonly #browserIdleMs: number;
-  readonly #desktopIdleMs: number;
   readonly #isWorkerAvailable: (workerId: string) => boolean;
   readonly #onAffinityReleased?: (workerId: string) => void;
 
@@ -40,9 +37,6 @@ export class WorkerResourceAffinity {
     this.#browserIdleMs =
       options.browserIdleMs ??
       DEFAULT_BROWSER_RESOURCE_IDLE_MS;
-    this.#desktopIdleMs =
-      options.desktopIdleMs ??
-      DEFAULT_DESKTOP_RESOURCE_IDLE_MS;
     this.#jobHints =
       new WorkerJobAffinityHints(
         options.jobResultRetentionMs,
@@ -259,9 +253,6 @@ export class WorkerResourceAffinity {
   #idleTtl(resourceKey: string): number | undefined {
     if (resourceKey.startsWith("browser:")) {
       return this.#browserIdleMs;
-    }
-    if (resourceKey.startsWith("desktop:")) {
-      return this.#desktopIdleMs;
     }
     return undefined;
   }

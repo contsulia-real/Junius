@@ -36,7 +36,6 @@ export interface WorkerSupervisorOptions {
   readonly rollbackWindowMs?: number;
   readonly environment?: NodeJS.ProcessEnv;
   readonly browserResourceIdleMs?: number;
-  readonly desktopResourceIdleMs?: number;
   readonly jobResultRetentionMs?: number;
   readonly mcpSessionIdleMs?: number;
   readonly maxExitedRecords?: number;
@@ -104,8 +103,6 @@ export class WorkerSupervisor {
           options.rollbackWindowMs,
         browserResourceIdleMs:
           options.browserResourceIdleMs,
-        desktopResourceIdleMs:
-          options.desktopResourceIdleMs,
         jobResultRetentionMs:
           options.jobResultRetentionMs,
         mcpSessionIdleMs:

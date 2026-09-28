@@ -332,6 +332,22 @@ function toolResult(payload: unknown): string {
   });
 }
 
+function toolErrorResult(payload: unknown): string {
+  return JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(payload),
+        },
+      ],
+    },
+  });
+}
+
 async function statelessToolWorker(
   id: string,
 ): Promise<{
@@ -411,6 +427,23 @@ async function statelessToolWorker(
         session: args.session ?? "junius",
         command: args.command,
       };
+
+      if (
+        args.command === "control_end" &&
+        args.fail === true
+      ) {
+        res.setHeader("content-type", "application/json");
+        res.setHeader("x-junius-worker-duration-ms", "7");
+        res.end(
+          toolErrorResult({
+            ok: false,
+            worker: id,
+            session: args.session ?? "junius",
+            command: args.command,
+          }),
+        );
+        return;
+      }
     }
 
     res.setHeader("content-type", "application/json");
@@ -1029,6 +1062,119 @@ test("reverse proxy keeps job operations on the worker that created the job", as
       },
     );
     assert.equal(unrelated.worker, "worker-b");
+  } finally {
+    await closeServer(proxy);
+    await supervisor.close();
+    await Promise.allSettled([
+      closeServer(first.server),
+      closeServer(second.server),
+    ]);
+  }
+});
+
+test("reverse proxy keeps desktop control affinity across promotion until successful control_end", async () => {
+  const first = await statelessToolWorker("worker-a");
+  const second = await statelessToolWorker("worker-b");
+  const queue = [first.worker, second.worker];
+
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    publicAdminOrigin: "http://127.0.0.1:8788",
+    rollbackWindowMs: 10_000,
+    validate: async () => successfulCheck(),
+    spawnWorker: async () => queue.shift()!,
+  });
+
+  const proxy = createServer((req, res) => {
+    proxyToActiveWorker(req, res, supervisor, "mcp");
+  });
+
+  try {
+    await supervisor.startInitial();
+    const proxyPort = await listen(proxy);
+    const origin = `http://127.0.0.1:${proxyPort}`;
+
+    assert.equal(
+      (
+        await callTool(origin, "desktop", {
+          session: "desktop-a",
+          command: "control_begin",
+        })
+      ).worker,
+      "worker-a",
+    );
+
+    assert.equal(
+      supervisor.state().resourceBindings.some(
+        (binding) =>
+          binding.key === "desktop:desktop-a" &&
+          binding.workerId === "worker-a" &&
+          binding.expiresAt === undefined,
+      ),
+      true,
+    );
+
+    await supervisor.reload("promote-worker-b");
+
+    assert.equal(
+      (
+        await callTool(origin, "desktop", {
+          session: "desktop-a",
+          command: "screenshot",
+        })
+      ).worker,
+      "worker-a",
+    );
+
+    assert.equal(
+      (
+        await callTool(origin, "desktop", {
+          session: "desktop-a",
+          command: "control_end",
+          fail: true,
+        })
+      ).worker,
+      "worker-a",
+    );
+
+    assert.equal(
+      (
+        await callTool(origin, "desktop", {
+          session: "desktop-a",
+          command: "screenshot",
+        })
+      ).worker,
+      "worker-a",
+    );
+
+    assert.equal(
+      (
+        await callTool(origin, "desktop", {
+          session: "desktop-a",
+          command: "control_end",
+        })
+      ).worker,
+      "worker-a",
+    );
+
+    assert.equal(
+      supervisor.state().resourceBindings.some(
+        (binding) =>
+          binding.key === "desktop:desktop-a",
+      ),
+      false,
+    );
+
+    assert.equal(
+      (
+        await callTool(origin, "desktop", {
+          session: "desktop-a",
+          command: "screenshot",
+        })
+      ).worker,
+      "worker-b",
+    );
   } finally {
     await closeServer(proxy);
     await supervisor.close();

@@ -13,6 +13,7 @@ import {
   parseToolCall,
   releaseAfterForward,
   routeKeyForTool,
+  toolCallSucceeded,
 } from "./reverse-proxy-routing.js";
 import type { HostLatencyTraceStore } from "./reverse-proxy-trace.js";
 import {
@@ -111,6 +112,16 @@ export async function proxyModernMcp(
   bindBeforeForward(supervisor, call, worker.id);
 
   const captureStartJob = call?.name === "start_job";
+  const desktopCommand =
+    call?.name === "desktop"
+      ? call.arguments.command
+      : undefined;
+  const captureDesktopLifecycle =
+    desktopCommand === "control_begin" ||
+    desktopCommand === "control_end";
+  const captureToolResponse =
+    captureStartJob ||
+    captureDesktopLifecycle;
 
   const upstream = httpRequest(
     {
@@ -140,7 +151,7 @@ export async function proxyModernMcp(
       copyResponseHeaders(upstreamResponse.headers, res);
       res.setHeader("x-junius-trace-id", traceId);
 
-      if (!captureStartJob) {
+      if (!captureToolResponse) {
         upstreamResponse.pipe(res);
         upstreamResponse.once("end", () => {
           releaseAfterForward(supervisor, call);
@@ -187,15 +198,43 @@ export async function proxyModernMcp(
       upstreamResponse.once("end", () => {
         if (captureExceeded) return;
         const responseBody = Buffer.concat(chunks);
-        const jobId = extractStartedJobId(
-          responseBody.toString("utf8"),
-        );
+        const responseText =
+          responseBody.toString("utf8");
 
-        if (jobId !== undefined) {
-          supervisor.bindResource(
-            `job:${jobId}`,
-            worker.id,
+        if (captureStartJob) {
+          const jobId = extractStartedJobId(
+            responseText,
           );
+
+          if (jobId !== undefined) {
+            supervisor.bindResource(
+              `job:${jobId}`,
+              worker.id,
+            );
+          }
+        }
+
+        if (
+          captureDesktopLifecycle &&
+          toolCallSucceeded(responseText)
+        ) {
+          const session =
+            typeof call?.arguments.session === "string"
+              ? call.arguments.session
+              : "junius";
+          const resourceKey =
+            `desktop:${session}`;
+
+          if (desktopCommand === "control_begin") {
+            supervisor.bindResource(
+              resourceKey,
+              worker.id,
+            );
+          } else {
+            supervisor.releaseResource(
+              resourceKey,
+            );
+          }
         }
 
         releaseAfterForward(supervisor, call);

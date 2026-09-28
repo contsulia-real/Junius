@@ -6,7 +6,6 @@ import { WorkerSessionAffinity } from "./worker-session-affinity.js";
 
 export interface WorkerAffinityRegistryOptions {
   readonly browserResourceIdleMs?: number;
-  readonly desktopResourceIdleMs?: number;
   readonly jobResultRetentionMs?: number;
   readonly mcpSessionIdleMs?: number;
   readonly isWorkerAvailable: (workerId: string) => boolean;
@@ -27,7 +26,6 @@ export class WorkerAffinityRegistry {
     });
     this.#resources = new WorkerResourceAffinity({
       browserIdleMs: options.browserResourceIdleMs,
-      desktopIdleMs: options.desktopResourceIdleMs,
       jobResultRetentionMs: options.jobResultRetentionMs,
       isWorkerAvailable: options.isWorkerAvailable,
       onAffinityReleased: options.onAffinityReleased,
