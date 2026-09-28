@@ -33,6 +33,54 @@ async function fixture(): Promise<{
   };
 }
 
+test("Workspace root aliases canonicalize before containment checks", async () => {
+  const parent = await mkdtemp(
+    join(tmpdir(), "junius-root-alias-"),
+  );
+  const target = join(parent, "target");
+  const alias = join(parent, "alias");
+
+  try {
+    await mkdir(target, { recursive: true });
+    await writeFile(
+      join(target, "README.md"),
+      "# Alias\n",
+      "utf8",
+    );
+    await symlink(
+      target,
+      alias,
+      process.platform === "win32"
+        ? "junction"
+        : "dir",
+    );
+
+    const service = new WorkspaceFilesService(
+      new WorkspaceManager([
+        {
+          id: "demo",
+          profile: new WorkspaceProfile(alias),
+        },
+      ]),
+    );
+
+    const [read] = await service.read(
+      "demo",
+      [{ path: "README.md" }],
+    );
+
+    assert.equal(
+      read?.content,
+      "# Alias\n",
+    );
+  } finally {
+    await rm(parent, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
 test("Workspace file service lists, reads, overwrites, and creates Workspace-relative files", async () => {
   const f = await fixture();
   try {

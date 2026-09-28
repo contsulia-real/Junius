@@ -31,6 +31,9 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: Install ripgrep
+        run: choco install ripgrep -y --no-progress
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

@@ -108,12 +108,23 @@ async function findExistingAncestor(path: string): Promise<string> {
 }
 
 export class WorkspacePathResolver {
+  readonly rootPath: string;
+  readonly canonicalRootPath: string;
   readonly protectedPaths: readonly string[];
 
   constructor(
-    readonly rootPath: string,
+    rootPath: string,
     protectedPaths: readonly string[] = [],
   ) {
+    this.rootPath = resolve(rootPath);
+    try {
+      this.canonicalRootPath =
+        realpathSync(this.rootPath);
+    } catch {
+      this.canonicalRootPath =
+        this.rootPath;
+    }
+
     const normalized = new Set<string>();
     for (const path of protectedPaths) {
       const lexical = resolve(path);
@@ -173,12 +184,25 @@ export class WorkspacePathResolver {
     ];
 
     for (const protectedPath of this.protectedPaths) {
-      if (!pathInside(this.rootPath, protectedPath)) {
+      const comparisonRoot =
+        pathInside(
+          this.rootPath,
+          protectedPath,
+        )
+          ? this.rootPath
+          : pathInside(
+                this.canonicalRootPath,
+                protectedPath,
+              )
+            ? this.canonicalRootPath
+            : undefined;
+
+      if (comparisonRoot === undefined) {
         continue;
       }
 
       const rel = relative(
-        this.rootPath,
+        comparisonRoot,
         protectedPath,
       ).replaceAll("\\", "/");
       if (!rel || rel === ".") {
@@ -219,13 +243,21 @@ export class WorkspacePathResolver {
       throw error;
     }
 
-    if (!pathInside(this.rootPath, canonical)) {
+    if (
+      !pathInside(
+        this.canonicalRootPath,
+        canonical,
+      )
+    ) {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
 
     this.assertNotProtected(canonical);
     const canonicalRelative =
-      relative(this.rootPath, canonical) || ".";
+      relative(
+        this.canonicalRootPath,
+        canonical,
+      ) || ".";
     assertWorkspaceControlPathAllowed(canonicalRelative);
 
     return {
@@ -251,13 +283,21 @@ export class WorkspacePathResolver {
 
     try {
       const canonical = await realpath(lexical);
-      if (!pathInside(this.rootPath, canonical)) {
+      if (
+        !pathInside(
+          this.canonicalRootPath,
+          canonical,
+        )
+      ) {
         throw new WorkspaceFileError("path_outside_workspace", input);
       }
 
       this.assertNotProtected(canonical);
       assertWorkspaceControlPathAllowed(
-        relative(this.rootPath, canonical) || ".",
+        relative(
+          this.canonicalRootPath,
+          canonical,
+        ) || ".",
       );
 
       const info = await lstat(lexical);
@@ -289,13 +329,21 @@ export class WorkspacePathResolver {
 
     const ancestor = await findExistingAncestor(dirname(lexical));
     const canonicalAncestor = await realpath(ancestor);
-    if (!pathInside(this.rootPath, canonicalAncestor)) {
+    if (
+      !pathInside(
+        this.canonicalRootPath,
+        canonicalAncestor,
+      )
+    ) {
       throw new WorkspaceFileError("path_outside_workspace", input);
     }
 
     this.assertNotProtected(canonicalAncestor);
     assertWorkspaceControlPathAllowed(
-      relative(this.rootPath, canonicalAncestor) || ".",
+      relative(
+        this.canonicalRootPath,
+        canonicalAncestor,
+      ) || ".",
     );
 
     return {
