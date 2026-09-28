@@ -179,6 +179,7 @@ export async function spawnManagedWorker(
       ...options.environment,
       JUNIUS_WORKER_ID: id,
       JUNIUS_WORKER_TOKEN: internalToken,
+      JUNIUS_HOST_PID: String(process.pid),
       JUNIUS_PROJECT_ROOT: options.cwd,
       JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
       JUNIUS_PUBLIC_ADMIN_ORIGIN: options.publicAdminOrigin,

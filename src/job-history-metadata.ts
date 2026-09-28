@@ -24,7 +24,12 @@ export function parseJobHistoryMetadata(
     !validJobHistoryId(record.id) ||
     typeof record.workspace !== "string" ||
     typeof record.key !== "string" ||
-    !["succeeded", "failed", "cancelled"].includes(
+    ![
+      "succeeded",
+      "failed",
+      "cancelled",
+      "interrupted",
+    ].includes(
       String(record.status),
     ) ||
     !(

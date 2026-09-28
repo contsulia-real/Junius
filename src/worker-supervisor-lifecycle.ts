@@ -29,6 +29,9 @@ export interface WorkerSupervisorLifecycleOptions {
   readonly mcpSessionIdleMs?: number;
   readonly maxExitedRecords?: number;
   readonly onFailure: (message: string) => void;
+  readonly onWorkerExit?: (
+    workerId: string,
+  ) => void | Promise<void>;
 }
 
 const DEFAULT_MAX_EXITED_RECORDS = 16;
@@ -40,6 +43,11 @@ export class WorkerSupervisorLifecycle {
   readonly #maxExitedRecords: number;
   readonly #retirement: WorkerRetirementManager;
   readonly #onFailure: (message: string) => void;
+  readonly #onWorkerExitObserved:
+    | ((
+        workerId: string,
+      ) => void | Promise<void>)
+    | undefined;
 
   #activeWorkerId: string | undefined;
 
@@ -54,6 +62,8 @@ export class WorkerSupervisorLifecycle {
       ),
     );
     this.#onFailure = options.onFailure;
+    this.#onWorkerExitObserved =
+      options.onWorkerExit;
 
     this.#affinity = new WorkerAffinityRegistry({
       browserResourceIdleMs:
@@ -303,9 +313,42 @@ export class WorkerSupervisorLifecycle {
   #onWorkerExit(workerId: string): void {
     const record =
       this.#records.get(workerId);
-    if (record === undefined) return;
+    if (
+      record === undefined ||
+      record.status === "exited"
+    ) {
+      return;
+    }
 
     record.status = "exited";
+
+    try {
+      const observed =
+        this.#onWorkerExitObserved?.(
+          workerId,
+        );
+      if (observed !== undefined) {
+        void Promise.resolve(observed).catch(
+          (error: unknown) => {
+            this.#onFailure(
+              `worker_exit_recovery_failed: ${workerId}: ${
+                error instanceof Error
+                  ? error.message
+                  : String(error)
+              }`,
+            );
+          },
+        );
+      }
+    } catch (error) {
+      this.#onFailure(
+        `worker_exit_recovery_failed: ${workerId}: ${
+          error instanceof Error
+            ? error.message
+            : String(error)
+        }`,
+      );
+    }
     this.#retirement.clear(record);
 
     this.#affinity.removeWorker(workerId);

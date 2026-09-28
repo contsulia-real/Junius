@@ -2,7 +2,8 @@ export type JobStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "interrupted";
 
 export type JobManagerErrorCode =
   | "job_not_found"

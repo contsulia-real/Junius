@@ -16,6 +16,7 @@ export interface JobRecord {
   readonly workspace: string;
   readonly key: string;
   readonly child: ChildProcess;
+  readonly pid: number | null;
   readonly startedAt: string;
   readonly stdoutDecoder: StringDecoder;
   readonly stderrDecoder: StringDecoder;
@@ -103,7 +104,7 @@ export function snapshot(record: JobRecord): JobSnapshot {
     workspace: record.workspace,
     key: record.key,
     status: record.status,
-    pid: record.child.pid ?? null,
+    pid: record.pid,
     startedAt: record.startedAt,
     ...(record.endedAt === undefined ? {} : { endedAt: record.endedAt }),
     ...(record.exitCode === undefined ? {} : { exitCode: record.exitCode }),
@@ -159,7 +160,7 @@ export function persistedRecord(
     workspace: record.workspace,
     key: record.key,
     status: record.status,
-    pid: record.child.pid ?? null,
+    pid: record.pid,
     startedAt: record.startedAt,
     endedAt: record.endedAt,
     ...(record.exitCode === undefined

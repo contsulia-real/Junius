@@ -66,7 +66,7 @@ async function fixture(
 test("JobManager starts, waits, and reads process output", async () => {
   const f = await fixture();
   try {
-    const started = f.jobs.start(
+    const started = await f.jobs.start(
       "demo",
       "test-node",
       [
@@ -101,7 +101,7 @@ test("JobManager emits one terminal snapshot when a job finishes", async () => {
   });
 
   try {
-    const started = f.jobs.start(
+    const started = await f.jobs.start(
       "demo",
       "test-node",
       ["-e", "setTimeout(() => {}, 20)"],
@@ -120,7 +120,7 @@ test("JobManager emits one terminal snapshot when a job finishes", async () => {
 test("JobManager output supports cursors", async () => {
   const f = await fixture();
   try {
-    const started = f.jobs.start(
+    const started = await f.jobs.start(
       "demo",
       "test-node",
       ["-e", "process.stdout.write('abcdef')"],
@@ -151,7 +151,7 @@ test("JobManager output supports cursors", async () => {
 test("JobManager cancels a running process", async () => {
   const f = await fixture();
   try {
-    const started = f.jobs.start(
+    const started = await f.jobs.start(
       "demo",
       "test-node",
       ["-e", "setInterval(() => {}, 1000)"],
@@ -188,8 +188,8 @@ test("JobManager reuses Workspace command authorization", async () => {
     );
     const jobs = new JobManager(commands);
 
-    assert.throws(
-      () => jobs.start("demo", "test-node", ["--version"]),
+    await assert.rejects(
+      jobs.start("demo", "test-node", ["--version"]),
       (error: unknown) =>
         error instanceof JobManagerError &&
         error.code === "capability_not_allowed",
@@ -250,7 +250,7 @@ test("JobManager persists terminal history across manager restart", async () => 
   let second: JobManager | undefined;
 
   try {
-    const started = first.start(
+    const started = await first.start(
       "demo",
       "test-node",
       [

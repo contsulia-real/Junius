@@ -1,7 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
-import { environmentForSpawn } from "./execution-environment.js";
 import type { AuditStore } from "./audit-store.js";
 import { isProcessPreparableCapability } from "./capabilities/types.js";
 import type { JobHistoryStore } from "./job-history-store.js";
@@ -19,6 +17,7 @@ import {
 } from "./job-manager-types.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { JobPersistenceCoordinator } from "./job-persistence.js";
+import { spawnJobProcess } from "./job-process-controller.js";
 import {
   JobQueryService,
   type JobOutputSlice,
@@ -36,6 +35,8 @@ export class JobManager {
     history?: JobHistoryStore,
     onPersisted?: (job: JobSnapshot) => void,
     private readonly audit?: AuditStore,
+    private readonly ownerWorkerId =
+      `direct-${process.pid}`,
   ) {
     this.#persistence =
       new JobPersistenceCoordinator(
@@ -59,11 +60,11 @@ export class JobManager {
       );
   }
 
-  start(
+  async start(
     workspace: string,
     key: string,
     args: readonly string[],
-  ): JobSnapshot {
+  ): Promise<JobSnapshot> {
     const authorized = this.commands.authorize(workspace, key, args);
     if (!authorized.ok) {
       this.audit?.record({
@@ -118,27 +119,45 @@ export class JobManager {
       throw new JobManagerError(code, prepared.execution.message);
     }
 
-    let child: ChildProcess;
+    const id = randomUUID();
+    const startedAt =
+      new Date().toISOString();
+
+    await this.#persistence.markRunning({
+      version: 1,
+      id,
+      ownerWorkerId:
+        this.ownerWorkerId,
+      workspace,
+      key,
+      startedAt,
+    });
+
+    let processController;
     try {
-      child = spawn(
-        prepared.process.executable,
-        [...prepared.process.args],
-        {
-          cwd: prepared.process.cwd,
-          env: environmentForSpawn(
-            prepared.process.env,
-          ),
-          shell: false,
-          windowsHide: prepared.process.windowsHide,
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
+      processController =
+        await spawnJobProcess(
+          prepared.process,
+        );
     } catch (error) {
+      await this.#persistence
+        .clearRunning(id)
+        .catch(() => undefined);
+
       throw new JobManagerError(
         "spawn_failed",
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error
+          ? error.message
+          : String(error),
       );
     }
+
+    const {
+      child,
+      pid,
+      stdout,
+      stderr,
+    } = processController;
 
     let resolveCompletion!: () => void;
     const completion = new Promise<void>((resolve) => {
@@ -146,11 +165,12 @@ export class JobManager {
     });
 
     const record: JobRecord = {
-      id: randomUUID(),
+      id,
       workspace,
       key,
       child,
-      startedAt: new Date().toISOString(),
+      pid,
+      startedAt,
       stdoutDecoder: new StringDecoder("utf8"),
       stderrDecoder: new StringDecoder("utf8"),
       completion,
@@ -175,7 +195,7 @@ export class JobManager {
       summary: "Background job started.",
       metadata: {
         job: record.id,
-        pid: record.child.pid ?? -1,
+        pid: record.pid ?? -1,
         argCount: args.length,
         args: auditArgs,
       },
@@ -193,7 +213,7 @@ export class JobManager {
       record.stderrTruncated ||= appended.truncated;
     };
 
-    child.stdout?.on("data", (chunk: Buffer | string) => {
+    stdout.on("data", (chunk: Buffer | string) => {
       appendStdout(
         typeof chunk === "string"
           ? chunk
@@ -201,7 +221,7 @@ export class JobManager {
       );
     });
 
-    child.stderr?.on("data", (chunk: Buffer | string) => {
+    stderr.on("data", (chunk: Buffer | string) => {
       appendStderr(
         typeof chunk === "string"
           ? chunk

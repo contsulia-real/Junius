@@ -29,7 +29,7 @@ export function registerJobTools(
     },
     async ({ workspace, key, args }) => {
       try {
-        const job = jobs.start(workspace, key, args);
+        const job = await jobs.start(workspace, key, args);
         return {
           content: [
             {

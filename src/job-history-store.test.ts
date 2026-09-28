@@ -365,3 +365,97 @@ test("JobHistoryStore lists metadata without reading captured output", async () 
     });
   }
 });
+
+test("JobHistoryStore recovers running markers by owner as interrupted", async () => {
+  const root = await mkdtemp(
+    join(
+      tmpdir(),
+      "junius-job-interrupted-",
+    ),
+  );
+  const store = new JobHistoryStore(root);
+  const firstId = randomUUID();
+  const secondId = randomUUID();
+
+  try {
+    await store.saveRunning({
+      version: 1,
+      id: firstId,
+      ownerWorkerId: "worker-a",
+      workspace: "demo",
+      key: "node",
+      startedAt:
+        "2026-09-28T00:00:00.000Z",
+    });
+    await store.saveRunning({
+      version: 1,
+      id: secondId,
+      ownerWorkerId: "worker-b",
+      workspace: "demo",
+      key: "node",
+      startedAt:
+        "2026-09-28T00:01:00.000Z",
+    });
+
+    const firstRecovered =
+      store.recoverInterruptedSync(
+        "worker-a",
+        "2026-09-28T00:02:00.000Z",
+      );
+
+    assert.deepEqual(
+      firstRecovered.map(
+        (record) => record.id,
+      ),
+      [firstId],
+    );
+    assert.equal(
+      (
+        await store.loadMetadata(
+          firstId,
+        )
+      )?.status,
+      "interrupted",
+    );
+    assert.equal(
+      (
+        await store.loadMetadata(
+          firstId,
+        )
+      )?.message,
+      "worker_or_host_lost",
+    );
+    assert.equal(
+      await store.loadMetadata(
+        secondId,
+      ),
+      undefined,
+    );
+
+    const remainingRecovered =
+      await store.recoverInterrupted(
+        undefined,
+        "2026-09-28T00:03:00.000Z",
+      );
+
+    assert.deepEqual(
+      remainingRecovered.map(
+        (record) => record.id,
+      ),
+      [secondId],
+    );
+    assert.equal(
+      (
+        await store.loadMetadata(
+          secondId,
+        )
+      )?.status,
+      "interrupted",
+    );
+  } finally {
+    await rm(root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});

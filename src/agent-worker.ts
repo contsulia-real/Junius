@@ -151,6 +151,7 @@ export async function startAgentWorker(
     ),
     options.onJobHistoryPersisted,
     audit,
+    workerId,
   );
   const mcpRuntime = await createMcpRuntime(
     commands,

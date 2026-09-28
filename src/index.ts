@@ -40,6 +40,11 @@ const audit = new AuditStore(
   resolveAuditPath(),
   resolveAuditRetention(),
 );
+const jobHistoryStore = new JobHistoryStore(
+  resolveJobHistoryPath(),
+  resolveJobHistoryRetention(),
+);
+await jobHistoryStore.recoverInterrupted();
 const registry = new CapabilityRegistry();
 
 const playwrightCliService = new PlaywrightCliService();
@@ -118,10 +123,7 @@ const workspaceFilesService =
 const jobManager = new JobManager(
   runCommandService,
   undefined,
-  new JobHistoryStore(
-    resolveJobHistoryPath(),
-    resolveJobHistoryRetention(),
-  ),
+  jobHistoryStore,
   undefined,
   audit,
 );

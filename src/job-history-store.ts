@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import {
   mkdir,
   readFile,
   readdir,
@@ -18,6 +27,7 @@ import type {
   JobHistoryStats,
   PersistedJobMetadata,
   PersistedJobRecord,
+  RunningJobMarker,
 } from "./job-history-types.js";
 
 export {
@@ -31,9 +41,39 @@ export type {
   PersistedJobMetadata,
   PersistedJobRecord,
   PersistedJobStatus,
+  RunningJobMarker,
 } from "./job-history-types.js";
 
 const DEFAULT_METADATA_CACHE_LIMIT = 256;
+
+function parseRunningJobMarker(
+  value: unknown,
+): RunningJobMarker | undefined {
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
+    return undefined;
+  }
+
+  const marker =
+    value as Partial<RunningJobMarker>;
+
+  if (
+    marker.version !== 1 ||
+    typeof marker.id !== "string" ||
+    !validJobHistoryId(marker.id) ||
+    typeof marker.ownerWorkerId !== "string" ||
+    marker.ownerWorkerId.length === 0 ||
+    typeof marker.workspace !== "string" ||
+    typeof marker.key !== "string" ||
+    typeof marker.startedAt !== "string"
+  ) {
+    return undefined;
+  }
+
+  return marker as RunningJobMarker;
+}
 
 export class JobHistoryStore {
   readonly #metadataCache =
@@ -54,6 +94,289 @@ export class JobHistoryStore {
 
   #metadataPath(id: string): string {
     return join(this.#jobRoot(id), "meta.json");
+  }
+
+  #runningRoot(): string {
+    return join(this.rootPath, ".running");
+  }
+
+  #runningPath(id: string): string {
+    if (!validJobHistoryId(id)) {
+      throw new Error("invalid_job_id");
+    }
+
+    return join(
+      this.#runningRoot(),
+      id + ".json",
+    );
+  }
+
+  async saveRunning(
+    marker: RunningJobMarker,
+  ): Promise<void> {
+    await mkdir(this.#runningRoot(), {
+      recursive: true,
+    });
+
+    const target = this.#runningPath(marker.id);
+    const temporary =
+      target + "." + randomUUID() + ".tmp";
+
+    try {
+      await writeFile(
+        temporary,
+        JSON.stringify(marker) + "\n",
+        "utf8",
+      );
+      await rm(target, { force: true });
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, {
+        force: true,
+      }).catch(() => {});
+    }
+  }
+
+  async clearRunning(id: string): Promise<void> {
+    await rm(this.#runningPath(id), {
+      force: true,
+    });
+  }
+
+  recoverInterruptedSync(
+    ownerWorkerId: string,
+    endedAt = new Date().toISOString(),
+  ): readonly PersistedJobMetadata[] {
+    let entries;
+    try {
+      entries = readdirSync(
+        this.#runningRoot(),
+        { withFileTypes: true },
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return [];
+      }
+      throw error;
+    }
+
+    const recovered: PersistedJobMetadata[] = [];
+
+    for (const entry of entries) {
+      if (
+        !entry.isFile() ||
+        !entry.name.endsWith(".json")
+      ) {
+        continue;
+      }
+
+      const markerPath = join(
+        this.#runningRoot(),
+        entry.name,
+      );
+
+      let marker: RunningJobMarker | undefined;
+      try {
+        marker = parseRunningJobMarker(
+          JSON.parse(
+            readFileSync(markerPath, "utf8"),
+          ),
+        );
+      } catch {
+        marker = undefined;
+      }
+
+      if (
+        marker === undefined ||
+        marker.ownerWorkerId !== ownerWorkerId
+      ) {
+        continue;
+      }
+
+      const target = this.#jobRoot(marker.id);
+      if (!existsSync(target)) {
+        mkdirSync(this.rootPath, {
+          recursive: true,
+        });
+        const temporary = join(
+          this.rootPath,
+          "." + marker.id + "." + randomUUID() + ".tmp",
+        );
+        const metadata: PersistedJobMetadata = {
+          version: 1,
+          id: marker.id,
+          workspace: marker.workspace,
+          key: marker.key,
+          status: "interrupted",
+          pid: null,
+          startedAt: marker.startedAt,
+          endedAt,
+          message: "worker_or_host_lost",
+          stdoutChars: 0,
+          stderrChars: 0,
+          stdoutBytes: 0,
+          stderrBytes: 0,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        };
+
+        try {
+          mkdirSync(temporary, {
+            recursive: true,
+          });
+          writeFileSync(
+            join(temporary, "meta.json"),
+            JSON.stringify(metadata) + "\n",
+            "utf8",
+          );
+          writeFileSync(
+            join(temporary, "stdout.txt"),
+            "",
+            "utf8",
+          );
+          writeFileSync(
+            join(temporary, "stderr.txt"),
+            "",
+            "utf8",
+          );
+          try {
+            renameSync(temporary, target);
+          } catch (error) {
+            if (
+              !(
+                error instanceof Error &&
+                "code" in error &&
+                (
+                  error.code === "EEXIST" ||
+                  error.code === "ENOTEMPTY"
+                )
+              )
+            ) {
+              throw error;
+            }
+          }
+        } finally {
+          rmSync(temporary, {
+            recursive: true,
+            force: true,
+          });
+        }
+      }
+
+      rmSync(markerPath, {
+        force: true,
+      });
+
+      try {
+        const metadata = parseJobHistoryMetadata(
+          JSON.parse(
+            readFileSync(
+              this.#metadataPath(marker.id),
+              "utf8",
+            ),
+          ),
+        );
+        if (metadata !== undefined) {
+          this.#cacheMetadata(metadata);
+          recovered.push(metadata);
+        }
+      } catch {
+        // Terminal history may have been completed concurrently.
+      }
+    }
+
+    return recovered;
+  }
+
+  async recoverInterrupted(
+    ownerWorkerId?: string,
+    endedAt = new Date().toISOString(),
+  ): Promise<readonly PersistedJobMetadata[]> {
+    let entries;
+    try {
+      entries = await readdir(
+        this.#runningRoot(),
+        { withFileTypes: true },
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return [];
+      }
+      throw error;
+    }
+
+    const recovered: PersistedJobMetadata[] = [];
+
+    for (const entry of entries) {
+      if (
+        !entry.isFile() ||
+        !entry.name.endsWith(".json")
+      ) {
+        continue;
+      }
+
+      const path = join(
+        this.#runningRoot(),
+        entry.name,
+      );
+
+      let marker: RunningJobMarker | undefined;
+      try {
+        marker = parseRunningJobMarker(
+          JSON.parse(
+            await readFile(path, "utf8"),
+          ),
+        );
+      } catch {
+        marker = undefined;
+      }
+
+      if (
+        marker === undefined ||
+        (
+          ownerWorkerId !== undefined &&
+          marker.ownerWorkerId !== ownerWorkerId
+        )
+      ) {
+        continue;
+      }
+
+      await this.save({
+        version: 1,
+        id: marker.id,
+        workspace: marker.workspace,
+        key: marker.key,
+        status: "interrupted",
+        pid: null,
+        startedAt: marker.startedAt,
+        endedAt,
+        message: "worker_or_host_lost",
+        stdoutChars: 0,
+        stderrChars: 0,
+        stdout: "",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      });
+
+      await this.clearRunning(marker.id);
+
+      const metadata =
+        await this.loadMetadata(marker.id);
+      if (metadata !== undefined) {
+        recovered.push(metadata);
+      }
+    }
+
+    return recovered;
   }
 
   async save(

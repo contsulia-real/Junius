@@ -1,7 +1,8 @@
 export type PersistedJobStatus =
   | "succeeded"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "interrupted";
 
 export interface PersistedJobMetadata {
   readonly version: 1;
@@ -27,6 +28,15 @@ export interface PersistedJobRecord
   extends PersistedJobMetadata {
   readonly stdout: string;
   readonly stderr: string;
+}
+
+export interface RunningJobMarker {
+  readonly version: 1;
+  readonly id: string;
+  readonly ownerWorkerId: string;
+  readonly workspace: string;
+  readonly key: string;
+  readonly startedAt: string;
 }
 
 export interface JobHistoryRetention {

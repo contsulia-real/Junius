@@ -6,6 +6,11 @@ import {
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostConfig } from "./host-config.js";
+import {
+  JobHistoryStore,
+  resolveJobHistoryPath,
+  resolveJobHistoryRetention,
+} from "./job-history-store.js";
 import { sendHostJson } from "./host-http.js";
 import { hostRequestRejection } from "./host-request-security.js";
 import {
@@ -68,6 +73,12 @@ const publicMcpOrigin =
 const publicAdminOrigin =
   `http://${config.adminHost}:${config.adminPort}`;
 
+const jobHistory = new JobHistoryStore(
+  resolveJobHistoryPath(),
+  resolveJobHistoryRetention(),
+);
+await jobHistory.recoverInterrupted();
+
 let hostRestartRequired = false;
 let reloadTimer: NodeJS.Timeout | undefined;
 let closing = false;
@@ -85,6 +96,19 @@ const supervisor = new WorkerSupervisor({
   ),
   workerEntryPath: resolve(cwd, "src", "worker-entry.ts"),
   canPromote: () => !hostRestartRequired,
+  onWorkerExit: (workerId) => {
+    jobHistory.recoverInterruptedSync(
+      workerId,
+    );
+    void jobHistory.prune().catch(
+      (error: unknown) => {
+        console.error(
+          "[host] job history prune after worker recovery failed",
+          error,
+        );
+      },
+    );
+  },
 });
 
 await supervisor.startInitial();

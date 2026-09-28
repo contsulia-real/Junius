@@ -40,6 +40,9 @@ export interface WorkerSupervisorOptions {
   readonly jobResultRetentionMs?: number;
   readonly mcpSessionIdleMs?: number;
   readonly maxExitedRecords?: number;
+  readonly onWorkerExit?: (
+    workerId: string,
+  ) => void | Promise<void>;
   readonly canPromote?: () => boolean;
   readonly validate?: () => Promise<SourceCheckResult>;
   readonly spawnWorker?: () => Promise<ManagedWorker>;
@@ -112,6 +115,8 @@ export class WorkerSupervisor {
         onFailure: (message) => {
           this.#lastFailure = message;
         },
+        onWorkerExit:
+          options.onWorkerExit,
       });
 
     this.#canPromote =

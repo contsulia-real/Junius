@@ -22,6 +22,7 @@ export const ADMIN_DASHBOARD_JS_BASE = String.raw`
     succeeded: "成功",
     failed: "失败",
     cancelled: "已取消",
+    interrupted: "已中断",
     available: "可用",
     unavailable: "不可用"
   };
@@ -83,7 +84,7 @@ export const ADMIN_DASHBOARD_JS_BASE = String.raw`
   function badge(status) {
     var cls = "warning";
     if (status === "succeeded" || status === "available") cls = "success";
-    if (status === "failed" || status === "cancelled" || status === "unavailable") cls = "danger";
+    if (status === "failed" || status === "cancelled" || status === "interrupted" || status === "unavailable") cls = "danger";
     return '<span class="badge ' + cls + '">' + esc(statusLabel(status)) + '</span>';
   }
 

@@ -2,6 +2,7 @@ import type {
   JobHistoryStore,
   PersistedJobMetadata,
   PersistedJobRecord,
+  RunningJobMarker,
 } from "./job-history-store.js";
 import {
   persistedRecord,
@@ -30,6 +31,18 @@ export class JobPersistenceCoordinator {
     return this.history?.stats();
   }
 
+  async markRunning(
+    marker: RunningJobMarker,
+  ): Promise<void> {
+    await this.history?.saveRunning(marker);
+  }
+
+  async clearRunning(
+    id: string,
+  ): Promise<void> {
+    await this.history?.clearRunning(id);
+  }
+
   async listMetadata(
     limit?: number,
   ): Promise<readonly PersistedJobMetadata[]> {
@@ -50,7 +63,16 @@ export class JobPersistenceCoordinator {
 
     const task = this.history
       .save(persisted)
-      .then(() => {
+      .then(async () => {
+        await this.history
+          ?.clearRunning(record.id)
+          .catch((error: unknown) => {
+            console.error(
+              `[job-running-marker ${record.id}]`,
+              error,
+            );
+          });
+
         const persistedSnapshotValue =
           snapshot(record);
 
