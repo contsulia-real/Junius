@@ -1,4 +1,4 @@
-import { lstat, realpath } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import {
   dirname,
@@ -230,7 +230,7 @@ export class WorkspacePathResolver {
 
     let canonical: string;
     try {
-      canonical = await realpath(lexical);
+      canonical = realpathSync(lexical);
     } catch (error) {
       if (
         typeof error === "object" &&
@@ -282,7 +282,7 @@ export class WorkspacePathResolver {
     this.assertNotProtected(lexical);
 
     try {
-      const canonical = await realpath(lexical);
+      const canonical = realpathSync(lexical);
       if (
         !pathInside(
           this.canonicalRootPath,
@@ -328,7 +328,7 @@ export class WorkspacePathResolver {
     }
 
     const ancestor = await findExistingAncestor(dirname(lexical));
-    const canonicalAncestor = await realpath(ancestor);
+    const canonicalAncestor = realpathSync(ancestor);
     if (
       !pathInside(
         this.canonicalRootPath,

@@ -338,9 +338,14 @@ test("admin Workspace API creates workspaces and preserves exact/prefix grant se
       body.workspaces[0]?.id,
       "demo",
     );
+    const canonicalWorkspaceRoot =
+      await import("node:fs/promises").then(
+        ({ realpath }) =>
+          realpath(workspaceRoot),
+      );
     assert.equal(
       body.workspaces[0]?.rootPath,
-      workspaceRoot,
+      canonicalWorkspaceRoot,
     );
     assert.deepEqual(
       body.workspaces[0]?.grants,
