@@ -227,6 +227,41 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
               <p>统一查看 Junius 最近执行过的操作与配置变更；敏感正文不会写入 Audit。</p>
             </div>
           </div>
+          <div class="audit-toolbar">
+            <label class="audit-search">
+              <span>搜索</span>
+              <input id="audit-search" type="search" placeholder="操作、对象、摘要、metadata…">
+            </label>
+            <label>
+              <span>Workspace</span>
+              <select id="audit-workspace">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label>
+              <span>类别</span>
+              <select id="audit-category">
+                <option value="">全部</option>
+                <option value="command">命令</option>
+                <option value="job">后台任务</option>
+                <option value="workspace">工作区文件</option>
+                <option value="browser">浏览器</option>
+                <option value="desktop">桌面</option>
+                <option value="configuration">配置</option>
+              </select>
+            </label>
+            <label>
+              <span>状态</span>
+              <select id="audit-status">
+                <option value="">全部</option>
+                <option value="started">已开始</option>
+                <option value="succeeded">成功</option>
+                <option value="failed">失败</option>
+                <option value="cancelled">已取消</option>
+              </select>
+            </label>
+            <button id="audit-clear-filters" class="button secondary" type="button">清除筛选</button>
+          </div>
           <div id="audit-summary" class="detail-grid"></div>
           <div id="audit-list" class="stack audit-list"></div>
         </div>

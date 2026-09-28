@@ -115,7 +115,9 @@ export async function handleAdminRequest(
       workspaces: workspaceAdminState(workspaces, machineCapabilities),
       jobs: await jobs.list(100),
       jobHistory: await jobs.historyStats(),
-      audit: await audit.list(200),
+      audit: await audit.list(
+        audit.retention.maxEntries,
+      ),
       auditStats: await audit.stats(),
       ...(url.pathname === "/state"
         ? { adminToken }

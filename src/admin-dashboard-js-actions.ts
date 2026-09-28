@@ -194,6 +194,28 @@ export const ADMIN_DASHBOARD_JS_ACTIONS = String.raw`  function parseArgs(text) 
     document.getElementById("job-output-panel").classList.add("hidden");
   });
 
+  document.getElementById("audit-search").addEventListener("input", function () {
+    renderAudit();
+  });
+
+  [
+    "audit-workspace",
+    "audit-category",
+    "audit-status"
+  ].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      renderAudit();
+    });
+  });
+
+  document.getElementById("audit-clear-filters").addEventListener("click", function () {
+    document.getElementById("audit-search").value = "";
+    document.getElementById("audit-workspace").value = "";
+    document.getElementById("audit-category").value = "";
+    document.getElementById("audit-status").value = "";
+    renderAudit();
+  });
+
   document.addEventListener("click", function (event) {
     var target = event.target.closest("button");
     if (!target) return;

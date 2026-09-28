@@ -48,8 +48,22 @@ h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spa
 .item-main { min-width: 0; }
 .item-title { font-weight: 650; overflow-wrap: anywhere; }
 .item-meta { color: var(--muted); font-size: 13px; margin-top: 5px; overflow-wrap: anywhere; }
+.audit-toolbar { display: grid; grid-template-columns: minmax(240px, 1.4fr) repeat(3, minmax(140px, .6fr)) auto; gap: 10px; align-items: end; margin-bottom: 16px; }
+.audit-toolbar label { display: grid; gap: 6px; min-width: 0; }
+.audit-toolbar label span { color: var(--muted); font-size: 12px; }
 .audit-list { margin-top: 16px; }
-.audit-item .item-main { flex: 1; }
+.audit-item { display: block; padding: 0; overflow: hidden; }
+.audit-item-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 16px; cursor: pointer; list-style-position: inside; }
+.audit-item-summary::marker { color: var(--muted); }
+.audit-item .item-main { flex: 1; min-width: 0; }
+.audit-expand-hint { color: var(--muted); font-size: 12px; align-self: center; }
+.audit-detail-panel { border-top: 1px solid var(--border); padding: 14px 16px 16px; background: #171b24; }
+.audit-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px 18px; }
+.audit-detail-row { min-width: 0; }
+.audit-detail-key { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.audit-detail-value { overflow-wrap: anywhere; }
+.audit-metadata-block { margin-top: 14px; }
+.audit-metadata-json { min-height: 0; max-height: 300px; margin: 6px 0 0; font-size: 12px; }
 .audit-meta { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
 .item-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
@@ -126,6 +140,10 @@ pre { min-height: 180px; max-height: 460px; overflow: auto; white-space: pre-wra
   main { padding: 20px 16px 36px; }
   .summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .detail-grid, .output-grid { grid-template-columns: 1fr; }
+  .audit-toolbar { grid-template-columns: 1fr; }
+  .audit-detail-grid { grid-template-columns: 1fr; }
+  .audit-item-summary { align-items: stretch; flex-direction: column; }
+  .audit-item-summary .item-actions { justify-content: flex-start; }
   .editor-row, .capability-environment-row { grid-template-columns: 1fr; }
   .inline-control { flex-direction: column; }
   .section-heading { align-items: stretch; flex-direction: column; }

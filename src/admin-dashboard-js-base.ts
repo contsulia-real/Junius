@@ -18,6 +18,7 @@ export const ADMIN_DASHBOARD_JS_BASE = String.raw`
 
   var statusLabels = {
     running: "运行中",
+    started: "已开始",
     succeeded: "成功",
     failed: "失败",
     cancelled: "已取消",

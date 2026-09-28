@@ -304,7 +304,7 @@ Disabling a capability prevents new synchronous commands and jobs from starting 
 
 ## Activity Audit
 
-Audit is a shared observational subsystem, not an authorization layer. Worker operations emit bounded event summaries through `AuditStore.record()`; the call returns immediately and persistence continues best-effort. Audit persistence failures are logged locally but do not change the result of the underlying command, Job, file write, Browser/Desktop action, or configuration mutation.
+Audit is a shared observational subsystem, not an authorization layer. The admin state exposes the bounded retained event set (up to the configured retention count, capped by the store's 1000-event list bound), and the WebUI performs Workspace/category/status/text filtering locally so search covers the currently retained history rather than only a recent 200-event slice. Worker operations emit bounded event summaries through `AuditStore.record()`; the call returns immediately and persistence continues best-effort. Audit persistence failures are logged locally but do not change the result of the underlying command, Job, file write, Browser/Desktop action, or configuration mutation.
 
 The default Audit root is `<runtime-root>/audit`. Each event is persisted as its own timestamp/UUID JSON file, which avoids a single read-modify-write log file across simultaneously live active and retiring Workers. Readers merge persisted records with each Worker's bounded recent-event cache. Pruning is best-effort and defaults to 1000 entries and 7 days. The Audit root is included in Workspace-file protected paths.
 
