@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import {
   chmod,
   lstat,
   mkdir,
   readFile,
-  realpath,
   rename,
   rm,
   rmdir,
@@ -80,7 +80,7 @@ async function assertWriteParentSafe(
   let canonicalParent: string;
 
   try {
-    canonicalParent = await realpath(parent);
+    canonicalParent = realpathSync(parent);
   } catch (error) {
     throw new WorkspaceFileError(
       "write_failed",
@@ -88,7 +88,12 @@ async function assertWriteParentSafe(
     );
   }
 
-  if (!pathInside(resolver.rootPath, canonicalParent)) {
+  if (
+    !pathInside(
+      resolver.canonicalRootPath,
+      canonicalParent,
+    )
+  ) {
     throw new WorkspaceFileError(
       "path_outside_workspace",
       item.relativePath,
