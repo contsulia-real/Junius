@@ -7,6 +7,10 @@ import {
 } from "./built-in-machine-capabilities.js";
 import { CapabilityRegistry } from "./capabilities/registry.js";
 import {
+  discoverPathExecutables,
+  type ExecutableCandidate,
+} from "./executable-discovery.js";
+import {
   customCapabilityAvailable,
   customCapabilityGrantCompatible,
   customCapabilityPolicyLabels,
@@ -121,6 +125,17 @@ export class MachineCapabilityManager {
       );
 
     return [...builtIns, ...custom];
+  }
+
+  discoverExecutables(
+    query = "",
+    limit = 50,
+  ): Promise<readonly ExecutableCandidate[]> {
+    return discoverPathExecutables(
+      this.environment,
+      query,
+      limit,
+    );
   }
 
   async reload(): Promise<void> {
@@ -350,6 +365,27 @@ export class MachineCapabilityManager {
                 mode: rule.mode,
                 args: [...rule.args],
               })),
+          environmentPolicy: {
+            inherit:
+              custom.environmentPolicy
+                .inherit,
+            allowNames: [
+              ...custom.environmentPolicy
+                .allowNames,
+            ],
+            denyNames: [
+              ...custom.environmentPolicy
+                .denyNames,
+            ],
+            denyPrefixes: [
+              ...custom.environmentPolicy
+                .denyPrefixes,
+            ],
+            set: {
+              ...custom.environmentPolicy
+                .set,
+            },
+          },
         },
       };
     }

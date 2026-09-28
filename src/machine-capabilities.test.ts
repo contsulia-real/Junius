@@ -345,6 +345,18 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
   const statePath = join(root, "state.json");
 
   try {
+    const discoveredExecutable = join(
+      root,
+      process.platform === "win32"
+        ? "custom-tool.exe"
+        : "custom-tool",
+    );
+    await writeFile(
+      discoveredExecutable,
+      "fake",
+      "utf8",
+    );
+
     const registry = new CapabilityRegistry();
     const manager = await MachineCapabilityManager.create(
       registry,
@@ -352,9 +364,27 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
       services(root),
       {
         ...process.env,
-        PATH: "",
+        PATH: root,
+        KEEP_VALUE: "kept",
+        SECRET_VALUE: "hidden",
       },
       process.execPath,
+    );
+
+    assert.deepEqual(
+      await manager.discoverExecutables(
+        "custom-tool",
+      ),
+      [
+        {
+          name:
+            process.platform === "win32"
+              ? "custom-tool.exe"
+              : "custom-tool",
+          path: discoveredExecutable,
+          source: "path",
+        },
+      ],
     );
 
     const created = await manager.upsertCustom({
@@ -368,6 +398,20 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
       ],
       timeoutMs: 10_000,
       maxOutputBytes: 65_536,
+      environmentPolicy: {
+        inherit: "allowlist",
+        allowNames: [
+          "KEEP_VALUE",
+          "SystemRoot",
+        ],
+        denyNames: [
+          "SECRET_VALUE",
+        ],
+        denyPrefixes: [],
+        set: {
+          CUSTOM_VALUE: "set",
+        },
+      },
     });
 
     assert.equal(created.custom, true);
@@ -401,10 +445,25 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
     );
 
     const execution = await registry.get("custom_node")!.execute(
-      ["--version"],
+      [
+        "-p",
+        "JSON.stringify([process.env.KEEP_VALUE, process.env.SECRET_VALUE || null, process.env.CUSTOM_VALUE])",
+      ],
       { cwd: root },
     );
     assert.equal(execution.ok, true);
+    if (execution.ok) {
+      assert.deepEqual(
+        JSON.parse(
+          execution.stdout.trim(),
+        ),
+        [
+          "kept",
+          null,
+          "set",
+        ],
+      );
+    }
 
     const secondRegistry = new CapabilityRegistry();
     const second = await MachineCapabilityManager.create(
@@ -413,7 +472,9 @@ test("MachineCapabilityManager creates, persists, and removes custom process cap
       services(root),
       {
         ...process.env,
-        PATH: "",
+        PATH: root,
+        KEEP_VALUE: "kept",
+        SECRET_VALUE: "hidden",
       },
       process.execPath,
     );

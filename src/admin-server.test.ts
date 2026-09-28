@@ -701,6 +701,15 @@ test("admin creates custom machine capabilities and preserves Workspace grants a
   const f = await fixture();
 
   try {
+    const discovery = await fetch(
+      f.origin + "/capabilities/executables?q=node&limit=10",
+    );
+    assert.equal(discovery.status, 200);
+    assert.deepEqual(
+      await discovery.json(),
+      { executables: [] },
+    );
+
     const created = await fetch(
       f.origin + "/capabilities",
       {
@@ -719,6 +728,15 @@ test("admin creates custom machine capabilities and preserves Workspace grants a
           ],
           timeoutMs: 10_000,
           maxOutputBytes: 65_536,
+          environmentPolicy: {
+            inherit: "none",
+            allowNames: [],
+            denyNames: [],
+            denyPrefixes: [],
+            set: {
+              CUSTOM_VALUE: "admin",
+            },
+          },
         }),
       },
     );
@@ -762,14 +780,36 @@ test("admin creates custom machine capabilities and preserves Workspace grants a
       machineCapabilities: {
         key: string;
         custom: boolean;
+        definition?: {
+          environmentPolicy?: {
+            inherit: string;
+            set: Record<string, string>;
+          };
+        };
       }[];
     };
-    assert.equal(
+    const customCapability =
       beforeBody.machineCapabilities.find(
         (capability) =>
           capability.key === "custom_node",
-      )?.custom,
+      );
+    assert.equal(
+      customCapability?.custom,
       true,
+    );
+    assert.deepEqual(
+      customCapability
+        ?.definition
+        ?.environmentPolicy,
+      {
+        inherit: "none",
+        allowNames: [],
+        denyNames: [],
+        denyPrefixes: [],
+        set: {
+          CUSTOM_VALUE: "admin",
+        },
+      },
     );
 
     const removed = await fetch(

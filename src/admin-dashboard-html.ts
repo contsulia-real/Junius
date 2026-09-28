@@ -83,39 +83,93 @@ export const ADMIN_DASHBOARD_HTML = `<!doctype html>
               <p>管理 Junius 已知的机器级能力、启用状态与运行元数据。</p>
             </div>
           </div>
-          <form id="capability-form" class="form-row">
-            <label>
-              <span>Key</span>
-              <input name="key" required maxlength="64" placeholder="python">
-            </label>
-            <label class="grow">
-              <span>描述</span>
-              <input name="description" required maxlength="1024" placeholder="Python interpreter">
-            </label>
-            <label class="grow">
-              <span>可执行文件（绝对路径）</span>
-              <input name="executable" required placeholder="C:\\Python313\\python.exe">
-            </label>
-            <label class="grow">
-              <span>固定参数</span>
-              <input name="fixedArgs" placeholder="-I">
-            </label>
-            <label>
-              <span>超时 ms</span>
-              <input name="timeoutMs" type="number" min="100" max="600000" value="15000">
-            </label>
-            <label>
-              <span>最大输出 bytes</span>
-              <input name="maxOutputBytes" type="number" min="1024" max="16777216" value="65536">
-            </label>
-            <label class="grow">
-              <span>机器参数策略（每行 exact 或 prefix）</span>
-              <textarea name="argumentPolicy" required rows="4" placeholder="exact --version&#10;prefix -m"></textarea>
-            </label>
-            <button class="button" type="submit">保存自定义能力</button>
-            <button id="capability-form-reset" class="button secondary" type="button">清空</button>
+          <form id="capability-form" class="capability-form">
+            <div class="form-row">
+              <label>
+                <span>Key</span>
+                <input name="key" required maxlength="64" placeholder="python">
+              </label>
+              <label class="grow">
+                <span>描述</span>
+                <input name="description" required maxlength="1024" placeholder="Python interpreter">
+              </label>
+            </div>
+
+            <div class="form-row">
+              <label class="grow">
+                <span>可执行文件（绝对路径）</span>
+                <div class="inline-control">
+                  <input name="executable" required placeholder="C:\\Python313\\python.exe">
+                  <button id="capability-executable-discover" class="button secondary" type="button">从 PATH 查找</button>
+                </div>
+                <div id="capability-executable-results" class="picker-results hidden"></div>
+              </label>
+              <label class="grow">
+                <span>固定参数</span>
+                <input name="fixedArgs" placeholder="-I">
+              </label>
+            </div>
+
+            <div class="capability-section">
+              <div class="section-heading">
+                <div>
+                  <strong>机器参数策略</strong>
+                  <span>每条规则独立选择 exact 或 prefix；Workspace 授权仍必须是这些规则的子集。</span>
+                </div>
+                <button id="capability-policy-add" class="button secondary" type="button">添加规则</button>
+              </div>
+              <div id="capability-policy-list" class="editor-list"></div>
+            </div>
+
+            <details class="capability-section advanced-section">
+              <summary>环境变量与运行限制</summary>
+              <div class="form-row advanced-grid">
+                <label>
+                  <span>环境继承</span>
+                  <select id="capability-environment-inherit" name="environmentInherit">
+                    <option value="none">不继承</option>
+                    <option value="allowlist">仅允许名单</option>
+                    <option value="all">继承全部</option>
+                  </select>
+                </label>
+                <label class="grow">
+                  <span>允许继承的变量名</span>
+                  <input name="environmentAllowNames" placeholder="PATH, SystemRoot, TEMP">
+                </label>
+                <label class="grow">
+                  <span>禁止继承的变量名</span>
+                  <input name="environmentDenyNames" placeholder="NODE_OPTIONS, SSH_ASKPASS">
+                </label>
+                <label class="grow">
+                  <span>禁止继承的变量名前缀</span>
+                  <input name="environmentDenyPrefixes" placeholder="GIT_, AWS_">
+                </label>
+                <label>
+                  <span>超时 ms</span>
+                  <input name="timeoutMs" type="number" min="100" max="600000" value="15000">
+                </label>
+                <label>
+                  <span>最大输出 bytes</span>
+                  <input name="maxOutputBytes" type="number" min="1024" max="16777216" value="65536">
+                </label>
+              </div>
+
+              <div class="section-heading compact-heading">
+                <div>
+                  <strong>显式环境变量</strong>
+                  <span>这些值会覆盖继承值；不会经过 Shell 展开。</span>
+                </div>
+                <button id="capability-environment-add" class="button secondary" type="button">添加变量</button>
+              </div>
+              <div id="capability-environment-set" class="editor-list"></div>
+            </details>
+
+            <div class="form-actions">
+              <button class="button" type="submit">保存自定义能力</button>
+              <button id="capability-form-reset" class="button secondary" type="button">清空</button>
+            </div>
           </form>
-          <p class="hint">自定义能力始终以 shell:false 直接启动；Workspace 还需要单独授权，且授权必须是机器参数策略的子集。</p>
+          <p class="hint">自定义能力始终以 shell:false 直接启动；新建能力默认不继承 Host 环境。旧 v2 自定义能力迁移时保留原有“继承全部”行为。</p>
           <div id="capability-list" class="stack"></div>
         </div>
       </section>

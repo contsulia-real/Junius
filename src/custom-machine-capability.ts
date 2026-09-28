@@ -9,6 +9,37 @@ export const CUSTOM_CAPABILITY_KEY_PATTERN =
 
 const SAFE_ARGUMENT_PATTERN =
   /^[^\u0000-\u001f\u007f]{1,4096}$/u;
+const ENVIRONMENT_NAME_PATTERN =
+  /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const ENVIRONMENT_VALUE_PATTERN =
+  /^[^\u0000]{0,32767}$/u;
+
+const environmentNameSchema = z.string()
+  .regex(ENVIRONMENT_NAME_PATTERN);
+
+export const customMachineCapabilityEnvironmentSchema =
+  z.object({
+    inherit: z.enum([
+      "all",
+      "allowlist",
+      "none",
+    ]).default("none"),
+    allowNames: z.array(
+      environmentNameSchema,
+    ).max(256).default([]),
+    denyNames: z.array(
+      environmentNameSchema,
+    ).max(256).default([]),
+    denyPrefixes: z.array(
+      environmentNameSchema,
+    ).max(256).default([]),
+    set: z.record(
+      environmentNameSchema,
+      z.string()
+        .regex(ENVIRONMENT_VALUE_PATTERN)
+        .max(32767),
+    ).default({}),
+  });
 
 const argumentGrantSchema = z.discriminatedUnion("mode", [
   z.object({
@@ -25,30 +56,71 @@ const argumentGrantSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
-export const customMachineCapabilityDefinitionSchema =
+const customMachineCapabilityBaseSchema =
   z.object({
     key: z.string().regex(
       CUSTOM_CAPABILITY_KEY_PATTERN,
     ),
-    description: z.string().min(1).max(1024),
-    executable: z.string().min(1).max(4096),
+    description:
+      z.string().min(1).max(1024),
+    executable:
+      z.string().min(1).max(4096),
     fixedArgs: z.array(
-      z.string().regex(SAFE_ARGUMENT_PATTERN),
+      z.string().regex(
+        SAFE_ARGUMENT_PATTERN,
+      ),
     ).max(64).default([]),
     argumentPolicy: z.array(
       argumentGrantSchema,
     ).min(1).max(128),
-    timeoutMs: z.number().int().min(100).max(600_000)
+    timeoutMs: z.number()
+      .int()
+      .min(100)
+      .max(600_000)
       .default(15_000),
-    maxOutputBytes: z.number().int().min(1024)
+    maxOutputBytes: z.number()
+      .int()
+      .min(1024)
       .max(16 * 1024 * 1024)
       .default(64 * 1024),
+  });
+
+export const legacyCustomMachineCapabilityDefinitionSchema =
+  customMachineCapabilityBaseSchema;
+
+export const customMachineCapabilityDefinitionSchema =
+  customMachineCapabilityBaseSchema.extend({
+    environmentPolicy:
+      customMachineCapabilityEnvironmentSchema
+        .default({
+          inherit: "none",
+          allowNames: [],
+          denyNames: [],
+          denyPrefixes: [],
+          set: {},
+        }),
   });
 
 export type CustomMachineCapabilityDefinition =
   z.infer<
     typeof customMachineCapabilityDefinitionSchema
   >;
+
+export type CustomMachineCapabilityEnvironment =
+  z.infer<
+    typeof customMachineCapabilityEnvironmentSchema
+  >;
+
+export function legacyCustomMachineCapabilityEnvironment():
+  CustomMachineCapabilityEnvironment {
+  return {
+    inherit: "all",
+    allowNames: [],
+    denyNames: [],
+    denyPrefixes: [],
+    set: {},
+  };
+}
 
 function startsWith(
   value: readonly string[],
@@ -147,6 +219,39 @@ export function validateCustomMachineCapability(
   return definition;
 }
 
+function inheritedCustomEnvironment(
+  definition:
+    CustomMachineCapabilityDefinition,
+  environment: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  if (
+    definition.environmentPolicy.inherit ===
+    "none"
+  ) {
+    return {};
+  }
+
+  if (
+    definition.environmentPolicy.inherit ===
+    "all"
+  ) {
+    return environment;
+  }
+
+  const allowed = new Set(
+    definition.environmentPolicy.allowNames
+      .map((name) => name.toUpperCase()),
+  );
+  return Object.fromEntries(
+    Object.entries(environment).filter(
+      ([name]) =>
+        allowed.has(
+          name.toUpperCase(),
+        ),
+    ),
+  );
+}
+
 export function createCustomMachineCapability(
   definition: CustomMachineCapabilityDefinition,
   environment: NodeJS.ProcessEnv = process.env,
@@ -164,7 +269,19 @@ export function createCustomMachineCapability(
     timeoutMs: definition.timeoutMs,
     maxOutputBytes:
       definition.maxOutputBytes,
-    inheritedEnvironment: environment,
+    environment:
+      definition.environmentPolicy.set,
+    inheritedEnvironment:
+      inheritedCustomEnvironment(
+        definition,
+        environment,
+      ),
+    inheritedEnvironmentDenyNames:
+      definition.environmentPolicy
+        .denyNames,
+    inheritedEnvironmentDenyPrefixes:
+      definition.environmentPolicy
+        .denyPrefixes,
   });
 }
 

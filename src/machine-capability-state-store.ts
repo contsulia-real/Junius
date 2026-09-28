@@ -8,6 +8,8 @@ import { dirname } from "node:path";
 import { z } from "zod";
 import {
   customMachineCapabilityDefinitionSchema,
+  legacyCustomMachineCapabilityDefinitionSchema,
+  legacyCustomMachineCapabilityEnvironment,
   type CustomMachineCapabilityDefinition,
 } from "./custom-machine-capability.js";
 
@@ -30,6 +32,19 @@ const v2Schema = z.object({
     z.object({
       enabled: z.boolean(),
       custom:
+        legacyCustomMachineCapabilityDefinitionSchema
+          .optional(),
+    }),
+  ),
+});
+
+const v3Schema = z.object({
+  version: z.literal(3),
+  capabilities: z.record(
+    z.string().min(1),
+    z.object({
+      enabled: z.boolean(),
+      custom:
         customMachineCapabilityDefinitionSchema
           .optional(),
     }),
@@ -39,6 +54,7 @@ const v2Schema = z.object({
 const persistedSchema = z.union([
   v1Schema,
   v2Schema,
+  v3Schema,
 ]);
 
 export interface MachineCapabilityPreference {
@@ -71,6 +87,27 @@ function clonePreference(
                   mode: rule.mode,
                   args: [...rule.args],
                 })),
+            environmentPolicy: {
+              inherit:
+                preference.custom.environmentPolicy
+                  .inherit,
+              allowNames: [
+                ...preference.custom.environmentPolicy
+                  .allowNames,
+              ],
+              denyNames: [
+                ...preference.custom.environmentPolicy
+                  .denyNames,
+              ],
+              denyPrefixes: [
+                ...preference.custom.environmentPolicy
+                  .denyPrefixes,
+              ],
+              set: {
+                ...preference.custom.environmentPolicy
+                  .set,
+              },
+            },
           },
         }),
   };
@@ -118,6 +155,26 @@ export class MachineCapabilityStateStore {
         ) as unknown,
       );
 
+    if (parsed.version === 2) {
+      return Object.fromEntries(
+        Object.entries(
+          parsed.capabilities,
+        ).map(([key, value]) => [
+          key,
+          value.custom === undefined
+            ? { enabled: value.enabled }
+            : {
+                enabled: value.enabled,
+                custom: {
+                  ...value.custom,
+                  environmentPolicy:
+                    legacyCustomMachineCapabilityEnvironment(),
+                },
+              },
+        ]),
+      );
+    }
+
     return Object.fromEntries(
       Object.entries(
         parsed.capabilities,
@@ -133,7 +190,7 @@ export class MachineCapabilityStateStore {
       MachineCapabilityPreferences,
   ): Promise<void> {
     const snapshot = {
-      version: 2 as const,
+      version: 3 as const,
       capabilities:
         Object.fromEntries(
           Object.entries(preferences)

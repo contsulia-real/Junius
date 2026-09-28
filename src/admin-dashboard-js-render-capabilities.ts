@@ -23,6 +23,27 @@ export const ADMIN_DASHBOARD_JS_RENDER_CAPABILITIES = String.raw`  function rend
       var scopeLabel = capability.scope === "workspace"
         ? "工作区作用域"
         : "机器作用域";
+      var environmentLabel = "";
+      if (capability.custom && capability.definition) {
+        var environment = capability.definition.environmentPolicy || {
+          inherit: "all",
+          set: {}
+        };
+        var inheritLabel =
+          environment.inherit === "none"
+            ? "不继承"
+            : environment.inherit === "allowlist"
+              ? "仅允许名单"
+              : "继承全部";
+        var overrideCount = Object.keys(environment.set || {}).length;
+        environmentLabel =
+          '<div class="item-meta">环境：' +
+          esc(inheritLabel) +
+          (overrideCount
+            ? ' · 显式覆盖 ' + String(overrideCount) + ' 项'
+            : '') +
+          '</div>';
+      }
 
       return '<div class="item"><div class="item-main">' +
         '<div class="item-title">' + esc(capability.key) +
@@ -37,6 +58,7 @@ export const ADMIN_DASHBOARD_JS_RENDER_CAPABILITIES = String.raw`  function rend
         '</div>' +
         '<div class="item-meta">启动器：' + esc(launcher) + '</div>' +
         '<div class="item-meta">机器策略：<span class="rule">' + (policy || '<code>无</code>') + '</span></div>' +
+        environmentLabel +
         '<div class="item-meta">' +
         (capability.scope === "workspace"
           ? "工作区授权：" + esc(users.length ? users.join(", ") : "无")

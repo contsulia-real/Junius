@@ -133,6 +133,31 @@ export async function handleAdminRequest(
       : rawSegments;
 
   if (
+    req.method === "GET" &&
+    segments.length === 2 &&
+    segments[0] === "capabilities" &&
+    segments[1] === "executables"
+  ) {
+    const query =
+      url.searchParams.get("q") ?? "";
+    const rawLimit = Number(
+      url.searchParams.get("limit") ?? "50",
+    );
+    const executables =
+      await machineCapabilities
+        .discoverExecutables(
+          query,
+          Number.isFinite(rawLimit)
+            ? rawLimit
+            : 50,
+        );
+    sendJson(res, 200, {
+      executables,
+    });
+    return;
+  }
+
+  if (
     req.method === "POST" &&
     segments.length === 1 &&
     segments[0] === "capabilities"
