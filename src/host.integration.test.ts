@@ -314,11 +314,21 @@ async function callMcpTool(
       textContents[0] !==
       undefined
     ) {
+      let payload:
+        Record<string, unknown> = {};
+      try {
+        payload = JSON.parse(
+          textContents[0],
+        ) as Record<string, unknown>;
+      } catch (error) {
+        if (!allowError) {
+          throw error;
+        }
+      }
+
       return {
         response,
-        payload: JSON.parse(
-          textContents[0],
-        ) as Record<string, unknown>,
+        payload,
         isError:
           result?.isError === true,
         textContents,
@@ -337,10 +347,12 @@ async function listMcpTools(
 ): Promise<readonly {
   readonly name?: string;
   readonly inputSchema?: {
+    readonly required?: readonly string[];
     readonly properties?: Record<
       string,
       {
         readonly enum?: readonly string[];
+        readonly const?: unknown;
       }
     >;
   };
@@ -396,10 +408,12 @@ async function listMcpTools(
           tools?: readonly {
             name?: string;
             inputSchema?: {
+              required?: readonly string[];
               properties?: Record<
                 string,
                 {
                   enum?: readonly string[];
+                  const?: unknown;
                 }
               >;
             };
@@ -672,8 +686,50 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         `Desktop schema missing command: ${command}`,
       );
     }
+    assert.equal(
+      desktopTool
+        ?.inputSchema
+        ?.required
+        ?.includes(
+          "explicit_user_authorization",
+        ),
+      true,
+      "Desktop schema must require explicit current-user authorization.",
+    );
+    assert.equal(
+      desktopProperties
+        .explicit_user_authorization
+        ?.const,
+      true,
+    );
+
+    const unauthorizedDesktop =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "desktop",
+        {
+          session:
+            "privacy-boundary",
+          command:
+            "control_begin",
+        },
+        true,
+      );
+    assert.equal(
+      unauthorizedDesktop.isError,
+      true,
+    );
+    assert.match(
+      unauthorizedDesktop
+        .textContents
+        .join("\n"),
+      /explicit_user_authorization/u,
+    );
+
     for (
       const property of [
+        "explicit_user_authorization",
         "actions",
         "screenshot_after",
         "screenshot_handle",

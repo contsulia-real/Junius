@@ -84,18 +84,6 @@ export class DesktopHelperClient {
     return this.#ready;
   }
 
-  async prewarm(): Promise<void> {
-    if (this.#closing) {
-      throw new DesktopHelperClientError(
-        "helper_failed",
-        "Desktop helper client is closing.",
-      );
-    }
-
-    this.#ensureChild();
-    await this.#readyPromise;
-  }
-
   request(
     request: Record<string, unknown>,
   ): Promise<DesktopHelperResponse> {

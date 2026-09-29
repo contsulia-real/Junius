@@ -642,14 +642,13 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
   }
 });
 
-test("desktop prewarms and reuses one persistent helper process across screenshot-era actions", async () => {
+test("desktop lazily starts and reuses one persistent helper process across actions", async () => {
   const f = await fixture();
   try {
-    await f.service.prewarm();
     assert.equal(
       f.service.state()
-        .helperReady,
-      true,
+        .helperRunning,
+      false,
     );
 
     const first =
@@ -657,6 +656,12 @@ test("desktop prewarms and reuses one persistent helper process across screensho
         session: "desktop",
         command: "windows",
       });
+
+    assert.equal(
+      f.service.state()
+        .helperReady,
+      true,
+    );
     const second =
       await f.service.run({
         session: "desktop",
@@ -804,7 +809,18 @@ test("desktop resolves project-root virtualenv Python for live and release helpe
   }
 });
 
-test("desktop real Python helper supports screenshot-only perception when installed", async (t) => {
+test("desktop real Python helper supports screenshot-only perception when explicitly authorized", async (t) => {
+  if (
+    process.env
+      .JUNIUS_DESKTOP_LIVE_TEST_AUTHORIZED !==
+    "1"
+  ) {
+    t.skip(
+      "Live Desktop access requires explicit opt-in via JUNIUS_DESKTOP_LIVE_TEST_AUTHORIZED=1.",
+    );
+    return;
+  }
+
   const service =
     new DesktopComputerUseService();
 

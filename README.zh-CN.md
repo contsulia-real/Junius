@@ -330,7 +330,11 @@ Junius 提供持久化 Browser 状态目录，但不会强制注入 Playwright C
 
 ## Windows 桌面计算机操作
 
-Desktop 感知刻意只基于截图。Junius 不使用 Windows UI Automation，也不依赖 accessibility/语义控件树。它可以枚举顶层原生窗口、截取整个屏幕或单个窗口、聚焦窗口、执行基于坐标的鼠标操作、拖动、等待、发送键盘操作和宏、读写 Unicode 剪贴板文本，以及在支持的位置直接输入文本。
+Desktop 访问按当前用户任务显式授权。只有当前用户请求明确要求 ChatGPT 控制本机时，Junius 才能调用 Desktop 工具；这同样适用于只读访问。没有当前任务授权时，不得枚举窗口、截图或读取剪贴板。以前任务中的授权不会延续到当前任务，加载 Desktop contract 也不代表获得授权。因此每一次 Desktop MCP 调用都必须携带 `explicit_user_authorization=true`，明确声明当前用户请求确实给出了本机控制授权。
+
+Desktop helper 改为惰性启动：只有第一次已授权的 Desktop 调用才会启动。正常 Host/Worker 启动以及普通项目校验都不会预热或查看 Desktop。
+
+Desktop 感知刻意只基于截图。Junius 不使用 Windows UI Automation，也不依赖 accessibility/语义控件树。获得明确授权后，它可以枚举顶层原生窗口、截取整个屏幕或单个窗口、聚焦窗口、执行基于坐标的鼠标操作、拖动、等待、发送键盘操作和宏、读写 Unicode 剪贴板文本，以及在支持的位置直接输入文本。
 
 `action_batch` 可以在一次 helper 往返中执行最多 128 个混合 Desktop 操作。批量操作可以组合聚焦、鼠标移动/点击/按下/抬起/滚轮、拖动、等待、键盘操作/宏、剪贴板访问和文本输入。显式 wait 与 drag 的持续时间均有限制；如果批量执行失败，已按下的按键/鼠标按钮会在清理路径中释放。
 

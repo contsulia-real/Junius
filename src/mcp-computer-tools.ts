@@ -322,8 +322,13 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. Before the first desktop tool call in a task, load the desktop contract with load_junius_contracts unless it is already loaded. The tool exposes control lifecycle, screenshot, window, mouse, keyboard, key_macro, clipboard, drag, wait, and action_batch primitives.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the local computer. This includes read-only access such as windows, screenshot, and clipboard_read. Previous authorization does not carry forward. Before the first authorized desktop tool call in a task, load the desktop contract with load_junius_contracts unless it is already loaded. Every call must assert explicit_user_authorization=true only when the current user request provides that authorization.",
       inputSchema: z.object({
+        explicit_user_authorization: z
+          .literal(true)
+          .describe(
+            "Required privacy assertion. Set to true only when the current user's request explicitly asks ChatGPT to control this local computer. Do not infer authorization from usefulness, verification needs, previous tasks, or tool availability.",
+          ),
         session: stableIdSchema
           .default("junius")
           .describe(
@@ -399,6 +404,7 @@ export function registerComputerTools(
       },
     },
     async ({
+      explicit_user_authorization,
       session,
       command,
       handle,
@@ -419,6 +425,8 @@ export function registerComputerTools(
     }) => {
       const startedAt = performance.now();
       const auditMetadata = {
+        explicitUserAuthorization:
+          explicit_user_authorization,
         ...(handle === undefined
           ? {}
           : { handle }),

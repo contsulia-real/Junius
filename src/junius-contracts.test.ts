@@ -131,6 +131,14 @@ test(
       source,
       /export const JUNIUS_CORE_CONTRACT = `/u,
     );
+    assert.match(
+      JUNIUS_CORE_CONTRACT,
+      /explicitly requests local computer control/u,
+    );
+    assert.match(
+      JUNIUS_DESKTOP_CONTRACT,
+      /Do not call the desktop tool at all/u,
+    );
   },
 );
 

@@ -102,6 +102,28 @@ Temporary isolation is allowed for diagnosis.
 
 Final verification must return to the original relevant conditions whenever that surface is available. If the original surface cannot be exercised, say so and do not claim that it was verified there.
 
+## Local Desktop privacy boundary
+
+Local Desktop access is opt-in per current user task.
+
+Do not call the desktop tool at all unless the user's current request explicitly requests local computer control.
+
+Without that explicit current-task authorization, do not inspect or interact with the local Desktop in any way. This prohibition includes read-only actions such as windows enumeration, screenshots, and clipboard reads.
+
+Do not infer Desktop authorization from:
+- the task being easier with Desktop access;
+- Desktop access being useful for verification;
+- the user having authorized Desktop access in an earlier task or message;
+- the Desktop tool or Desktop contract being available;
+- the target application being mentioned;
+- a belief that visual inspection would help.
+
+Authorization from a previous task does not carry forward.
+
+Loading the Desktop contract is not authorization.
+
+When the current user request does explicitly request local computer control, follow the Desktop contract and mark every desktop tool call with its required explicit-user-authorization assertion.
+
 ## Specialized work contracts
 
 Junius provides additional contracts through load_junius_contracts.

@@ -118,24 +118,6 @@ export class DesktopComputerUseService {
     };
   }
 
-  async prewarm():
-    Promise<void> {
-    if (
-      !this.available ||
-      this.#helperClient ===
-        undefined
-    ) {
-      return;
-    }
-
-    try {
-      await this.#helperClient
-        .prewarm();
-    } catch {
-      // Opportunistic only.
-    }
-  }
-
   async run(
     request: DesktopRunRequest,
   ): Promise<DesktopExecution> {

@@ -245,10 +245,7 @@ export async function startAgentWorker(
 
   setImmediate(() => {
     if (closed) return;
-    void Promise.allSettled([
-      browser.prewarm(),
-      desktop.prewarm(),
-    ]);
+    void browser.prewarm();
   });
 
   return {

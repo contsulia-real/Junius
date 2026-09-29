@@ -1,6 +1,18 @@
 # JUNIUS DESKTOP COMPUTER USE CONTRACT
 
-The current task uses Junius Desktop Computer Use.
+## Authorization boundary
+
+This contract does not grant permission to access the local Desktop.
+
+Do not call the desktop tool at all unless the user's current request explicitly asks ChatGPT to control the local computer.
+
+If that explicit current-task authorization is absent, stop before any Desktop access. Do not enumerate windows, capture screenshots, read the clipboard, focus windows, move the pointer, send input, or perform any other Desktop operation.
+
+Do not infer authorization from usefulness, verification needs, previous Desktop use, prior user authorization, the presence of an application, or the availability of this contract or tool.
+
+Previous-task authorization does not carry forward.
+
+For every authorized desktop tool call, set explicit_user_authorization to true. That field is an assertion that the current user request explicitly authorized local computer control; it must never be set speculatively.
 
 Desktop perception is screenshot-only.
 

@@ -329,7 +329,11 @@ Junius provides a persistent Browser state directory, but it does not force Play
 
 ## Windows Desktop Computer Use
 
-Desktop perception is deliberately screenshot-only. Junius does not use Windows UI Automation or an accessibility/semantic control tree. It can enumerate top-level native windows, capture the screen or one window, focus a window, perform coordinate mouse actions, drag, wait, send keyboard actions and macros, read/write Unicode clipboard text, and type text directly where supported.
+Desktop access is opt-in per user task. Junius must not call the Desktop tool unless the current user request explicitly asks ChatGPT to control the local computer. This includes read-only access: without current-task authorization, Junius must not enumerate windows, capture screenshots, or read the clipboard. Previous authorization does not carry forward, and loading the Desktop contract does not grant authorization. Every Desktop MCP call therefore requires `explicit_user_authorization=true` as an explicit assertion of that current-user authorization.
+
+The Desktop helper is lazy-started on the first authorized Desktop call; normal Host/Worker startup and ordinary project validation do not prewarm or inspect the Desktop.
+
+Desktop perception is deliberately screenshot-only. Junius does not use Windows UI Automation or an accessibility/semantic control tree. Once explicitly authorized, it can enumerate top-level native windows, capture the screen or one window, focus a window, perform coordinate mouse actions, drag, wait, send keyboard actions and macros, read/write Unicode clipboard text, and type text directly where supported.
 
 action_batch executes up to 128 mixed Desktop actions in one helper round trip. Batch actions can combine focus, mouse movement/click/down/up/wheel, drag, wait, keyboard actions/macros, clipboard access, and text input. Explicit wait and drag durations are bounded, and held keys/buttons are released on batch failure.
 
