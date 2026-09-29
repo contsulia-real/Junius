@@ -45,11 +45,11 @@ Junius 没有管理 Web 界面。Workspace 的创建、删除与检查，命令�
 
 Junius 使用 MCP 原生 instructions 机制向 ChatGPT 提供执行契约。
 
-Core Operating Contract 会通过 MCP 初始化结果中的 `instructions` 字段发送。Core 只包含跨任务通用的 Junius 行为规则：保持用户意图、指令优先级、Workspace/AGENTS.md 语义、进程和 Job 语义、验证、清理，以及任务完成纪律。
+Core Operating Contract 会通过 MCP 初始化结果中的 `instructions` 字段发送。Core 只包含跨任务通用的 Junius 行为规则：用户明确约束、真实状态汇报、已确认问题的真实路径处理、指令优先级、Workspace/AGENTS.md 语义、进程和 Job 语义、验证、清理，以及最终约束收敛。
 
 体积较大的任务专用行为不会全部塞入 Core。Junius 将它们拆成三个独立契约：
 
-- `engineering` —— 软件工程工作流、测试与验证纪律、真实表面 QA、Git 纪律和最终审查；
+- `engineering` —— 软件工程决策边界、复用优先、禁止无依据的兼容和没必要的机制、Bug 复现与 RED → GREEN、相关结构收敛、真实表面 QA、Git 纪律和最终工程审查；
 - `desktop` —— 仅基于截图的桌面 Computer Use、控制生命周期、坐标语义、包括 `key_macro` 和 `action_batch` 在内的原语选择、操作后观察验证和清理；
 - `browser` —— 不受 Junius 命令白名单限制的 Playwright CLI 表面、浏览器会话连续性、依赖当前状态的引用、操作后观察验证和会话清理。
 
