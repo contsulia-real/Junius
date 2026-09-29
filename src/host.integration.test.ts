@@ -120,7 +120,12 @@ function jsonRpcMessages(
 
 async function initializeMcp(
   origin: string,
-): Promise<string | undefined> {
+): Promise<{
+  readonly sessionId:
+    string | undefined;
+  readonly instructions:
+    string | undefined;
+}> {
   const response = await fetch(
     origin + "/mcp",
     {
@@ -147,12 +152,38 @@ async function initializeMcp(
   const body = await response.text();
   assert.equal(response.status, 200, body);
 
-  const initialized = jsonRpcMessages(body).some(
-    (message) =>
-      typeof message === "object" &&
-      message !== null &&
-      "result" in message,
-  );
+  let instructions:
+    string | undefined;
+  const initialized =
+    jsonRpcMessages(body).some(
+      (message) => {
+        if (
+          typeof message !==
+            "object" ||
+          message === null ||
+          !("result" in message)
+        ) {
+          return false;
+        }
+
+        const result = (
+          message as {
+            result?: {
+              instructions?: unknown;
+            };
+          }
+        ).result;
+        if (
+          typeof result
+            ?.instructions ===
+          "string"
+        ) {
+          instructions =
+            result.instructions;
+        }
+        return true;
+      },
+    );
   assert.equal(initialized, true, body);
 
   const sessionId =
@@ -186,7 +217,10 @@ async function initializeMcp(
     notificationBody,
   );
 
-  return sessionId;
+  return {
+    sessionId,
+    instructions,
+  };
 }
 
 async function callMcpTool(
@@ -199,6 +233,8 @@ async function callMcpTool(
   readonly response: Response;
   readonly payload: Record<string, unknown>;
   readonly isError: boolean;
+  readonly textContents:
+    readonly string[];
 }> {
   const response = await fetch(
     origin + "/mcp",
@@ -256,21 +292,36 @@ async function callMcpTool(
       );
     }
 
-    for (const item of result?.content ?? []) {
-      if (
-        item.type !== "text" ||
-        typeof item.text !== "string"
-      ) {
-        continue;
-      }
+    const textContents =
+      (result?.content ?? [])
+        .filter(
+          (
+            item,
+          ): item is {
+            type: string;
+            text: string;
+          } =>
+            item.type === "text" &&
+            typeof item.text ===
+              "string",
+        )
+        .map(
+          (item) =>
+            item.text,
+        );
 
+    if (
+      textContents[0] !==
+      undefined
+    ) {
       return {
         response,
         payload: JSON.parse(
-          item.text,
+          textContents[0],
         ) as Record<string, unknown>,
         isError:
           result?.isError === true,
+        textContents,
       };
     }
   }
@@ -479,16 +530,142 @@ test("Junius Host exposes MCP plus private health and supervisor control without
 
     const mcpOrigin =
       `http://127.0.0.1:${mcpPort}`;
-    const mcpSessionId =
+    const initializedMcp =
       await initializeMcp(
         mcpOrigin,
       );
+    const mcpSessionId =
+      initializedMcp.sessionId;
+
+    assert.match(
+      initializedMcp
+        .instructions ?? "",
+      /# JUNIUS OPERATING CONTRACT/u,
+    );
+    assert.match(
+      initializedMcp
+        .instructions ?? "",
+      /load_junius_contracts/u,
+    );
+    for (
+      const specializedDetail of [
+        "control_begin",
+        "key_macro",
+        "action_batch",
+        "screenshot_after",
+        "playwright_cli",
+        "localStorage",
+        "WebMCP",
+      ]
+    ) {
+      assert.equal(
+        initializedMcp
+          .instructions
+          ?.includes(
+            specializedDetail,
+          ),
+        false,
+        `Core MCP instructions unexpectedly embed specialized detail: ${specializedDetail}`,
+      );
+    }
 
     const tools =
       await listMcpTools(
         mcpOrigin,
         mcpSessionId,
       );
+    assert.equal(
+      tools.some(
+        (tool) =>
+          tool.name ===
+          "load_junius_contracts",
+      ),
+      true,
+    );
+
+    const loadedContracts =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "load_junius_contracts",
+        {
+          modes: [
+            "engineering",
+            "desktop",
+            "browser",
+          ],
+        },
+      );
+    const contractResults =
+      loadedContracts.payload
+        .contracts as
+        | {
+            mode?: unknown;
+            digest?: unknown;
+            text?: unknown;
+          }[]
+        | undefined;
+    assert.deepEqual(
+      contractResults?.map(
+        (contract) =>
+          contract.mode,
+      ),
+      [
+        "engineering",
+        "desktop",
+        "browser",
+      ],
+    );
+    for (
+      const contract of
+      contractResults ?? []
+    ) {
+      assert.match(
+        String(
+          contract.digest,
+        ),
+        /^[a-f0-9]{64}$/u,
+      );
+    }
+
+    assert.equal(
+      loadedContracts
+        .textContents.length,
+      4,
+    );
+    assert.equal(
+      loadedContracts
+        .textContents[1]
+        ?.includes(
+          "# JUNIUS ENGINEERING WORK MODE",
+        ),
+      true,
+    );
+    assert.equal(
+      loadedContracts
+        .textContents[1]
+        ?.includes(
+          "RED -> GREEN",
+        ),
+      true,
+    );
+    assert.equal(
+      loadedContracts
+        .textContents[2]
+        ?.includes(
+          "key_macro",
+        ),
+      true,
+    );
+    assert.equal(
+      loadedContracts
+        .textContents[3]
+        ?.includes(
+          "playwright_cli",
+        ),
+      true,
+    );
+
     const desktopTool =
       tools.find(
         (tool) =>

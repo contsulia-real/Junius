@@ -15,7 +15,7 @@ export function registerJobTools(
     {
       title: "Start Local Job",
       description:
-        "Launch any executable with any argument vector as a background process in one registered Junius Workspace. The Workspace selects cwd only; the returned job ID is used to inspect, wait for, read, or cancel the process.",
+        "Launch any executable with any argument vector as a background process in one registered Junius Workspace. The Workspace selects cwd only; the returned job ID is used to inspect, wait for, read, or cancel the process. For software engineering work, load the engineering contract with load_junius_contracts before substantive engineering execution unless it is already loaded.",
       inputSchema: runCommandInputSchema,
       _meta: {
         securitySchemes: [{ type: "noauth" }],

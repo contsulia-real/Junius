@@ -12,6 +12,8 @@ Junius is **not an operating-system sandbox**. Processes launched by Junius run 
 
 ## MCP surface
 
+    load_junius_contracts(modes)
+
     list_workspaces()
     create_workspace(id, root_path)
     delete_workspace(id)
@@ -36,6 +38,36 @@ Junius is **not an operating-system sandbox**. Processes launched by Junius run 
     desktop(session, command, ...)
 
 There is no management Web UI. Workspace creation, removal, inspection, command execution, Jobs, Browser control, and Desktop control are intended to be driven through ChatGPT conversation.
+
+## Injected operating contracts
+
+Junius uses MCP-native instructions for its ChatGPT execution contract.
+
+The Core Operating Contract is sent in the MCP initialize result through the server's `instructions` field. It contains only cross-cutting Junius behavior: preserving user intent, instruction precedence, Workspace/AGENTS.md semantics, process and Job semantics, verification, cleanup, and completion discipline.
+
+Large task-specific behavior is deliberately not embedded in Core. Junius keeps three separate contracts:
+
+- `engineering` — software engineering workflow, test and verification discipline, real-surface QA, Git discipline, and final review;
+- `desktop` — screenshot-only Desktop Computer Use, control lifecycle, coordinate semantics, primitive selection including `key_macro` and `action_batch`, act-observe verification, and cleanup;
+- `browser` — the unrestricted Playwright CLI surface, Browser session continuity, state-dependent references, act-observe verification, and session cleanup.
+
+ChatGPT loads only the modes needed for the current task:
+
+    load_junius_contracts(
+      modes = ["engineering"]
+    )
+
+or, when several apply:
+
+    load_junius_contracts(
+      modes = ["engineering", "browser"]
+    )
+
+The result starts with mode/digest metadata and then returns each selected contract as its own raw Markdown text block. Duplicate modes are deduplicated while requested order is preserved.
+
+The Core contract requires the Engineering contract before substantive software-engineering work, the Desktop contract before the first `desktop` call in a task, and the Browser contract before the first `playwright_cli` call.
+
+These contracts guide the calling assistant. They are not executable authorization rules and do not reintroduce a Junius command/capability policy layer. The existing AGENTS.md mutation preflight remains a separate built-in file-tool mechanism.
 
 ## One-command installation
 

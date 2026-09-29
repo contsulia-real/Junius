@@ -169,7 +169,7 @@ export function registerWorkspaceFileTools(
     {
       title: "Write Workspace Files",
       description:
-        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. Applicable AGENTS.md instructions are a mandatory preflight: when they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
+        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. For software engineering work, load the engineering contract with load_junius_contracts before implementation unless it is already loaded. Applicable AGENTS.md instructions are a mandatory preflight: when they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z

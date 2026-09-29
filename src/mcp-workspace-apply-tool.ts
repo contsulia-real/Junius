@@ -17,7 +17,7 @@ export function registerWorkspaceApplyTool(
     {
       title: "Apply Workspace Writes",
       description:
-        "Apply up to 16 Workspace file writes in one transactional batch, then optionally run up to 16 read-only ls/read/rg verification operations in the same MCP round trip. Applicable AGENTS.md instructions are a mandatory preflight: if they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. All write targets are prepared before commit; if commit fails, Junius attempts reverse rollback.",
+        "Apply up to 16 Workspace file writes in one transactional batch, then optionally run up to 16 read-only ls/read/rg verification operations in the same MCP round trip. For software engineering work, load the engineering contract with load_junius_contracts before implementation unless it is already loaded. Applicable AGENTS.md instructions are a mandatory preflight: if they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. All write targets are prepared before commit; if commit fails, Junius attempts reverse rollback.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z

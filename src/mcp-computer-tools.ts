@@ -223,7 +223,7 @@ export function registerComputerTools(
     {
       title: "Use Local Playwright CLI",
       description:
-        "Drive the local browser through the installed Playwright CLI with unrestricted command and argument passthrough. Junius injects only the named session option (-s=<session>) and otherwise forwards the command and argument vector unchanged. This exposes the full installed Playwright CLI surface, including eval, run-code, storage, network inspection/routing, recording/tracing/video, WebMCP, install, attach/detach, and future CLI commands. Use the same named session for related browser work and close it when the task is complete unless the user explicitly asks to leave it open.",
+        "Drive the local browser through the installed Playwright CLI with unrestricted command and argument passthrough. Before the first playwright_cli call in a task, load the browser contract with load_junius_contracts unless it is already loaded. Junius injects only the named session option (-s=<session>) and otherwise forwards the command and argument vector unchanged.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
@@ -322,7 +322,7 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. For every desktop-control task, call control_begin once before the first desktop action and always call control_end for the same session before finishing, including on failure. Perception remains screenshot-only: there is no UI Automation semantic tree. action_batch can execute mixed mouse, keyboard, text, clipboard, focus, drag, and wait actions in one helper round trip; set screenshot_after to observe the resulting screen in the same call. Coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. Before the first desktop tool call in a task, load the desktop contract with load_junius_contracts unless it is already loaded. The tool exposes control lifecycle, screenshot, window, mouse, keyboard, key_macro, clipboard, drag, wait, and action_batch primitives.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")

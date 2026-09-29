@@ -56,13 +56,43 @@ The installed Browser adapter prefers the app-local @playwright/cli package befo
 
 Repository development can still use pnpm, but an installed user does not need pnpm on PATH.
 
+## Instruction injection model
+
+Junius separates universal operating behavior from large task-specific contracts.
+
+At MCP initialization, `McpServer` sends the Core Operating Contract through the protocol-level `instructions` field.
+
+Core intentionally does not contain Desktop or Browser primitive behavior. Instead it routes the calling assistant to:
+
+    load_junius_contracts(modes)
+
+Supported modes are:
+
+    engineering
+    desktop
+    browser
+
+The loader is read-only and deterministic. It returns the current contract text and a SHA-256 digest for each requested mode, deduplicating repeated modes while retaining first-requested order.
+
+Engineering may be loaded after minimal inspection needed to identify the task, but before substantive engineering work. Desktop must be loaded before the first `desktop` tool call in a task. Browser must be loaded before the first `playwright_cli` call.
+
+Tool descriptions repeat only this short routing requirement; they do not duplicate the full contracts. This keeps the always-injected Core independent from Computer Use details and avoids placing the full specialized text into every tool schema.
+
+The contracts are instructions for the calling assistant, not an authorization or policy engine. They do not restrict `run_command`, `start_job`, Playwright CLI, or Desktop primitives at the Junius execution layer.
+
 ## Public MCP model
 
 The stable user-facing surface is MCP.
 
 There is no management Web UI.
 
-The public tools are grouped into five areas.
+The public tools are grouped into six areas.
+
+### Operating contracts
+
+    load_junius_contracts(modes)
+
+Core is delivered by MCP initialize instructions. This read-only tool injects only the specialized Engineering, Desktop, and Browser contracts required by the current task. Its first text block contains mode/digest metadata; following text blocks contain the selected contracts as raw Markdown.
 
 ### Workspace registration
 

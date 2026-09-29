@@ -16,7 +16,7 @@ export function registerRunCommandTool(
       title:
         "Run Local Command",
       description:
-        "Launch any executable with any argument vector in one registered Junius Workspace. The Workspace selects cwd only; Junius does not pre-register executables or restrict argument vectors.",
+        "Launch any executable with any argument vector in one registered Junius Workspace. The Workspace selects cwd only; Junius does not pre-register executables or restrict argument vectors. For software engineering work, load the engineering contract with load_junius_contracts before substantive engineering execution unless it is already loaded.",
       inputSchema:
         runCommandInputSchema,
       _meta: {

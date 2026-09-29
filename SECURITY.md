@@ -25,6 +25,8 @@ Please include privately:
 
 Junius is an execution service, not a command-policy engine, and it is not an operating-system sandbox.
 
+Its MCP Core, Engineering, Desktop, and Browser contracts are assistant instructions, not authorization gates. Core is sent through MCP server instructions and specialized contracts are loaded on demand with load_junius_contracts. They do not reduce the underlying command, Browser, or Desktop execution surface.
+
 ### Arbitrary process execution
 
 run_command and start_job accept an executable and argument vector without a Junius executable allowlist or argument-authorization layer.
