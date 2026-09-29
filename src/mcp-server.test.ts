@@ -5,7 +5,7 @@ import { formatRunCommandResult } from "./mcp-server.js";
 import { JUNIUS_VERSION } from "./project-version.js";
 
 test(
-  "Junius runtime keeps the product version separate from npm SemVer",
+  "Junius runtime version follows package.json",
   () => {
     const packageJson =
       JSON.parse(
@@ -18,16 +18,15 @@ test(
         ),
       ) as {
         version?: unknown;
-        juniusVersion?: unknown;
       };
 
     assert.equal(
       packageJson.version,
-      "0.0.1-alpha.1",
+      "0.0.1-alpha-ChatGPT",
     );
     assert.equal(
       JUNIUS_VERSION,
-      packageJson.juniusVersion,
+      packageJson.version,
     );
   },
 );

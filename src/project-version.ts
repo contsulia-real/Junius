@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 
 interface ProjectPackage {
   readonly version?: unknown;
-  readonly juniusVersion?: unknown;
 }
 
 function loadProjectVersion(): string {
@@ -13,22 +12,17 @@ function loadProjectVersion(): string {
   const parsed = JSON.parse(
     readFileSync(packagePath, "utf8"),
   ) as ProjectPackage;
-  const version =
-    typeof parsed.juniusVersion === "string" &&
-    parsed.juniusVersion.length > 0
-      ? parsed.juniusVersion
-      : parsed.version;
 
   if (
-    typeof version !== "string" ||
-    version.length === 0
+    typeof parsed.version !== "string" ||
+    parsed.version.length === 0
   ) {
     throw new Error(
-      "Junius package.json must define a non-empty juniusVersion or version.",
+      "Junius package.json must define a non-empty version.",
     );
   }
 
-  return version;
+  return parsed.version;
 }
 
 export const JUNIUS_VERSION =
