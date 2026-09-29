@@ -75,8 +75,22 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          & .\install.ps1 -Version "$env:GITHUB_REF_NAME"
+          $releaseJson = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to list GitHub Releases."
+          }
+          $matching = @(
+            ($releaseJson | ConvertFrom-Json) |
+              Where-Object {
+                $_.tag_name -ceq $env:GITHUB_REF_NAME -and $_.draft -eq $true
+              }
+          )
+          if ($matching.Count -ne 1) {
+            throw "Expected exactly one draft release for $env:GITHUB_REF_NAME."
+          }
+          & .\install.ps1 -ReleaseId ([long]$matching[0].id)
 
       - name: Verify installed Host
         shell: pwsh

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$Version = "",
+  [long]$ReleaseId = 0,
   [string]$Repository = "contsulia-real/Junius",
   [string]$ApiBaseUrl = "https://api.github.com",
   [switch]$VerifyOnly
@@ -32,6 +33,12 @@ function Invoke-JuniusGitHubJson {
 }
 
 function Get-JuniusRelease {
+  if ($ReleaseId -gt 0) {
+    return Invoke-JuniusGitHubJson -Uri (
+      "$ApiBaseUrl/repos/$Repository/releases/$ReleaseId"
+    )
+  }
+
   if (-not [string]::IsNullOrWhiteSpace($Version)) {
     $tag = $Version
     if (-not $tag.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {

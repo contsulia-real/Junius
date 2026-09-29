@@ -467,6 +467,32 @@ test(
 
           if (
             request.url ===
+            "/repos/contsulia-real/Junius/releases/4242"
+          ) {
+            response.writeHead(
+              200,
+              {
+                "content-type":
+                  "application/json",
+              },
+            );
+            response.end(
+              JSON.stringify({
+                id: 4242,
+                tag_name: tag,
+                draft: true,
+                prerelease: true,
+                published_at:
+                  new Date()
+                    .toISOString(),
+                assets,
+              }),
+            );
+            return;
+          }
+
+          if (
+            request.url ===
             releasePath
           ) {
             response.writeHead(
@@ -629,8 +655,8 @@ test(
               process.cwd(),
               "install.ps1",
             ),
-            "-Version",
-            tag,
+            "-ReleaseId",
+            "4242",
             "-ApiBaseUrl",
             "http://127.0.0.1:" +
               address.port,
