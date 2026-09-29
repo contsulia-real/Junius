@@ -52,6 +52,9 @@ jobs:
       - name: Validate
         run: pnpm run check
 
+      - name: Validate GitHub release distribution
+        run: npm run check:release
+
       - name: Build release assets
         run: npm run release:build
 

@@ -230,9 +230,28 @@ test(
     );
     assert.equal(
       ci.includes(
+        "npm run check:release",
+      ),
+      true,
+    );
+    assert.equal(
+      ci.includes(
         "npm run release:build",
       ),
       true,
+    );
+    assert.equal(
+      packageJson.scripts
+        ?.check,
+      "node scripts/source-validation.mjs begin && npm run check:bootstrap && npm run typecheck && npm run test:runtime && node scripts/source-validation.mjs commit",
+      "installed runtime validation must not require source-only release tests",
+    );
+    assert.equal(
+      packageJson.scripts
+        ?.[
+          "check:release"
+        ],
+      "npm run test:release",
     );
   },
 );

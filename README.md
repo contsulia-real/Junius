@@ -97,7 +97,7 @@ The installer does not download or replace Node or Python. It requires Node.js 2
 - installs Junius's npm dependencies, including the Browser CLI;
 - creates %LOCALAPPDATA%\Junius\app\.venv using the user's Python;
 - installs requirements-desktop.txt into that virtual environment;
-- runs the complete Junius validation suite;
+- runs the complete installed-runtime Junius validation suite;
 - registers Junius under the current user's Windows logon startup;
 - starts Junius immediately and waits for the Host health check to pass.
 
