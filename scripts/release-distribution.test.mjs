@@ -8,12 +8,16 @@ import {
 } from "node:http";
 import {
   access,
+  mkdtemp,
   readFile,
   rm,
 } from "node:fs/promises";
 import {
   join,
 } from "node:path";
+import {
+  tmpdir,
+} from "node:os";
 import {
   once,
 } from "node:events";
@@ -380,12 +384,22 @@ test(
       "win32",
   },
   async () => {
-    await buildRelease();
+    const tempRoot =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "junius-release-test-",
+        ),
+      );
+    const dist =
+      join(
+        tempRoot,
+        "dist",
+      );
 
-    const dist = join(
-      process.cwd(),
-      "dist",
-    );
+    await buildRelease({
+      distRoot: dist,
+    });
     const packageData =
       await readFile(
         join(
@@ -648,7 +662,7 @@ test(
         "close",
       );
       await rm(
-        dist,
+        tempRoot,
         {
           recursive: true,
           force: true,

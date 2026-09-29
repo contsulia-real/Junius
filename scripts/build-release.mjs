@@ -347,7 +347,12 @@ async function sha256(
     .digest("hex");
 }
 
-export async function buildRelease() {
+export async function buildRelease(
+  options = {},
+) {
+  const distRoot =
+    options.distRoot ??
+    DIST_ROOT;
   const packageJson =
     JSON.parse(
       await readFile(
@@ -375,7 +380,7 @@ export async function buildRelease() {
   );
 
   await rm(
-    DIST_ROOT,
+    distRoot,
     {
       recursive: true,
       force: true,
@@ -383,7 +388,7 @@ export async function buildRelease() {
   );
   const packRoot =
     join(
-      DIST_ROOT,
+      distRoot,
       ".pack",
     );
   await mkdir(
@@ -430,7 +435,7 @@ export async function buildRelease() {
 
   const packagePath =
     join(
-      DIST_ROOT,
+      distRoot,
       "junius-windows.tgz",
     );
   await rename(
@@ -443,7 +448,7 @@ export async function buildRelease() {
 
   const installScript =
     join(
-      DIST_ROOT,
+      distRoot,
       "install.ps1",
     );
   await copyFile(
@@ -471,7 +476,7 @@ export async function buildRelease() {
 
   await writeFile(
     join(
-      DIST_ROOT,
+      distRoot,
       "SHA256SUMS.txt",
     ),
     checksums.join("\n") +
@@ -481,7 +486,7 @@ export async function buildRelease() {
 
   await writeFile(
     join(
-      DIST_ROOT,
+      distRoot,
       "release.json",
     ),
     JSON.stringify(

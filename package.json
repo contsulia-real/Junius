@@ -25,8 +25,8 @@
     "start": "node scripts/host-launcher.mjs",
     "start:host-source": "tsx src/host.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\" && node --test scripts/install-core.test.mjs scripts/release-distribution.test.mjs",
-    "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs && node --check scripts/install-core.mjs && node --check scripts/install.mjs && node --check scripts/build-release.mjs && node --check bin/junius.mjs",
+    "test": "node scripts/run-project-tests.mjs && node --test scripts/install-core.test.mjs scripts/release-distribution.test.mjs",
+    "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs && node --check scripts/install-core.mjs && node --check scripts/install.mjs && node --check scripts/build-release.mjs && node --check scripts/run-project-tests.mjs && node --check bin/junius.mjs",
     "check": "node scripts/source-validation.mjs begin && npm run check:bootstrap && npm run typecheck && npm test && node scripts/source-validation.mjs commit",
     "release:build": "node scripts/build-release.mjs",
     "prepublishOnly": "node scripts/block-npm-publish.mjs"
