@@ -26,7 +26,10 @@ const MAX_CHECK_OUTPUT_CHARS = 1024 * 1024;
 const HEALTH_TIMEOUT_MS = 20_000;
 const SNAPSHOT_RETRIES = 3;
 
-const projectRoot = process.cwd();
+const projectRoot = resolve(
+  process.env.JUNIUS_PROJECT_ROOT ??
+    process.cwd(),
+);
 const runtimeRoot = resolve(
   process.env.JUNIUS_RUNTIME_ROOT ??
     join(projectRoot, ".junius", "runtime"),
@@ -213,7 +216,7 @@ async function targetFromWindowsCmdShim(shimPath) {
   try {
     const text = await readFile(shimPath, "utf8");
     const match = text.match(
-      /["']?([^"'\r\n]*(?:pnpm\.exe|pnpm\.(?:cjs|mjs|js)))["']?/iu,
+      /["']?([^"'\r\n]*npm-cli\.js)["']?/iu,
     );
 
     if (match?.[1] === undefined) {
@@ -245,7 +248,7 @@ async function isPortableExecutable(path) {
   }
 }
 
-async function launcherForPnpmCandidate(candidate) {
+async function launcherForPackageManagerCandidate(candidate) {
   const extension = extname(candidate).toLowerCase();
 
   if (
@@ -268,22 +271,46 @@ async function launcherForPnpmCandidate(candidate) {
   return undefined;
 }
 
-async function pnpmInvocation() {
+async function npmInvocation() {
+  const candidates = [];
+
+  if (
+    typeof process.env.npm_execpath === "string" &&
+    /npm-cli\.js$/iu.test(process.env.npm_execpath)
+  ) {
+    candidates.push(process.env.npm_execpath);
+  }
+
+  candidates.push(
+    join(
+      dirname(process.execPath),
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    ),
+  );
+
+  for (const candidate of candidates) {
+    if (await fileExists(candidate)) {
+      return {
+        executable: process.execPath,
+        fixedArgs: [candidate],
+      };
+    }
+  }
+
   const names =
     process.platform === "win32"
       ? [
-          "pnpm.exe",
-          "pnpm",
-          "pnpm.cmd",
-          "pnpm.cjs",
-          "pnpm.js",
-          "pnpm.mjs",
+          "npm.exe",
+          "npm",
+          "npm.cmd",
+          "npm-cli.js",
         ]
       : [
-          "pnpm",
-          "pnpm.cjs",
-          "pnpm.js",
-          "pnpm.mjs",
+          "npm",
+          "npm-cli.js",
         ];
 
   for (const rawEntry of environmentPath(process.env).split(delimiter)) {
@@ -301,7 +328,7 @@ async function pnpmInvocation() {
       }
 
       const direct =
-        await launcherForPnpmCandidate(candidate);
+        await launcherForPackageManagerCandidate(candidate);
       if (direct !== undefined) {
         return direct;
       }
@@ -314,7 +341,7 @@ async function pnpmInvocation() {
         await fileExists(shimTarget)
       ) {
         const shimLauncher =
-          await launcherForPnpmCandidate(shimTarget);
+          await launcherForPackageManagerCandidate(shimTarget);
 
         if (shimLauncher !== undefined) {
           return shimLauncher;
@@ -324,7 +351,7 @@ async function pnpmInvocation() {
   }
 
   throw new Error(
-    "bootstrap_pnpm_unavailable: pnpm was not found on PATH.",
+    "bootstrap_npm_unavailable: npm was not found for the current Node installation.",
   );
 }
 
@@ -333,7 +360,7 @@ async function runCheck() {
 
   let launcher;
   try {
-    launcher = await pnpmInvocation();
+    launcher = await npmInvocation();
   } catch (error) {
     return {
       ok: false,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -11,6 +12,7 @@ import test from "node:test";
 import {
   PlaywrightCliError,
   PlaywrightCliService,
+  resolvePlaywrightCliLauncher,
 } from "./playwright-cli.js";
 
 async function fixture(
@@ -39,6 +41,7 @@ async function fixture(
     {
       ...process.env,
       PATH: root,
+      JUNIUS_PROJECT_ROOT: undefined,
       JUNIUS_BROWSER_STATE_PATH: root,
       JUNIUS_TEST_PLAYWRIGHT_LOG: logPath,
       ...environmentOverrides,
@@ -68,6 +71,71 @@ async function fixture(
     },
   };
 }
+
+test(
+  "playwright-cli resolves the Junius-installed CLI before PATH",
+  async () => {
+    const root = await mkdtemp(
+      join(
+        tmpdir(),
+        "junius-playwright-installed-",
+      ),
+    );
+
+    try {
+      const cliDirectory = join(
+        root,
+        "node_modules",
+        "@playwright",
+        "cli",
+      );
+      await mkdir(
+        cliDirectory,
+        { recursive: true },
+      );
+      const entryPath = join(
+        cliDirectory,
+        "playwright-cli.js",
+      );
+      await writeFile(
+        entryPath,
+        "process.exit(0);\n",
+        "utf8",
+      );
+
+      const launcher =
+        resolvePlaywrightCliLauncher(
+          {
+            JUNIUS_PROJECT_ROOT:
+              root,
+            PATH: "",
+          },
+          process.execPath,
+        );
+
+      assert.equal(
+        launcher?.executable,
+        process.execPath,
+      );
+      assert.deepEqual(
+        launcher?.fixedArgs,
+        [entryPath],
+      );
+      assert.equal(
+        launcher?.entryPath,
+        entryPath,
+      );
+    } finally {
+      await rm(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  },
+);
 
 async function waitFor(
   predicate: () => Promise<boolean> | boolean,

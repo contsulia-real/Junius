@@ -20,6 +20,42 @@ The high-level responsibility split is:
 
 The caller decides what should be done. Junius performs the selected local operation and reports what happened.
 
+## One-command Windows installation
+
+The published npm package exposes the Junius CLI so a Windows user can install with:
+
+    npx --yes junius@latest install
+
+The installer reuses the Node executable that is already running npx and an existing Python 3.10+ interpreter discovered on the machine. It does not download or replace either runtime.
+
+The persistent per-user application root is:
+
+    %LOCALAPPDATA%\Junius\app
+
+Installation performs:
+
+    copy packaged Junius sources
+      ↓
+    npm install in the persistent app root
+      ↓
+    create app\.venv from the discovered Python
+      ↓
+    install Desktop Python requirements
+      ↓
+    run the complete Junius validation
+      ↓
+    register HKCU logon startup
+      ↓
+    start Junius immediately
+      ↓
+    wait for Host health
+
+The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user VBScript wrapper. No Windows service or administrator elevation is required.
+
+The installed Browser adapter prefers the app-local @playwright/cli package before PATH. The Desktop adapter uses the app-local .venv, whose base interpreter comes from the user's existing Python installation.
+
+Repository development can still use pnpm, but an installed user does not need pnpm on PATH.
+
 ## Public MCP model
 
 The stable user-facing surface is MCP.

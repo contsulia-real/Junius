@@ -3,9 +3,21 @@ import {
   access,
   mkdir,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import {
+  dirname,
+  join,
+  resolve,
+} from "node:path";
+import { fileURLToPath } from "node:url";
 
-const projectRoot = process.cwd();
+const projectRoot = resolve(
+  process.env.JUNIUS_PROJECT_ROOT ??
+    dirname(
+      dirname(
+        fileURLToPath(import.meta.url),
+      ),
+    ),
+);
 const runtimeRoot = resolve(
   process.env.JUNIUS_RUNTIME_ROOT ??
     join(projectRoot, ".junius", "runtime"),
@@ -51,7 +63,11 @@ async function main() {
     [bootstrapPath],
     {
       cwd: projectRoot,
-      env: process.env,
+      env: {
+        ...process.env,
+        JUNIUS_PROJECT_ROOT:
+          projectRoot,
+      },
       stdio: "inherit",
       windowsHide: false,
     },

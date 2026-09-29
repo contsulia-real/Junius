@@ -143,6 +143,34 @@ function candidatePaths(
   environment: NodeJS.ProcessEnv,
 ): readonly string[] {
   const candidates: string[] = [];
+  const projectRoot =
+    environment.JUNIUS_PROJECT_ROOT;
+
+  if (projectRoot) {
+    candidates.push(
+      join(
+        projectRoot,
+        "node_modules",
+        "@playwright",
+        "cli",
+        "playwright-cli.js",
+      ),
+    );
+
+    const localBin = join(
+      projectRoot,
+      "node_modules",
+      ".bin",
+    );
+    candidates.push(
+      join(localBin, "playwright-cli.exe"),
+      join(localBin, "playwright-cli"),
+      join(localBin, "playwright-cli.js"),
+      join(localBin, "playwright-cli.cjs"),
+      join(localBin, "playwright-cli.mjs"),
+      join(localBin, "playwright-cli.cmd"),
+    );
+  }
 
   for (const rawEntry of environmentPath(environment).split(delimiter)) {
     const entry = rawEntry.trim().replace(/^"(.*)"$/u, "$1");

@@ -37,22 +37,32 @@ Junius is **not an operating-system sandbox**. Processes launched by Junius run 
 
 There is no management Web UI. Workspace creation, removal, inspection, command execution, Jobs, Browser control, and Desktop control are intended to be driven through ChatGPT conversation.
 
-## Requirements
+## One-command installation
 
-Core requirements:
+The current one-command installer targets Windows.
 
-- Windows, macOS, or Linux for the Node service
-- Node.js 20+
-- pnpm 12.6.0
+Prerequisites already present on the user's computer:
 
-Browser automation additionally requires a compatible playwright-cli / @playwright/cli installation available to Junius.
+- Node.js 20+ with npm/npx
+- Python 3.10+
 
-Windows Desktop Computer Use additionally requires Python and the packages listed in requirements-desktop.txt. Junius prefers the project-owned .venv beside its Desktop helper.
+Install Junius with one command:
 
-## Quick start
+    npx --yes junius@latest install
 
-    pnpm install
-    pnpm dev
+The installer does not download or replace Node or Python. It reuses the Node executable that is running npx, finds an existing compatible Python installation, and then:
+
+- installs Junius under %LOCALAPPDATA%\Junius\app;
+- installs Junius's npm dependencies, including the Browser CLI;
+- creates %LOCALAPPDATA%\Junius\app\.venv using the user's Python;
+- installs requirements-desktop.txt into that virtual environment;
+- runs the complete Junius validation suite;
+- registers Junius under the current user's Windows logon startup;
+- starts Junius immediately and waits for the Host health check to pass.
+
+No administrator elevation is required for the normal per-user installation path.
+
+After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used by npx, and the Desktop helper uses the installed .venv created from the user's existing Python.
 
 The Host binds locally to:
 
@@ -66,6 +76,15 @@ To use Junius from ChatGPT, expose only the MCP endpoint through the supported S
     http://127.0.0.1:8787/mcp
 
 Do not expose the Host-control endpoint.
+
+## Development from source
+
+Repository development uses pnpm 12.6.0:
+
+    pnpm install
+    pnpm dev
+
+The one-command installer does not require the user to have pnpm installed.
 
 ## Chat-first Workspace management
 

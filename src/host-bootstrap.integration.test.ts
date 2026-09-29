@@ -39,19 +39,14 @@ async function runBootstrap(
   const mcpPort = await freePort();
   const controlPort = await freePort();
   const fakeBin = join(root, "bin");
-  const fakePnpm = join(fakeBin, "pnpm.js");
+  const fakeNpm = join(fakeBin, "npm-cli.js");
   const workspaceRoot = join(root, "workspace");
   const runtimeRoot = join(root, "runtime");
 
   await mkdir(workspaceRoot, { recursive: true });
   await mkdir(fakeBin, { recursive: true });
   await writeFile(
-    join(fakeBin, "pnpm"),
-    "not-a-native-executable\n",
-    "utf8",
-  );
-  await writeFile(
-    fakePnpm,
+    fakeNpm,
     `
 const result = process.env.JUNIUS_BOOTSTRAP_TEST_CHECK_RESULT;
 process.exit(result === "pass" ? 0 : 1);
@@ -70,6 +65,7 @@ process.exit(result === "pass" ? 0 : 1);
           fakeBin,
           process.env.PATH ?? "",
         ].filter(Boolean).join(delimiter),
+        npm_execpath: fakeNpm,
         JUNIUS_BOOTSTRAP_TEST_CHECK_RESULT: checkResult,
         JUNIUS_BOOTSTRAP_TEST_EXIT_AFTER_HEALTH: "1",
         ...(forceValidate
