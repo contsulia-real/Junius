@@ -51,7 +51,7 @@ Workers use random loopback ports and require a private Host-injected token for 
 
 ### Browser and Desktop
 
-Browser automation can interact with authenticated browser sessions.
+Browser automation exposes the full installed Playwright CLI command surface and can interact with authenticated browser sessions, execute Playwright/browser code exposed by that CLI, inspect or modify browser storage, and inspect or route network activity.
 
 Desktop Computer Use can view and operate user-visible applications. Desktop clipboard access can read or replace Unicode text currently held by the user's Windows clipboard.
 

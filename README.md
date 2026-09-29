@@ -208,13 +208,17 @@ These checks apply only to Junius's built-in file tools. They do not restrict an
 
 ## Browser Computer Use
 
-playwright_cli is a bounded adapter over Playwright CLI.
+playwright_cli exposes the full installed Playwright CLI command surface.
 
-It supports the browser workflow needed by ChatGPT: navigation, snapshots, element-reference interaction, keyboard/mouse actions, tabs, dialogs, and session lifecycle. Arbitrary JavaScript/eval, CDP, request interception, and raw storage access are not exposed by this adapter.
+Junius injects only the named session option:
+
+    -s=<session>
+
+The requested command and argument vector are otherwise forwarded unchanged. There is no Junius Browser command whitelist or per-command argument policy. Commands such as eval, run-code, storage/cookie operations, network request inspection and routing, recording/tracing/video, WebMCP, attach/detach, install commands, and future Playwright CLI commands are available when supported by the installed CLI version.
 
 Named Browser sessions are Worker-affined across hot promotion. Idle sessions are bounded and cleaned up independently.
 
-Browser profile data is persistent so normal authenticated browser sessions can survive between calls.
+Junius provides a persistent Browser state directory, but it does not force Playwright CLI persistence options. Browser/profile persistence therefore follows the command and options supplied by the caller, such as --persistent or explicit state-save/state-load. Browser audit records the command identity and argument count, but not the arbitrary argument vector.
 
 ## Windows Desktop Computer Use
 

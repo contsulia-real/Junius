@@ -330,15 +330,23 @@ If the owning Worker exits, its affinity and helper disappear as the crash fallb
 
 ## Browser architecture
 
-The Browser service is a bounded adapter around Playwright CLI.
+The Browser service exposes the full installed Playwright CLI command surface.
 
-Junius uses a persistent broker when available and retains a persistent browser profile.
+Junius uses a persistent broker when available and provides a persistent Browser state directory. It does not inject --persistent or other browser-behavior options; persistence semantics follow the caller's Playwright CLI command and arguments.
 
-The adapter exposes normal browser interaction primitives but does not expose arbitrary code evaluation, CDP, raw request interception, or generic storage scripting.
+For each MCP call Junius constructs:
 
-Named sessions are bounded and idle-cleaned.
+    -s=<session>
+    <command>
+    ...<args>
 
-Browser launcher discovery uses the inherited command-search environment.
+The command and argument vector are not checked against a Junius whitelist and are not rewritten. This means the Browser surface tracks the capabilities of the installed Playwright CLI version, including eval/run-code, storage and cookie operations, network inspection/routing, recording/tracing/video, WebMCP, attach/detach, install commands, and future CLI commands.
+
+Named sessions are bounded and idle-cleaned. The Host keeps named Browser sessions Worker-affined across hot promotion.
+
+Browser launcher discovery prefers the app-local @playwright/cli installation before the inherited command-search environment.
+
+Browser audit persists the command name and argument count, but not the arbitrary Browser CLI argument vector.
 
 ## Desktop architecture
 

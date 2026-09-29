@@ -12,18 +12,13 @@ import {
   type PlaywrightCliLauncher,
 } from "./playwright-cli-launcher.js";
 import {
-  PLAYWRIGHT_CLI_COMMANDS,
-  playwrightCliCommandArgs,
-  validatePlaywrightCliArgs,
-  type PlaywrightCliCommand,
-} from "./playwright-cli-policy.js";
-import {
   PlaywrightSessionPool,
   type PlaywrightSessionToken,
 } from "./playwright-session-pool.js";
 import { runPlaywrightCliSpawn } from "./playwright-cli-spawn-executor.js";
 import {
   PlaywrightCliError,
+  type PlaywrightCliCommand,
   type PlaywrightCliExecution,
   type PlaywrightCliServiceOptions,
 } from "./playwright-cli-types.js";
@@ -194,20 +189,6 @@ export class PlaywrightCliService {
       );
     }
 
-    if (!(PLAYWRIGHT_CLI_COMMANDS as readonly string[]).includes(command)) {
-      throw new PlaywrightCliError(
-        "command_not_allowed",
-        `playwright-cli command is not allowed: ${command}`,
-      );
-    }
-
-    if (!validatePlaywrightCliArgs(command, args)) {
-      throw new PlaywrightCliError(
-        "arguments_not_allowed",
-        `Arguments are not allowed for playwright-cli command ${command}.`,
-      );
-    }
-
     if (this.#closing && command !== "close") {
       throw new PlaywrightCliError(
         "playwright_cli_closing",
@@ -236,7 +217,11 @@ export class PlaywrightCliService {
       await mkdir(this.#statePath, { recursive: true });
 
     const startedAt = performance.now();
-    const cliArgs = playwrightCliCommandArgs(session, command, args);
+    const cliArgs = [
+      `-s=${session}`,
+      command,
+      ...args,
+    ];
 
     if (this.#broker?.available === true) {
       try {
@@ -327,7 +312,6 @@ export class PlaywrightCliService {
 
 
 export {
-  PLAYWRIGHT_CLI_COMMANDS,
   PlaywrightCliError,
   resolveBrowserStatePath,
   resolvePlaywrightCliLauncher,

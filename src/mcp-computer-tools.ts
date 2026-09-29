@@ -1,9 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { AuditStore } from "./audit-store.js";
 import { z } from "zod";
-import {
-  PLAYWRIGHT_CLI_COMMANDS,
-  type PlaywrightCliService,
+import type {
+  PlaywrightCliService,
 } from "./playwright-cli.js";
 import {
   DESKTOP_COMMANDS,
@@ -16,41 +15,6 @@ import {
   stableIdSchema,
 } from "./mcp-tool-shared.js";
 
-function browserAuditArgs(
-  command: string,
-  args: readonly string[],
-): readonly string[] {
-  if (
-    command === "fill" ||
-    command === "type"
-  ) {
-    return args.map(
-      (value, index) =>
-        index === 0
-          ? value
-          : "[REDACTED]",
-    );
-  }
-
-  if (
-    (command === "open" ||
-      command === "goto") &&
-    args[0] !== undefined
-  ) {
-    try {
-      const url = new URL(args[0]);
-      return [
-        url.origin + url.pathname,
-        ...args.slice(1),
-      ];
-    } catch {
-      return ["[URL]"];
-    }
-  }
-
-  return [...args];
-}
-
 export function registerComputerTools(
   server: McpServer,
   playwrightCli: PlaywrightCliService,
@@ -62,20 +26,30 @@ export function registerComputerTools(
     {
       title: "Use Local Playwright CLI",
       description:
-        "Drive the local browser through the installed playwright-cli. This is a thin adapter over playwright-cli named sessions. Use snapshot to get element refs before element interactions. When the user's browser task is complete, close the same session before giving the final answer unless the user explicitly asks to leave the browser open. Closing the session does not discard its persistent profile/login state. The adapter only allows normal browser-navigation and interaction commands; eval, run-code, storage manipulation, CDP attach, request interception, and arbitrary CLI commands are not exposed.",
+        "Drive the local browser through the installed Playwright CLI with unrestricted command and argument passthrough. Junius injects only the named session option (-s=<session>) and otherwise forwards the command and argument vector unchanged. This exposes the full installed Playwright CLI surface, including eval, run-code, storage, network inspection/routing, recording/tracing/video, WebMCP, install, attach/detach, and future CLI commands. Use the same named session for related browser work and close it when the task is complete unless the user explicitly asks to leave it open.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
           .describe(
             "Named playwright-cli browser session. Sessions are isolated from each other.",
           ),
-        command: z.enum(PLAYWRIGHT_CLI_COMMANDS),
+        command: z
+          .string()
+          .min(1)
+          .max(4_096)
+          .describe(
+            "Any command supported by the installed Playwright CLI.",
+          ),
         args: z
-          .array(z.string().max(4_096))
-          .max(8)
+          .array(
+            z.string().max(
+              65_536,
+            ),
+          )
+          .max(256)
           .default([])
           .describe(
-            "Arguments for the selected allowed playwright-cli command. Use element refs such as e15 for element interactions.",
+            "Argument vector forwarded unchanged after the Playwright CLI command.",
           ),
       }),
       _meta: {
@@ -83,7 +57,7 @@ export function registerComputerTools(
       },
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
         openWorldHint: true,
       },
@@ -105,11 +79,8 @@ export function registerComputerTools(
           durationMs:
             execution.durationMs,
           metadata: {
-            args:
-              browserAuditArgs(
-                command,
-                args,
-              ),
+            argCount:
+              args.length,
             transport:
               execution.transport,
           },
@@ -140,11 +111,8 @@ export function registerComputerTools(
               ? error.message
               : String(error),
           metadata: {
-            args:
-              browserAuditArgs(
-                command,
-                args,
-              ),
+            argCount:
+              args.length,
           },
         });
         return playwrightCliToolError(error);

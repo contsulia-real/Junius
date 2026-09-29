@@ -171,7 +171,7 @@ test("playwright-cli strips inherited Node preload environment", async () => {
   }
 });
 
-test("playwright-cli maps core commands to bounded CLI arguments", async () => {
+test("playwright-cli injects only the named session and preserves CLI arguments", async () => {
   const f = await fixture();
   try {
     const snapshot = await f.service.run(
@@ -183,7 +183,6 @@ test("playwright-cli maps core commands to bounded CLI arguments", async () => {
       JSON.parse(snapshot.stdout),
       [
         "-s=browser",
-        "--raw",
         "snapshot",
       ],
     );
@@ -199,8 +198,6 @@ test("playwright-cli maps core commands to bounded CLI arguments", async () => {
         "-s=browser",
         "open",
         "https://example.com",
-        "--persistent",
-        "--headed",
       ],
     );
   } finally {
@@ -319,20 +316,37 @@ test("playwright-cli close shuts down all tracked named sessions", async () => {
   }
 });
 
-test("playwright-cli rejects unsupported commands and invalid session identifiers", async () => {
+test("playwright-cli forwards arbitrary commands and arguments unchanged", async () => {
   const f = await fixture();
   try {
-    await assert.rejects(
-      f.service.run(
-        "browser",
-        "eval" as never,
-        ["document.title"],
-      ),
-      (error: unknown) =>
-        error instanceof PlaywrightCliError &&
-        error.code === "command_not_allowed",
+    const result = await f.service.run(
+      "browser",
+      "run-code",
+      [
+        "async page => await page.title()",
+        "--future-option",
+        "value",
+      ],
     );
 
+    assert.deepEqual(
+      JSON.parse(result.stdout),
+      [
+        "-s=browser",
+        "run-code",
+        "async page => await page.title()",
+        "--future-option",
+        "value",
+      ],
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli still validates Junius session identifiers", async () => {
+  const f = await fixture();
+  try {
     await assert.rejects(
       f.service.run(
         "../browser",

@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { terminateProcessTree } from "./process-termination.js";
 import type { PlaywrightCliLauncher } from "./playwright-cli-launcher.js";
-import type { PlaywrightCliCommand } from "./playwright-cli-policy.js";
 import {
   PlaywrightCliError,
+  type PlaywrightCliCommand,
   type PlaywrightCliErrorCode,
   type PlaywrightCliExecution,
 } from "./playwright-cli-types.js";
