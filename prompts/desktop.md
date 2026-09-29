@@ -12,7 +12,13 @@ Do not infer authorization from usefulness, verification needs, previous Desktop
 
 Previous-task authorization does not carry forward.
 
-For every authorized desktop tool call, set explicit_user_authorization to true. That field is an assertion that the current user request explicitly authorized local computer control; it must never be set speculatively.
+Authorization is established only by a successful control_begin for the chosen session.
+
+Set explicit_user_authorization to true only on control_begin, and only when the current user request explicitly authorized local computer control. That field must never be set speculatively.
+
+After control_begin succeeds, omit explicit_user_authorization from windows, screenshot, clipboard, focus, mouse, keyboard, wait, action_batch, and all other follow-up commands. Those commands are permitted only while the same session remains active.
+
+control_end does not require the authorization assertion. It revokes authorization for that session immediately, even if helper-side cleanup fails. After control_end, no Desktop observation or input may occur until a new explicitly authorized control_begin succeeds. A different session never inherits authorization.
 
 Desktop perception is screenshot-only.
 
@@ -22,7 +28,7 @@ Do not assume Windows UI Automation, accessibility trees, semantic controls, or 
 
 Every Desktop control task must use exactly one control lifecycle:
 
-control_begin(session)
+control_begin(session, explicit_user_authorization=true)
 -> observe
 -> act
 -> observe

@@ -768,6 +768,8 @@ test("reverse proxy keeps desktop control affinity across promotion until succes
         await callTool(origin, "desktop", {
           session: "desktop-a",
           command: "control_begin",
+          explicit_user_authorization:
+            true,
         })
       ).worker,
       "worker-a",

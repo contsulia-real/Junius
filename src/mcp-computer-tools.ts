@@ -322,12 +322,13 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the local computer. This includes read-only access such as windows, screenshot, and clipboard_read. Previous authorization does not carry forward. Before the first authorized desktop tool call in a task, load the desktop contract with load_junius_contracts unless it is already loaded. Every call must assert explicit_user_authorization=true only when the current user request provides that authorization.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the local computer. This includes read-only access such as windows, screenshot, and clipboard_read. Authorization is established only by a successful control_begin with explicit_user_authorization=true for that session; subsequent calls rely on that active session and must not repeat the assertion. control_end revokes it. Previous authorization does not carry forward.",
       inputSchema: z.object({
         explicit_user_authorization: z
           .literal(true)
+          .optional()
           .describe(
-            "Required privacy assertion. Set to true only when the current user's request explicitly asks ChatGPT to control this local computer. Do not infer authorization from usefulness, verification needs, previous tasks, or tool availability.",
+            "Privacy assertion used only with control_begin. Set to true only when the current user's request explicitly asks ChatGPT to control this local computer. Omit it for every other command.",
           ),
         session: stableIdSchema
           .default("junius")
@@ -425,8 +426,13 @@ export function registerComputerTools(
     }) => {
       const startedAt = performance.now();
       const auditMetadata = {
-        explicitUserAuthorization:
-          explicit_user_authorization,
+        ...(explicit_user_authorization ===
+        undefined
+          ? {}
+          : {
+              explicitUserAuthorization:
+                explicit_user_authorization,
+            }),
         ...(handle === undefined
           ? {}
           : { handle }),
@@ -477,6 +483,13 @@ export function registerComputerTools(
         const execution = await desktop.run({
           session,
           command,
+          ...(explicit_user_authorization ===
+          undefined
+            ? {}
+            : {
+                explicitUserAuthorization:
+                  explicit_user_authorization,
+              }),
           ...(handle === undefined ? {} : { handle }),
           ...(x === undefined ? {} : { x }),
           ...(y === undefined ? {} : { y }),

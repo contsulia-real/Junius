@@ -122,7 +122,7 @@ Authorization from a previous task does not carry forward.
 
 Loading the Desktop contract is not authorization.
 
-When the current user request does explicitly request local computer control, follow the Desktop contract and mark every desktop tool call with its required explicit-user-authorization assertion.
+When the current user request does explicitly request local computer control, follow the Desktop contract. Establish authorization only with control_begin for that session using the required explicit-user-authorization assertion. Subsequent Desktop calls must rely on that active session and must not repeat or manufacture the authorization assertion. control_end revokes the session authorization.
 
 ## Specialized work contracts
 

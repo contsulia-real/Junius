@@ -329,7 +329,7 @@ Junius provides a persistent Browser state directory, but it does not force Play
 
 ## Windows Desktop Computer Use
 
-Desktop access is opt-in per user task. Junius must not call the Desktop tool unless the current user request explicitly asks ChatGPT to control the local computer. This includes read-only access: without current-task authorization, Junius must not enumerate windows, capture screenshots, or read the clipboard. Previous authorization does not carry forward, and loading the Desktop contract does not grant authorization. Every Desktop MCP call therefore requires `explicit_user_authorization=true` as an explicit assertion of that current-user authorization.
+Desktop access is opt-in per user task. Junius must not call the Desktop tool unless the current user request explicitly asks ChatGPT to control the local computer. This includes read-only access: without current-task authorization, Junius must not enumerate windows, capture screenshots, or read the clipboard. Previous authorization does not carry forward, and loading the Desktop contract does not grant authorization. Authorization is established only by a successful `control_begin` carrying `explicit_user_authorization=true`; follow-up calls omit that assertion and are accepted only for the same active session. `control_end` revokes the session authorization immediately.
 
 The Desktop helper is lazy-started on the first authorized Desktop call; normal Host/Worker startup and ordinary project validation do not prewarm or inspect the Desktop.
 

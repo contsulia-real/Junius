@@ -692,9 +692,9 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         ?.required
         ?.includes(
           "explicit_user_authorization",
-        ),
-      true,
-      "Desktop schema must require explicit current-user authorization.",
+        ) ?? false,
+      false,
+      "Desktop authorization assertion must be optional globally and required by control_begin semantics only.",
     );
     assert.equal(
       desktopProperties
@@ -724,7 +724,32 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       unauthorizedDesktop
         .textContents
         .join("\n"),
-      /explicit_user_authorization/u,
+      /authorization_required/u,
+    );
+
+    const unauthorizedScreenshot =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "desktop",
+        {
+          session:
+            "privacy-boundary",
+          command:
+            "screenshot",
+        },
+        true,
+      );
+    assert.equal(
+      unauthorizedScreenshot
+        .isError,
+      true,
+    );
+    assert.match(
+      unauthorizedScreenshot
+        .textContents
+        .join("\n"),
+      /authorization_required/u,
     );
 
     for (

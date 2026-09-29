@@ -330,7 +330,7 @@ Junius 提供持久化 Browser 状态目录，但不会强制注入 Playwright C
 
 ## Windows 桌面计算机操作
 
-Desktop 访问按当前用户任务显式授权。只有当前用户请求明确要求 ChatGPT 控制本机时，Junius 才能调用 Desktop 工具；这同样适用于只读访问。没有当前任务授权时，不得枚举窗口、截图或读取剪贴板。以前任务中的授权不会延续到当前任务，加载 Desktop contract 也不代表获得授权。因此每一次 Desktop MCP 调用都必须携带 `explicit_user_authorization=true`，明确声明当前用户请求确实给出了本机控制授权。
+Desktop 访问按当前用户任务显式授权。只有当前用户请求明确要求 ChatGPT 控制本机时，Junius 才能调用 Desktop 工具；这同样适用于只读访问。没有当前任务授权时，不得枚举窗口、截图或读取剪贴板。以前任务中的授权不会延续到当前任务，加载 Desktop contract 也不代表获得授权。授权只能由携带 `explicit_user_authorization=true` 的成功 `control_begin` 建立；后续调用不再重复该声明，只允许同一个仍处于活动状态的 session 使用。执行 `control_end` 后，该 session 的授权立即失效。
 
 Desktop helper 改为惰性启动：只有第一次已授权的 Desktop 调用才会启动。正常 Host/Worker 启动以及普通项目校验都不会预热或查看 Desktop。
 

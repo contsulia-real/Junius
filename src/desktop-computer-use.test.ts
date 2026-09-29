@@ -32,6 +32,17 @@ async function fixture(
     helper,
     `
 function responseFor(request) {
+  if (
+    process.env.JUNIUS_TEST_DESKTOP_FAIL_COMMAND ===
+    request.command
+  ) {
+    return {
+      ok: false,
+      code: "test_failure",
+      message: "forced desktop helper failure"
+    };
+  }
+
   if (request.command === "windows") {
     return {
       ok: true,
@@ -174,6 +185,19 @@ if (process.argv.includes("--server")) {
   };
 }
 
+async function beginAuthorizedControl(
+  service: DesktopComputerUseService,
+  session = "desktop",
+): Promise<void> {
+  await service.run({
+    session,
+    command:
+      "control_begin",
+    explicitUserAuthorization:
+      true,
+  });
+}
+
 test("desktop helper strips inherited Python preload environment", async () => {
   const f = await fixture({
     environment: {
@@ -191,6 +215,10 @@ test("desktop helper strips inherited Python preload environment", async () => {
   });
 
   try {
+    await beginAuthorizedControl(
+      f.service,
+    );
+
     const result =
       await f.service.run({
         session: "desktop",
@@ -235,6 +263,10 @@ test("desktop helper strips inherited Python preload environment", async () => {
 test("desktop screenshot separates MCP image data from metadata", async () => {
   const f = await fixture();
   try {
+    await beginAuthorizedControl(
+      f.service,
+    );
+
     const result =
       await f.service.run({
         session: "desktop",
@@ -303,6 +335,10 @@ test("desktop exposes bounded screenshot and input primitives", async () => {
           "arguments_not_allowed",
     );
 
+    await beginAuthorizedControl(
+      f.service,
+    );
+
     const action =
       await f.service.run({
         session: "desktop",
@@ -335,6 +371,10 @@ test("desktop drag, wait, and mixed action batches are bounded primitives", asyn
   const f = await fixture();
 
   try {
+    await beginAuthorizedControl(
+      f.service,
+    );
+
     const drag =
       await f.service.run({
         session: "desktop",
@@ -511,6 +551,10 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
   const f = await fixture();
 
   try {
+    await beginAuthorizedControl(
+      f.service,
+    );
+
     const macro =
       await f.service.run({
         session: "desktop",
@@ -642,6 +686,212 @@ test("desktop key macros and clipboard text are bounded primitives", async () =>
   }
 });
 
+test("desktop requires an explicitly authorized control lifecycle before observation or input", async () => {
+  const f = await fixture();
+
+  try {
+    assert.equal(
+      f.service.state()
+        .helperRunning,
+      false,
+    );
+
+    for (const command of [
+      "windows",
+      "screenshot",
+      "clipboard_read",
+    ] as const) {
+      await assert.rejects(
+        f.service.run({
+          session:
+            "privacy",
+          command,
+        }),
+        (error: unknown) =>
+          error instanceof
+            DesktopComputerUseError &&
+          error.code ===
+            "authorization_required",
+      );
+      assert.equal(
+        f.service.state()
+          .helperRunning,
+        false,
+      );
+    }
+
+    await assert.rejects(
+      f.service.run({
+        session:
+          "privacy",
+        command:
+          "control_begin",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "authorization_required",
+    );
+    assert.equal(
+      f.service.state()
+        .helperRunning,
+      false,
+    );
+
+    const inactiveEnd =
+      await f.service.run({
+        session:
+          "cleanup-only",
+        command:
+          "control_end",
+      });
+    assert.deepEqual(
+      inactiveEnd.result,
+      {
+        active: false,
+        session:
+          "cleanup-only",
+      },
+    );
+    assert.equal(
+      f.service.state()
+        .helperRunning,
+      false,
+    );
+
+    const begun =
+      await f.service.run({
+        session:
+          "privacy",
+        command:
+          "control_begin",
+        explicitUserAuthorization:
+          true,
+      });
+    assert.deepEqual(
+      (
+        begun.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command:
+          "control_begin",
+        session:
+          "privacy",
+      },
+      "Authorization assertion must not be forwarded into the Python helper protocol.",
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session:
+          "privacy",
+        command:
+          "screenshot",
+        explicitUserAuthorization:
+          true,
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "authorization_not_allowed",
+    );
+
+    await f.service.run({
+      session:
+        "privacy",
+      command:
+        "windows",
+    });
+
+    await assert.rejects(
+      f.service.run({
+        session:
+          "other-session",
+        command:
+          "screenshot",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "authorization_required",
+    );
+
+    await f.service.run({
+      session:
+        "privacy",
+      command:
+        "control_end",
+    });
+
+    await assert.rejects(
+      f.service.run({
+        session:
+          "privacy",
+        command:
+          "screenshot",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "authorization_required",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("desktop revokes authorization even when control_end cleanup fails", async () => {
+  const f = await fixture({
+    environment: {
+      JUNIUS_TEST_DESKTOP_FAIL_COMMAND:
+        "control_end",
+    },
+  });
+
+  try {
+    await beginAuthorizedControl(
+      f.service,
+      "privacy-failed-end",
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session:
+          "privacy-failed-end",
+        command:
+          "control_end",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "helper_failed",
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session:
+          "privacy-failed-end",
+        command:
+          "screenshot",
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "authorization_required",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
 test("desktop lazily starts and reuses one persistent helper process across actions", async () => {
   const f = await fixture();
   try {
@@ -649,6 +899,16 @@ test("desktop lazily starts and reuses one persistent helper process across acti
       f.service.state()
         .helperRunning,
       false,
+    );
+
+    await beginAuthorizedControl(
+      f.service,
+    );
+
+    assert.equal(
+      f.service.state()
+        .helperRunning,
+      true,
     );
 
     const first =
@@ -837,6 +1097,8 @@ test("desktop real Python helper supports screenshot-only perception when explic
         session:
           "integration",
         command: "control_begin",
+        explicitUserAuthorization:
+          true,
       });
     assert.deepEqual(
       control.result,
