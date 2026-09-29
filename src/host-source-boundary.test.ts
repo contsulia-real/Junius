@@ -155,6 +155,22 @@ test("host source boundary treats startup control files as restart-only", async 
     assert.equal(
       sourceChangeDisposition(
         root,
+        "prompts",
+        "engineering.md",
+      ),
+      "reload-worker",
+    );
+    assert.equal(
+      sourceChangeDisposition(
+        root,
+        "prompts",
+        "notes.txt",
+      ),
+      "ignore",
+    );
+    assert.equal(
+      sourceChangeDisposition(
+        root,
         "src",
         undefined,
       ),

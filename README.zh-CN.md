@@ -71,6 +71,19 @@ Core 契约要求：进行实质性软件工程工作前先加载 Engineering �
 
 这些契约用于约束调用 Junius 的助手，而不是可执行的授权规则，也不会重新引入 Junius 自己的命令/能力策略层。现有 AGENTS.md 修改前预检仍是内置文件工具的一套独立机制。
 
+### 自定义 Junius 提示词
+
+运行契约不再硬编码在 TypeScript 中。Junius 会从仓库的 `prompts/` 目录读取 UTF-8 Markdown：
+
+- `prompts/core.md` —— 通过 MCP `instructions` 发送的 Core Operating Contract；
+- `prompts/engineering.md` —— 软件工程工作模式；
+- `prompts/desktop.md` —— Desktop Computer Use 契约；
+- `prompts/browser.md` —— Browser Computer Use 契约。
+
+直接编辑这些 Markdown 文件即可自定义 Junius 提供给 ChatGPT 的指令。它们会被纳入源码指纹、last-known-good 快照、正式 Release 包和常规源码验证。正在运行的 Host 会监听 `prompts/*.md`；提示词发生变化后，会像其他 Worker 侧源码变更一样走完整验证后的 Worker 热重载流程。
+
+正常 Windows 安装后，可编辑文件位于 `%LOCALAPPDATA%\Junius\app\prompts`。Junius 原地更新会刷新 Release 中的 `prompts` 目录，因此长期自定义内容建议自行纳入版本控制，或在更新后重新应用。
+
 ## 一行命令安装
 
 当前的一行安装器面向 Windows。

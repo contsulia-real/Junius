@@ -14,6 +14,7 @@ import {
 export type HostWatchedArea =
   | "src"
   | "python"
+  | "prompts"
   | "root"
   | "scripts";
 
@@ -160,7 +161,10 @@ export function sourceChangeDisposition(
   relativePath: string | undefined,
 ): SourceChangeDisposition {
   if (relativePath === undefined) {
-    return area === "python"
+    return (
+      area === "python" ||
+      area === "prompts"
+    )
       ? "reload-worker"
       : "restart-host";
   }
@@ -189,6 +193,12 @@ export function sourceChangeDisposition(
 
   if (area === "python") {
     return normalized.endsWith(".py")
+      ? "reload-worker"
+      : "ignore";
+  }
+
+  if (area === "prompts") {
+    return normalized.endsWith(".md")
       ? "reload-worker"
       : "ignore";
   }

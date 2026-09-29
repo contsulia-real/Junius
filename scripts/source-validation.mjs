@@ -109,7 +109,7 @@ async function fingerprintSource(root) {
   const hash = createHash("sha256");
   const sources = [];
 
-  for (const directory of ["src", "python"]) {
+  for (const directory of ["src", "python", "prompts"]) {
     if (!(await exists(join(root, directory)))) continue;
 
     const files = await walkFiles(join(root, directory));

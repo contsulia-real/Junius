@@ -395,6 +395,7 @@ export async function resolveNpmCli(
 
 const COPY_DIRECTORIES = [
   "bin",
+  "prompts",
   "python",
   "scripts",
   "src",

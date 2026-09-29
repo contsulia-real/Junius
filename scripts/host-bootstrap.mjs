@@ -114,7 +114,7 @@ async function fingerprintSource(root) {
   const hash = createHash("sha256");
   const sources = [];
 
-  for (const directory of ["src", "python"]) {
+  for (const directory of ["src", "python", "prompts"]) {
     if (!(await exists(join(root, directory)))) continue;
 
     const files = await walkFiles(join(root, directory));
@@ -155,7 +155,7 @@ async function fingerprintSource(root) {
 async function copySnapshot(destination) {
   await mkdir(destination, { recursive: true });
 
-  for (const directory of ["src", "python"]) {
+  for (const directory of ["src", "python", "prompts"]) {
     const source = join(projectRoot, directory);
     if (await exists(source)) {
       await cp(source, join(destination, directory), {

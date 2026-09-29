@@ -130,6 +130,22 @@ test(
         lockText,
         "utf8",
       );
+      await mkdir(
+        join(
+          packageRoot,
+          "prompts",
+        ),
+        { recursive: true },
+      );
+      await writeFile(
+        join(
+          packageRoot,
+          "prompts",
+          "core.md",
+        ),
+        "# custom core\n",
+        "utf8",
+      );
 
       await copyApplication(
         packageRoot,
@@ -162,6 +178,17 @@ test(
           "utf8",
         ),
         lockText,
+      );
+      assert.equal(
+        await readFile(
+          join(
+            appRoot,
+            "prompts",
+            "core.md",
+          ),
+          "utf8",
+        ),
+        "# custom core\n",
       );
     } finally {
       await rm(

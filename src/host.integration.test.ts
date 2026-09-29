@@ -535,37 +535,20 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
     const mcpSessionId =
       initializedMcp.sessionId;
 
-    assert.match(
-      initializedMcp
-        .instructions ?? "",
-      /# JUNIUS OPERATING CONTRACT/u,
-    );
-    assert.match(
-      initializedMcp
-        .instructions ?? "",
-      /load_junius_contracts/u,
-    );
-    for (
-      const specializedDetail of [
-        "control_begin",
-        "key_macro",
-        "action_batch",
-        "screenshot_after",
-        "playwright_cli",
-        "localStorage",
-        "WebMCP",
-      ]
-    ) {
-      assert.equal(
-        initializedMcp
-          .instructions
-          ?.includes(
-            specializedDetail,
-          ),
-        false,
-        `Core MCP instructions unexpectedly embed specialized detail: ${specializedDetail}`,
+    const expectedCoreContract =
+      await readFile(
+        join(
+          process.cwd(),
+          "prompts",
+          "core.md",
+        ),
+        "utf8",
       );
-    }
+    assert.equal(
+      initializedMcp
+        .instructions,
+      expectedCoreContract,
+    );
 
     const tools =
       await listMcpTools(
@@ -631,37 +614,29 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         .textContents.length,
       4,
     );
-    assert.equal(
-      loadedContracts
-        .textContents[1]
-        ?.includes(
-          "# JUNIUS ENGINEERING WORK MODE",
+    const expectedSpecializedContracts =
+      await Promise.all(
+        [
+          "engineering.md",
+          "desktop.md",
+          "browser.md",
+        ].map(
+          (file) =>
+            readFile(
+              join(
+                process.cwd(),
+                "prompts",
+                file,
+              ),
+              "utf8",
+            ),
         ),
-      true,
-    );
-    assert.equal(
+      );
+    assert.deepEqual(
       loadedContracts
-        .textContents[1]
-        ?.includes(
-          "RED -> GREEN",
-        ),
-      true,
-    );
-    assert.equal(
-      loadedContracts
-        .textContents[2]
-        ?.includes(
-          "key_macro",
-        ),
-      true,
-    );
-    assert.equal(
-      loadedContracts
-        .textContents[3]
-        ?.includes(
-          "playwright_cli",
-        ),
-      true,
+        .textContents
+        .slice(1),
+      expectedSpecializedContracts,
     );
 
     const desktopTool =

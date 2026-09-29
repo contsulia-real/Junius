@@ -209,6 +209,13 @@ const watchers: FSWatcher[] = [
     },
   ),
   watch(
+    resolve(cwd, "prompts"),
+    { recursive: true },
+    (_eventType, fileName) => {
+      sourceChange("prompts", fileName);
+    },
+  ),
+  watch(
     cwd,
     { recursive: false },
     (_eventType, fileName) => {

@@ -10,6 +10,7 @@
     "bin",
     "python/desktop_helper.py",
     "python/desktop_indicator.py",
+    "prompts",
     "scripts",
     "src",
     "LICENSE",

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import {
+  createHash,
+} from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   JUNIUS_BROWSER_CONTRACT,
@@ -9,116 +13,38 @@ import {
 } from "./junius-contracts.js";
 
 test(
-  "Core contract routes specialized work without embedding capability details",
+  "operating contracts are sourced from editable Markdown files",
   () => {
-    assert.match(
-      JUNIUS_CORE_CONTRACT,
-      /load_junius_contracts/u,
+    const expected = [
+      ["core.md", JUNIUS_CORE_CONTRACT],
+      ["engineering.md", JUNIUS_ENGINEERING_CONTRACT],
+      ["desktop.md", JUNIUS_DESKTOP_CONTRACT],
+      ["browser.md", JUNIUS_BROWSER_CONTRACT],
+    ] as const;
+
+    for (const [file, contract] of expected) {
+      const markdown = readFileSync(
+        new URL(`../prompts/${file}`, import.meta.url),
+        "utf8",
+      );
+      assert.equal(contract, markdown);
+    }
+
+    const source = readFileSync(
+      new URL("./junius-contracts.ts", import.meta.url),
+      "utf8",
     );
-
-    for (
-      const mode of [
-        "engineering",
-        "desktop",
-        "browser",
-      ]
-    ) {
-      assert.equal(
-        JUNIUS_CORE_CONTRACT.includes(
-          mode,
-        ),
-        true,
-      );
-    }
-
-    for (
-      const detail of [
-        "control_begin",
-        "key_macro",
-        "action_batch",
-        "screenshot_after",
-        "playwright_cli",
-        "localStorage",
-        "WebMCP",
-      ]
-    ) {
-      assert.equal(
-        JUNIUS_CORE_CONTRACT.includes(
-          detail,
-        ),
-        false,
-        "Core unexpectedly embeds specialized detail: " +
-          detail,
-      );
-    }
+    assert.match(source, /readFileSync/u);
+    assert.match(source, /\.\.\/prompts\//u);
+    assert.doesNotMatch(
+      source,
+      /export const JUNIUS_CORE_CONTRACT = `/u,
+    );
   },
 );
 
 test(
-  "specialized contracts contain their required operational behavior",
-  () => {
-    for (
-      const expected of [
-        "RED -> GREEN",
-        "workspace_apply verification happens AFTER",
-        "Do not push unless the user explicitly requested a push",
-      ]
-    ) {
-      assert.equal(
-        JUNIUS_ENGINEERING_CONTRACT.includes(
-          expected,
-        ),
-        true,
-        "Engineering contract missing: " +
-          expected,
-      );
-    }
-
-    for (
-      const expected of [
-        "control_begin",
-        "control_end",
-        "key_macro",
-        "action_batch",
-        "screenshot_after",
-        "screenshot_handle",
-        "clipboard_write",
-      ]
-    ) {
-      assert.equal(
-        JUNIUS_DESKTOP_CONTRACT.includes(
-          expected,
-        ),
-        true,
-        "Desktop contract missing: " +
-          expected,
-      );
-    }
-
-    for (
-      const expected of [
-        "playwright_cli",
-        "-s=<session>",
-        "run-code",
-        "localStorage",
-        "WebMCP",
-        "close the same named session",
-      ]
-    ) {
-      assert.equal(
-        JUNIUS_BROWSER_CONTRACT.includes(
-          expected,
-        ),
-        true,
-        "Browser contract missing: " +
-          expected,
-      );
-    }
-  },
-);
-
-test(
-  "contract loader deduplicates modes while preserving requested order",
+  "contract loader deduplicates modes while preserving requested order and content digests",
   () => {
     const loaded =
       loadJuniusContracts([
@@ -144,14 +70,14 @@ test(
       const contract of
       loaded
     ) {
-      assert.match(
-        contract.digest,
-        /^[a-f0-9]{64}$/u,
-      );
       assert.equal(
-        contract.text.length >
-          500,
-        true,
+        contract.digest,
+        createHash("sha256")
+          .update(
+            contract.text,
+            "utf8",
+          )
+          .digest("hex"),
       );
     }
   },

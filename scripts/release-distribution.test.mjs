@@ -114,6 +114,10 @@ const requiredPackFiles = [
   "scripts/install-core.mjs",
   "src/mcp-server.ts",
   "python/desktop_helper.py",
+  "prompts/core.md",
+  "prompts/engineering.md",
+  "prompts/desktop.md",
+  "prompts/browser.md",
 ].map(
   (path) => ({
     path,

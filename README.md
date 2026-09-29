@@ -71,6 +71,19 @@ The Core contract requires the Engineering contract before substantive software-
 
 These contracts guide the calling assistant. They are not executable authorization rules and do not reintroduce a Junius command/capability policy layer. The existing AGENTS.md mutation preflight remains a separate built-in file-tool mechanism.
 
+### Customizing Junius prompts
+
+The operating contracts are not hardcoded in TypeScript. Junius loads them as UTF-8 Markdown from the repository's `prompts/` directory:
+
+- `prompts/core.md` — the Core Operating Contract sent through MCP `instructions`;
+- `prompts/engineering.md` — software-engineering work mode;
+- `prompts/desktop.md` — Desktop Computer Use contract;
+- `prompts/browser.md` — Browser Computer Use contract.
+
+Edit these Markdown files to customize the instructions Junius supplies to ChatGPT. The files are included in source fingerprints, last-known-good snapshots, installed release packages, and normal source validation. A running Host watches `prompts/*.md`; a prompt edit follows the same validated Worker hot-reload path as other Worker-side source changes.
+
+For a normal Windows installation, the editable copies live under `%LOCALAPPDATA%\Junius\app\prompts`. In-place Junius updates refresh the packaged `prompts` directory, so keep any long-lived custom prompt changes under version control or reapply them after updating.
+
 ## One-command installation
 
 The current one-command installer targets Windows.
