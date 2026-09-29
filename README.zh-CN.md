@@ -1,0 +1,455 @@
+# Junius
+
+[English](README.md) | **简体中文**
+
+**通过 MCP 为 ChatGPT 提供本地计算机控制能力。**
+
+Junius 是一个面向 ChatGPT 对话的本地 MCP 执行服务。它让调用它的助手能够直接访问本地 Workspace 文件、本地进程、后台 Job、浏览器自动化，以及 Windows 桌面交互能力。
+
+> **Junius 是执行服务，不是策略引擎。**
+>
+> 某项操作是否合适、是否具有破坏性、是否符合用户意图，由用户和调用 Junius 的助手决定。Junius 不维护第二套命令授权系统。
+
+Junius **不是操作系统沙箱**。由 Junius 启动的进程拥有启动 Junius 的操作系统用户所拥有的权限。
+
+## MCP 接口
+
+    load_junius_contracts(modes)
+
+    list_workspaces()
+    create_workspace(id, root_path)
+    delete_workspace(id)
+
+    ls(workspace, ...)
+    read(workspace, ...)
+    write(workspace, ...)
+    workspace_apply(workspace, files, verify)
+    rg(workspace, ...)
+    workspace_batch(workspace, operations)
+
+    run_command(workspace, executable, args)
+
+    start_job(workspace, executable, args)
+    get_job(job)
+    wait_job(job, timeout_ms)
+    read_job_output(job, stream, offset, limit)
+    cancel_job(job)
+
+    playwright_cli(session, command, args)
+
+    desktop(session, command, ...)
+
+Junius 没有管理 Web 界面。Workspace 的创建、删除与检查，命令执行、Job、浏览器控制和桌面控制，都设计为直接通过 ChatGPT 对话驱动。
+
+## 注入式运行契约
+
+Junius 使用 MCP 原生 instructions 机制向 ChatGPT 提供执行契约。
+
+Core Operating Contract 会通过 MCP 初始化结果中的 `instructions` 字段发送。Core 只包含跨任务通用的 Junius 行为规则：保持用户意图、指令优先级、Workspace/AGENTS.md 语义、进程和 Job 语义、验证、清理，以及任务完成纪律。
+
+体积较大的任务专用行为不会全部塞入 Core。Junius 将它们拆成三个独立契约：
+
+- `engineering` —— 软件工程工作流、测试与验证纪律、真实表面 QA、Git 纪律和最终审查；
+- `desktop` —— 仅基于截图的桌面 Computer Use、控制生命周期、坐标语义、包括 `key_macro` 和 `action_batch` 在内的原语选择、操作后观察验证和清理；
+- `browser` —— 不受 Junius 命令白名单限制的 Playwright CLI 表面、浏览器会话连续性、依赖当前状态的引用、操作后观察验证和会话清理。
+
+ChatGPT 只加载当前任务真正需要的模式：
+
+    load_junius_contracts(
+      modes = ["engineering"]
+    )
+
+需要多个模式时：
+
+    load_junius_contracts(
+      modes = ["engineering", "browser"]
+    )
+
+结果首先返回 mode/digest 元数据，随后将每个选中的契约作为独立的原始 Markdown 文本块返回。重复模式会去重，同时保留首次请求的顺序。
+
+Core 契约要求：进行实质性软件工程工作前先加载 Engineering 契约；在某个任务中第一次调用 `desktop` 前先加载 Desktop 契约；第一次调用 `playwright_cli` 前先加载 Browser 契约。
+
+这些契约用于约束调用 Junius 的助手，而不是可执行的授权规则，也不会重新引入 Junius 自己的命令/能力策略层。现有 AGENTS.md 修改前预检仍是内置文件工具的一套独立机制。
+
+## 一行命令安装
+
+当前的一行安装器面向 Windows。
+
+用户电脑需要预先具备：
+
+- Node.js 20+，并带有 npm/npx
+- Python 3.10+
+
+在 Windows 上通过一条 PowerShell 命令安装 Junius：
+
+    irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex
+
+GitHub Releases 是 Junius 的公开分发渠道。Bootstrap 脚本会：
+
+- 获取最新已发布的 Junius GitHub Release，包括预发布版本；
+- 下载 `junius-windows.tgz` 和 `SHA256SUMS.txt`；
+- 在执行包内任何内容之前验证 Release 包的 SHA-256；
+- 将验证通过的包解压到临时目录；
+- 使用用户现有的 Node.js 运行时调用包内 Junius 安装器。
+
+安装器不会下载或替换 Node 或 Python。它要求 Node.js 20 或更高版本，并查找机器上已有的兼容 Python，然后：
+
+- 将 Junius 安装到 `%LOCALAPPDATA%\Junius\app`；
+- 将包内依赖锁物化为 `npm-shrinkwrap.json`；
+- 安装 Junius 的 npm 依赖，包括 Browser CLI；
+- 使用用户现有 Python 创建 `%LOCALAPPDATA%\Junius\app\.venv`；
+- 将 `requirements-desktop.txt` 安装到该虚拟环境；
+- 运行已安装运行时的完整 Junius 验证套件；
+- 将 Junius 注册到当前 Windows 用户的登录启动项；
+- 立即启动 Junius，并等待 Host 健康检查通过。
+
+正常的按用户安装路径不需要管理员提权。
+
+安装完成后，该 Windows 用户登录时 Junius 会自动启动。启动项会记录安装时使用的精确 Node 可执行文件；Desktop helper 则使用基于用户现有 Python 创建的已安装 `.venv`。
+
+再次运行同一条 PowerShell 命令会从最新已发布 GitHub Release 执行原地更新：Junius 会先复制并验证新包，然后重启现有 Host，使新版本立即生效。如果安装器本身是通过正在运行的 Junius 工具调用启动的，它不会终止自己的执行树；这种情况下会先完成安装和验证，然后提示必须重启 Junius 才能激活新版本。
+
+Host 只使用一个回环 HTTP 监听器：
+
+    http://127.0.0.1:8787
+
+路由如下：
+
+    MCP:        /mcp
+    Health:     /__junius/host-health
+    Supervisor: /__junius/supervisor
+
+没有单独的 Host 控制端口，也没有管理界面。
+
+## 将 Junius 连接到 ChatGPT
+
+GitHub Release 安装器负责安装并启动本地 Junius 服务。它**不会**替你创建 OpenAI Secure MCP Tunnel，也不会自动配置 ChatGPT 插件连接。
+
+ChatGPT 无法直接连接仅监听回环地址的 MCP 服务器。对于本地 Junius 安装，请使用 OpenAI Secure MCP Tunnel：
+
+1. 在 OpenAI Platform 的 Tunnel 设置中创建或选择一个 Tunnel。
+2. 在同一台 Windows 电脑上安装并配置当前版本的 OpenAI `tunnel-client`。
+3. 将该 Tunnel 配置精确指向 Junius MCP URL：
+
+       http://127.0.0.1:8787/mcp
+
+4. 针对该配置运行 `tunnel-client doctor`，确认状态健康。
+5. 使用 Junius 期间保持 `tunnel-client run` 运行。
+6. 在 ChatGPT 中打开 **Plugins**，点击加号，在 Developer mode 下添加 MCP 连接。
+7. 连接类型选择 **Tunnel**，然后选择对应的 Secure MCP Tunnel。
+8. 检查发现的 Junius 工具，并创建个人插件连接。
+
+不要把 Tunnel 指向裸的 `http://127.0.0.1:8787` 源地址。与 MCP 共用端口的 `/__junius/*` 路由属于本地运行诊断接口，不属于公开 MCP 表面。
+
+Secure MCP Tunnel 的配置需要相应的 OpenAI Platform Tunnel 权限、Tunnel ID 和运行时 API Key。这些属于 OpenAI 账户/Workspace 资源，Junius 安装器刻意不会收集或保存它们。
+
+当前 OpenAI 开发者文档：
+
+- ChatGPT 开发者平台概览：https://developers.openai.com/chatgpt
+- Plugins 快速开始：https://developers.openai.com/plugins/quickstart
+- 连接并测试插件：https://developers.openai.com/plugins/deploy/connect-chatgpt
+- Secure MCP Tunnel：https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+
+OpenAI 当前开发者文档说明，ChatGPT Developer mode 在 ChatGPT Plus 和 Pro 中提供对读写工具的完整 Model Context Protocol 支持。Junius 依赖这套完整 MCP 工具表面。产品可用性和界面可能独立于 Junius 发生变化，因此如果旧的产品帮助文章与当前开发者文档冲突，应优先参考最新 OpenAI Developers 文档。
+
+## 从源码开发
+
+仓库开发使用 pnpm 12.6.0：
+
+    pnpm install
+    pnpm dev
+
+构建 Release 资产：
+
+    npm run release:build
+
+这会生成 `dist/junius-windows.tgz`、`dist/SHA256SUMS.txt`、`dist/install.ps1` 和 `dist/release.json`。
+
+一行安装器不要求用户系统里安装 pnpm。npm 仅作为经过验证的 Junius 应用包内部的依赖安装器使用；npm registry 不是 Junius 的公开分发渠道。
+
+## 以对话为中心的工作区管理
+
+Workspace 被刻意设计得很小：
+
+    Workspace
+    = 稳定 ID
+    + 规范化本地根路径
+
+它没有命令权限、可执行文件注册表或参数规则。
+
+通过 ChatGPT 创建 Workspace：
+
+    create_workspace(
+      id = "weave",
+      root_path = "C:\Projects\Weave"
+    )
+
+查看所有 Workspace：
+
+    list_workspaces()
+
+删除一个 Workspace 注册：
+
+    delete_workspace(id = "weave")
+
+`delete_workspace` 只删除 Junius 中的注册信息，绝不会删除对应目录或目录里的文件。
+
+Workspace 注册状态持久化在仓库之外。
+
+    Windows:
+    %LOCALAPPDATA%\Junius\workspace-state.json
+
+    Linux/macOS:
+    $XDG_STATE_HOME/Junius/workspace-state.json
+    或 ~/.local/state/Junius/workspace-state.json
+
+可通过 `JUNIUS_WORKSPACE_STATE_PATH` 覆盖默认路径。
+
+迁移时仍接受包含旧授权字段的历史 Workspace 状态；这些字段会被忽略，之后重新写出的状态只使用当前的根路径模型。
+
+## 命令执行
+
+`run_command` 可以启动任意可执行文件，并传入任意参数向量：
+
+    run_command(
+      workspace,
+      executable,
+      args
+    )
+
+示例：
+
+    run_command(
+      workspace = "default",
+      executable = "git",
+      args = ["status", "--short", "--branch"]
+    )
+
+Junius 不要求事先注册可执行文件，也不会应用参数白名单。
+
+所选 Workspace 决定子进程工作目录：
+
+    cwd = Workspace root
+
+执行使用直接进程生成，并明确关闭 shell：
+
+    child_process.spawn(executable, args, {
+      cwd,
+      shell: false
+    })
+
+如果确实需要 shell 语义，调用方可以显式启动 `cmd.exe`、PowerShell 或 `/bin/sh` 等 shell 可执行文件，并传入该 shell 的参数。Junius 不会为了判断安全性或意图去解析命令字符串。
+
+同步执行保留以下运行时工程边界：
+
+- 捕获输出有上限；
+- 执行时间有上限；
+- 返回 stdout/stderr 和退出诊断；
+- 强制停止时终止进程树；
+- Windows 下通过 `taskkill /T /F` 终止后代进程。
+
+这些属于执行完整性控制，而不是命令授权规则。
+
+## 后台任务
+
+长时间运行的命令使用相同的可执行文件模型：
+
+    start_job(workspace, executable, args)
+
+返回的 Job ID 可用于 `get_job`、`wait_job`、`read_job_output` 和 `cancel_job`。
+
+Job 保留：
+
+- 有上限的 stdout/stderr 捕获；
+- 持久化终态历史；
+- 取消能力；
+- 运行期间的 Worker 所有权和亲和性；
+- Windows 下通过 guardian 路径和 Job Object 实现的崩溃收容；
+- Worker 或 Host 消失时的中断 Job 恢复。
+
+当前 Job 历史写入使用以 executable 为核心的 v2 schema。历史 v1 记录中保存的 command key 仍可以读取并会被规范化。
+
+## 工作区文件工具
+
+内置文件工具与进程执行刻意采用不同模型。它们使用 Workspace 相对路径，并实现自己的路径包含边界。
+
+重要特性包括：
+
+- 拒绝绝对路径和 `..` 穿越；
+- 读取不会沿链接逃出 Workspace；
+- 写入拒绝符号链接/junction 父目录别名；
+- 事务式多文件写入先 stage，再 commit；提交失败时尝试反向回滚；
+- commit 前后重新验证写入父目录，以缩小路径替换竞态窗口；
+- 根目录 `.junius` 控制目录被保留；
+- `.git` 元数据不能通过通用 Workspace 文件工具访问；
+- 如果 Junius 运行时/状态路径和 Browser profile 路径位于 Workspace 内，它们也会受到保护；
+- `rg` 不能通过后续 include glob 重新启用受保护路径。
+
+### AGENTS.md 行为
+
+Workspace 检查对 AGENTS.md 采用类似 Codex 的目录作用域规则：
+
+- 一个 AGENTS.md 作用于其所在目录及整个子树；
+- 更深层的 AGENTS.md 在指令链中排在更后面，因此在更窄的作用域中具有更具体的约束；
+- `ls`、`read`、`rg` 和 `workspace_batch` 会自动返回适用的 AGENTS.md 内容、每份文件的作用域以及 SHA-256 digest；
+- 递归扫描还会发现扫描子树中的嵌套 AGENTS.md；
+- `write` 和 `workspace_apply` 会执行强制 AGENTS.md 预检。如果存在适用指令，而调用方没有提供当前 `agents_digest`，Junius 会在修改文件前拒绝写入，并返回完整适用指令链和 digest；
+- 如果适用的 AGENTS.md 被修改，旧 digest 将不再能授权内置文件修改；
+- 过大的 AGENTS.md 指令集合会明确失败，而不是被静默省略。
+
+调用 Junius 的 Agent 必须将这些指令视为对应作用域内的约束。系统、开发者和用户直接给出的指令优先级仍然更高。
+
+这些检查只适用于 Junius 内置文件工具。它们不会限制由 `run_command` 或 `start_job` 启动的可执行文件；进程执行不受 Workspace 文件工具策略限制。
+
+## 浏览器计算机操作
+
+`playwright_cli` 暴露已安装 Playwright CLI 的完整命令表面。
+
+Junius 只注入命名 session 参数：
+
+    -s=<session>
+
+其余请求的 command 和参数向量保持原样转发。Junius 不提供 Browser 命令白名单或逐参数策略。只要已安装的 CLI 版本支持，`eval`、`run-code`、storage/cookie 操作、网络请求检查与路由、录制/trace/video、WebMCP、attach/detach、install 命令以及未来新增的 Playwright CLI 命令都可以使用。
+
+命名 Browser session 在 Worker 热切换过程中保持 Worker 亲和。空闲 session 数量受限，并会独立清理。
+
+Junius 提供持久化 Browser 状态目录，但不会强制注入 Playwright CLI 的持久化选项。Browser/profile 是否持久化取决于调用方给出的命令和参数，例如 `--persistent` 或显式的 state-save/state-load。Browser 审计会记录命令标识和参数数量，但不会记录任意参数向量本身。
+
+## Windows 桌面计算机操作
+
+Desktop 感知刻意只基于截图。Junius 不使用 Windows UI Automation，也不依赖 accessibility/语义控件树。它可以枚举顶层原生窗口、截取整个屏幕或单个窗口、聚焦窗口、执行基于坐标的鼠标操作、拖动、等待、发送键盘操作和宏、读写 Unicode 剪贴板文本，以及在支持的位置直接输入文本。
+
+`action_batch` 可以在一次 helper 往返中执行最多 128 个混合 Desktop 操作。批量操作可以组合聚焦、鼠标移动/点击/按下/抬起/滚轮、拖动、等待、键盘操作/宏、剪贴板访问和文本输入。显式 wait 与 drag 的持续时间均有限制；如果批量执行失败，已按下的按键/鼠标按钮会在清理路径中释放。
+
+对于“操作 → 观察”循环，`action_batch` 支持 `screenshot_after`。启用后，操作后的截图会在同一个 MCP 响应中返回；`screenshot_handle` 可以指定只截取某个顶层窗口，而不是整个屏幕。
+
+Desktop 任务有显式控制生命周期：
+
+    control_begin(session)
+    → desktop actions
+    → control_end(session)
+
+整个任务必须使用同一个 session。
+
+只要至少存在一个活动 Desktop 控制作用域，Junius 就会在本机顶部中央显示：
+
+    ChatGPT 正通过 Junius 操作电脑
+
+四个可穿透点击、始终置顶的屏幕边缘窗口提供呼吸灯效果。顶部和底部边缘拥有四角像素；左右边缘避开上下边缘的厚度，以防 alpha 重叠导致角落亮度异常。
+
+这个提示会在整个控制作用域期间持续显示，而不是依赖空闲超时。helper 或 Worker 退出时会销毁这些原生窗口，作为崩溃兜底。
+
+Desktop session 在成功 `control_end` 前保持 Worker 亲和，因此 Worker 热切换不会把可见的接管生命周期和真正执行桌面操作的 Worker 拆开。
+
+## 主控进程 / 工作进程架构
+
+Junius 使用稳定 Host + 可替换 Worker 的结构：
+
+    ChatGPT
+       |
+       v
+    127.0.0.1:8787
+       |
+      Host
+       |
+       +--> active Worker
+       |
+       +--> retiring Worker(s)，等待亲和资源/进行中的工作排空
+
+Host 负责公开路由。Worker 在随机回环端口监听，并要求 Host 注入的私有 256 位令牌。
+
+源码热重载流程：
+
+    source change
+    → 完整验证
+    → 启动 candidate Worker
+    → ready IPC
+    → 私有健康检查
+    → promote candidate
+    → 保留上一 Worker 用于回滚/排空
+
+验证失败或 candidate 启动失败时，当前 active Worker 保持不变。新 Worker promote 后如果在回滚窗口内退出，可以回退到此前仍存活的 Worker。
+
+### 资源亲和性
+
+进程内资源会继续留在拥有它们的 Worker 上：
+
+- MCP session ID 在路由仍活动时保留其原 Worker；
+- 正在运行的 Job 保留创建它的 Worker；
+- 命名 Browser session 在 close 或空闲过期前保留其 Worker；
+- Desktop 控制 session 从 `control_begin` 到成功 `control_end` 始终保留其 Worker。
+
+Workspace 修改属于共享持久化配置。
+
+一次成功的 `create_workspace` 或 `delete_workspace` 响应会先由 Host 暂存，直到所有其他仍存活 Worker 都重新加载了持久化 Workspace 状态后才返回给调用方。无法重新加载的 Worker 会被隔离，而不是继续使用过期注册状态。
+
+## 最后已知良好版本启动
+
+`pnpm dev` 和 `pnpm start` 都会进入 `scripts/host-launcher.mjs`。
+
+Launcher 优先使用最后一个已验证的 bootstrap 副本。Bootstrap 会为源码/运行时控制输入生成指纹，并且只有完整验证通过后才推进 last-known-good Release。
+
+验证失败或启动失败都不会破坏此前已验证的 Release。
+
+最新三个 Host Release 保存在：
+
+    .junius/runtime/releases
+
+Host-only 变更要求手动重启 Junius，而不是自动自我重启。
+
+## 审计
+
+Audit 用于观察，不是授权层。
+
+它保存有上限的元数据，例如 category/action/status、Workspace、可执行文件标识、参数数量、退出码、输出大小、持续时间，以及 Browser/Desktop 操作元数据。
+
+它刻意不复制：
+
+- 命令 stdout/stderr 内容；
+- 任意命令的原始完整参数向量；
+- 文件内容或编辑文本；
+- 截图；
+- Browser/Desktop 输入文本；
+- 剪贴板文本。
+
+Browser 导航审计会移除 query/hash。
+
+Audit 持久化采用 best-effort 模型，审计失败不得改变底层操作本身的结果。
+
+## 安全边界
+
+Junius 刻意不判断一个请求的本地命令是否安全、是否具有破坏性、是否合适，或是否符合用户意图。
+
+设计中的决策链是：
+
+    用户
+      ↓
+    ChatGPT / 调用助手
+      ↓
+    Junius 执行
+
+任何通过 `run_command` 或 `start_job` 启动的可执行文件，都拥有运行 Junius 的操作系统用户所拥有的权限。
+
+因此，只要该操作系统用户能够访问，启动的进程就可以访问所选 Workspace 之外的资源。
+
+Workspace 的含义是：
+
+    cwd + 内置文件工具根目录
+
+它不是进程沙箱、不是限制已启动可执行文件的文件系统 jail，也不是网络隔离、注册表隔离或凭据隔离。
+
+Host 唯一的 HTTP 监听器始终绑定在回环地址。Worker 私有端点要求内部令牌。如果通过 Tunnel 将 Junius 暴露给 ChatGPT，只应暴露精确的 `/mcp` 端点；不要暴露同端口上的 `/__junius/*` 诊断路由。
+
+更多细节请参阅 `SECURITY.md` 和 `docs/architecture.md`。
+
+## 验证
+
+运行完整项目验证：
+
+    pnpm run check
+
+它会执行 bootstrap 语法验证、TypeScript 类型检查、完整自动化测试，以及源码验证指纹提交。
+
+## 许可证
+
+ISC。

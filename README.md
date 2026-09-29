@@ -1,5 +1,7 @@
 # Junius
 
+**English** | [简体中文](README.zh-CN.md)
+
 **Local computer control for ChatGPT over MCP.**
 
 Junius is a local MCP execution service designed for ChatGPT chat. It gives the calling assistant direct access to local Workspace files, local processes, background Jobs, browser automation, and Windows desktop interaction.
