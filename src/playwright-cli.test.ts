@@ -31,6 +31,7 @@ async function fixture(
       "const fs = require('node:fs');",
       `const args = process.argv.slice(2);`,
       `fs.appendFileSync(${JSON.stringify("__LOG_PATH__")}.replace('__LOG_PATH__', process.env.JUNIUS_TEST_PLAYWRIGHT_LOG), JSON.stringify(args) + '\\n');`,
+      "if (process.env.JUNIUS_TEST_PLAYWRIGHT_FAIL_COMMAND === args.at(-1)) { process.stderr.write('forced playwright failure'); process.exit(1); }",
       "process.stdout.write(JSON.stringify(args));",
       "",
     ].join("\n"),
@@ -164,8 +165,386 @@ test("playwright-cli strips inherited Node preload environment", async () => {
       "browser",
       "snapshot",
       [],
+      true,
     );
     assert.equal(result.exitCode, 0);
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli requires explicit current-task authorization before browser access", async () => {
+  const f = await fixture();
+
+  try {
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "snapshot",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_required",
+    );
+    assert.deepEqual(
+      await f.calls(),
+      [],
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "cleanup-only",
+        "close",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_required",
+    );
+    assert.deepEqual(
+      await f.calls(),
+      [],
+    );
+
+    await f.service.run(
+      "cleanup-only",
+      "close",
+      [],
+      true,
+    );
+
+    await f.service.run(
+      "browser",
+      "open",
+      [],
+      true,
+    );
+
+    await f.service.run(
+      "browser",
+      "snapshot",
+      [],
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "snapshot",
+        [],
+        true,
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_not_allowed",
+    );
+
+    await f.service.run(
+      "browser",
+      "close",
+      [],
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "snapshot",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_required",
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "close",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_required",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli removes managed browser data when the authorized session closes", async () => {
+  const f = await fixture();
+
+  try {
+    await f.service.run(
+      "browser",
+      "open",
+      [],
+      true,
+    );
+
+    const managedArtifact =
+      join(
+        f.root,
+        "browser",
+        ".playwright-cli",
+        "page.yml",
+      );
+    await mkdir(
+      join(
+        f.root,
+        "browser",
+        ".playwright-cli",
+      ),
+      { recursive: true },
+    );
+    await writeFile(
+      managedArtifact,
+      "private browser data",
+      "utf8",
+    );
+
+    await f.service.run(
+      "browser",
+      "close",
+      [],
+    );
+
+    await assert.rejects(
+      readFile(
+        managedArtifact,
+        "utf8",
+      ),
+      (error: unknown) =>
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT",
+    );
+
+    assert.equal(
+      (await f.calls()).some(
+        (args) =>
+          args[0] ===
+            "-s=browser" &&
+          args.at(-1) ===
+            "delete-data",
+      ),
+      true,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli close failure still ends the authorized session lifecycle", async () => {
+  const f = await fixture(
+    {},
+    {
+      JUNIUS_TEST_PLAYWRIGHT_FAIL_COMMAND:
+        "close",
+    },
+  );
+
+  try {
+    await f.service.run(
+      "browser",
+      "open",
+      [],
+      true,
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "close",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "nonzero_exit",
+    );
+
+    assert.equal(
+      f.service.state()
+        .sessionCount,
+      0,
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "snapshot",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_required",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli revokes authorization and removes managed artifacts when cleanup partly fails", async () => {
+  const f = await fixture(
+    {},
+    {
+      JUNIUS_TEST_PLAYWRIGHT_FAIL_COMMAND:
+        "delete-data",
+    },
+  );
+
+  try {
+    await f.service.run(
+      "browser",
+      "open",
+      [],
+      true,
+    );
+
+    const managedArtifact =
+      join(
+        f.root,
+        "browser",
+        ".playwright-cli",
+        "page.yml",
+      );
+    await mkdir(
+      join(
+        f.root,
+        "browser",
+        ".playwright-cli",
+      ),
+      { recursive: true },
+    );
+    await writeFile(
+      managedArtifact,
+      "private browser data",
+      "utf8",
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "close",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "data_cleanup_failed",
+    );
+
+    await assert.rejects(
+      readFile(
+        managedArtifact,
+        "utf8",
+      ),
+      (error: unknown) =>
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT",
+    );
+
+    await assert.rejects(
+      f.service.run(
+        "browser",
+        "snapshot",
+        [],
+      ),
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "authorization_required",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("playwright-cli keeps managed browser data when retention is explicitly enabled", async () => {
+  const f = await fixture(
+    {},
+    {
+      JUNIUS_BROWSER_RETAIN_DATA:
+        "1",
+    },
+  );
+
+  try {
+    assert.equal(
+      f.service.state()
+        .retainData,
+      true,
+    );
+    await f.service.run(
+      "browser",
+      "open",
+      [],
+      true,
+    );
+
+    const managedArtifact =
+      join(
+        f.root,
+        "browser",
+        ".playwright-cli",
+        "page.yml",
+      );
+    await mkdir(
+      join(
+        f.root,
+        "browser",
+        ".playwright-cli",
+      ),
+      { recursive: true },
+    );
+    await writeFile(
+      managedArtifact,
+      "private browser data",
+      "utf8",
+    );
+
+    await f.service.run(
+      "browser",
+      "close",
+      [],
+    );
+
+    assert.equal(
+      await readFile(
+        managedArtifact,
+        "utf8",
+      ),
+      "private browser data",
+    );
+    assert.equal(
+      (await f.calls()).some(
+        (args) =>
+          args[0] ===
+            "-s=browser" &&
+          args.at(-1) ===
+            "delete-data",
+      ),
+      false,
+    );
   } finally {
     await f.dispose();
   }
@@ -178,6 +557,7 @@ test("playwright-cli injects only the named session and preserves CLI arguments"
       "browser",
       "snapshot",
       [],
+      true,
     );
     assert.deepEqual(
       JSON.parse(snapshot.stdout),
@@ -212,7 +592,12 @@ test("playwright-cli automatically closes idle named sessions", async () => {
   });
 
   try {
-    await f.service.run("idle", "snapshot", []);
+    await f.service.run(
+      "idle",
+      "snapshot",
+      [],
+      true,
+    );
     assert.equal(f.service.state().sessionCount, 1);
 
     await waitFor(
@@ -237,7 +622,12 @@ test("playwright-cli activity refreshes named-session idle expiry", async () => 
   });
 
   try {
-    await f.service.run("active", "snapshot", []);
+    await f.service.run(
+      "active",
+      "snapshot",
+      [],
+      true,
+    );
     await new Promise((resolve) => setTimeout(resolve, 45));
     await f.service.run("active", "snapshot", []);
     await new Promise((resolve) => setTimeout(resolve, 45));
@@ -259,9 +649,24 @@ test("playwright-cli bounds tracked named sessions and closes the oldest", async
   });
 
   try {
-    await f.service.run("one", "snapshot", []);
-    await f.service.run("two", "snapshot", []);
-    await f.service.run("three", "snapshot", []);
+    await f.service.run(
+      "one",
+      "snapshot",
+      [],
+      true,
+    );
+    await f.service.run(
+      "two",
+      "snapshot",
+      [],
+      true,
+    );
+    await f.service.run(
+      "three",
+      "snapshot",
+      [],
+      true,
+    );
 
     assert.equal(f.service.state().sessionCount, 2);
     await waitFor(async () =>
@@ -283,8 +688,18 @@ test("playwright-cli close shuts down all tracked named sessions", async () => {
   });
 
   try {
-    await f.service.run("one", "snapshot", []);
-    await f.service.run("two", "snapshot", []);
+    await f.service.run(
+      "one",
+      "snapshot",
+      [],
+      true,
+    );
+    await f.service.run(
+      "two",
+      "snapshot",
+      [],
+      true,
+    );
     await f.service.close();
 
     assert.equal(f.service.state().sessionCount, 0);
@@ -327,6 +742,7 @@ test("playwright-cli forwards arbitrary commands and arguments unchanged", async
         "--future-option",
         "value",
       ],
+      true,
     );
 
     assert.deepEqual(

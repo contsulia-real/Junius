@@ -1,4 +1,8 @@
-import { mkdir } from "node:fs/promises";
+import {
+  mkdir,
+  rm,
+} from "node:fs/promises";
+import { join } from "node:path";
 import {
   PlaywrightCliBrokerClient,
   PlaywrightCliBrokerError,
@@ -48,6 +52,9 @@ export class PlaywrightCliService {
   readonly #statePath: string;
   readonly #broker: PlaywrightCliBrokerClient | undefined;
   readonly #sessions: PlaywrightSessionPool;
+  readonly #retainData: boolean;
+  readonly #authorizedSessions =
+    new Set<string>();
   #brokerError: string | undefined;
   #closing = false;
 
@@ -76,6 +83,11 @@ export class PlaywrightCliService {
       options.maxSessions,
       DEFAULT_MAX_SESSIONS,
     );
+    this.#retainData =
+      options.retainData ??
+      environment
+        .JUNIUS_BROWSER_RETAIN_DATA ===
+        "1";
     this.#sessions = new PlaywrightSessionPool({
       idleMs: sessionIdleMs,
       maxSessions,
@@ -113,6 +125,7 @@ export class PlaywrightCliService {
     readonly sessionCount: number;
     readonly sessionIdleMs: number;
     readonly maxSessions: number;
+    readonly retainData: boolean;
     readonly sessionCleanupError?: string;
     readonly launcher?: {
       readonly executable: string;
@@ -132,6 +145,8 @@ export class PlaywrightCliService {
       sessionCount: this.#sessions.count,
       sessionIdleMs: this.#sessions.idleMs,
       maxSessions: this.#sessions.maxSessions,
+      retainData:
+        this.#retainData,
       ...(this.#brokerError === undefined
         ? {}
         : { brokerError: this.#brokerError }),
@@ -155,32 +170,12 @@ export class PlaywrightCliService {
     };
   }
 
-  async prewarm(): Promise<void> {
-    if (
-      !this.available ||
-      this.#broker?.available !== true
-    ) {
-      return;
-    }
-
-    await mkdir(this.#statePath, { recursive: true });
-
-    try {
-      await this.#broker.prewarm();
-      this.#brokerError = undefined;
-    } catch (error) {
-      if (error instanceof PlaywrightCliBrokerError) {
-        this.#brokerError = `${error.code}: ${error.message}`;
-        return;
-      }
-      throw error;
-    }
-  }
 
   async run(
     session: string,
     command: PlaywrightCliCommand,
     args: readonly string[],
+    explicitUserAuthorization?: true,
   ): Promise<PlaywrightCliExecution> {
     if (!SESSION_PATTERN.test(session)) {
       throw new PlaywrightCliError(
@@ -196,6 +191,22 @@ export class PlaywrightCliService {
       );
     }
 
+    const alreadyAuthorized =
+      this.#authorizedSessions.has(session);
+    if (alreadyAuthorized) {
+      if (explicitUserAuthorization !== undefined) {
+        throw new PlaywrightCliError(
+          "authorization_not_allowed",
+          "Browser authorization is already active for this session. Do not repeat explicit_user_authorization.",
+        );
+      }
+    } else if (explicitUserAuthorization !== true) {
+      throw new PlaywrightCliError(
+        "authorization_required",
+        "Browser access requires explicit authorization from the current user request.",
+      );
+    }
+
     if (this.#launcher === undefined) {
       throw new PlaywrightCliError(
         "playwright_cli_not_available",
@@ -203,19 +214,104 @@ export class PlaywrightCliService {
       );
     }
 
-    const launcher = this.#launcher;
+    if (command === "close") {
+      this.#authorizedSessions.delete(session);
+    } else if (!alreadyAuthorized) {
+      this.#authorizedSessions.add(session);
+    }
+
     const closingState: PlaywrightSessionToken | undefined =
       command === "close"
         ? this.#sessions.prepareClose(session)
         : undefined;
 
-    if (command !== "close") {
+    if (command === "close") {
+      this.#sessions.completeClose(session);
+    } else {
       this.#sessions.beginActivity(session);
     }
 
-    try {
-      await mkdir(this.#statePath, { recursive: true });
+    const sessionPath = join(
+      this.#statePath,
+      session,
+    );
 
+    try {
+      await mkdir(sessionPath, { recursive: true });
+
+      if (command === "close") {
+        let execution:
+          PlaywrightCliExecution | undefined;
+        let closeError: unknown;
+
+        try {
+          execution = await this.#executeCli(
+            session,
+            command,
+            args,
+            sessionPath,
+          );
+        } catch (error) {
+          closeError = error;
+        }
+
+        let cleanupError: unknown;
+        if (!this.#retainData) {
+          try {
+            await this.#cleanupSessionData(
+              session,
+              sessionPath,
+            );
+          } catch (error) {
+            cleanupError = error;
+          }
+        }
+
+        if (closeError !== undefined) {
+          throw closeError;
+        }
+        if (cleanupError !== undefined) {
+          throw new PlaywrightCliError(
+            "data_cleanup_failed",
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+          );
+        }
+
+        return execution!;
+      }
+
+      const execution = await this.#executeCli(
+        session,
+        command,
+        args,
+        sessionPath,
+      );
+
+      return execution;
+    } finally {
+      if (command === "close") {
+        this.#sessions.restoreAfterClose(
+          session,
+          closingState,
+        );
+      } else {
+        this.#sessions.endActivity(
+          session,
+          true,
+        );
+      }
+    }
+  }
+
+  async #executeCli(
+    session: string,
+    command: PlaywrightCliCommand,
+    args: readonly string[],
+    cwd: string,
+  ): Promise<PlaywrightCliExecution> {
+    const launcher = this.#launcher!;
     const startedAt = performance.now();
     const cliArgs = [
       `-s=${session}`,
@@ -227,7 +323,7 @@ export class PlaywrightCliService {
       try {
         const response = await this.#broker.run(
           cliArgs,
-          this.#statePath,
+          cwd,
         );
 
         if (response.exitCode !== 0) {
@@ -241,17 +337,15 @@ export class PlaywrightCliService {
         }
 
         this.#brokerError = undefined;
-        if (command === "close") {
-          this.#sessions.completeClose(session);
-        }
-
         return {
           session,
           command,
           exitCode: 0,
           stdout: response.stdout,
           stderr: response.stderr,
-          durationMs: Math.round(performance.now() - startedAt),
+          durationMs: Math.round(
+            performance.now() - startedAt,
+          ),
           transport: "broker",
         };
       } catch (error) {
@@ -262,33 +356,70 @@ export class PlaywrightCliService {
       }
     }
 
-    const execution = await runPlaywrightCliSpawn({
+    return await runPlaywrightCliSpawn({
       launcher,
       cliArgs,
-      cwd: this.#statePath,
+      cwd,
       environment: this.#environment,
       session,
       command,
       startedAt,
     });
+  }
 
-    if (command === "close") {
-      this.#sessions.completeClose(session);
+  async #cleanupSessionData(
+    session: string,
+    sessionPath: string,
+  ): Promise<void> {
+    let deleteError: unknown;
+    try {
+      await this.#executeCli(
+        session,
+        "delete-data",
+        [],
+        sessionPath,
+      );
+    } catch (error) {
+      deleteError = error;
     }
 
-    return execution;
-    } finally {
-      if (command === "close") {
-        this.#sessions.restoreAfterClose(
-          session,
-          closingState,
-        );
-      } else {
-        this.#sessions.endActivity(
-          session,
-          true,
+    let removeError: unknown;
+    try {
+      await rm(
+        sessionPath,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    } catch (error) {
+      removeError = error;
+    }
+
+    if (
+      deleteError !== undefined ||
+      removeError !== undefined
+    ) {
+      const messages: string[] = [];
+      if (deleteError !== undefined) {
+        messages.push(
+          `playwright delete-data failed: ${
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError)
+          }`,
         );
       }
+      if (removeError !== undefined) {
+        messages.push(
+          `managed browser data removal failed: ${
+            removeError instanceof Error
+              ? removeError.message
+              : String(removeError)
+          }`,
+        );
+      }
+      throw new Error(messages.join("; "));
     }
   }
 
@@ -305,6 +436,7 @@ export class PlaywrightCliService {
     );
 
     this.#sessions.clear();
+    this.#authorizedSessions.clear();
 
     await this.#broker?.close();
   }

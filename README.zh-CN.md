@@ -316,17 +316,23 @@ Workspace 检查对 AGENTS.md 采用类似 Codex 的目录作用域规则：
 
 ## 浏览器计算机操作
 
-`playwright_cli` 暴露已安装 Playwright CLI 的完整命令表面。
+Browser 访问按当前用户任务显式授权。只有当前用户请求明确要求 ChatGPT 控制浏览器时，Junius 才能调用 `playwright_cli`；这同样适用于只读检查，包括 snapshot、tab/session 列表、cookie、storage、console 和网络数据。以前任务中的授权不会延续到当前任务，加载 Browser contract 也不代表获得授权。
 
-Junius 只注入命名 session 参数：
+某个 session 的第一次 Browser 调用必须携带 `explicit_user_authorization=true`。当前任务的授权被接受后，即使某个具体 Browser 命令执行失败，同一活动 session 的后续调用也不再重复该声明。`close` 会撤销授权，并结束这次 Browser 操作生命周期。
+
+`playwright_cli` 暴露已安装 Playwright CLI 的完整命令表面。Junius 只注入命名 session 参数：
 
     -s=<session>
 
 其余请求的 command 和参数向量保持原样转发。Junius 不提供 Browser 命令白名单或逐参数策略。只要已安装的 CLI 版本支持，`eval`、`run-code`、storage/cookie 操作、网络请求检查与路由、录制/trace/video、WebMCP、attach/detach、install 命令以及未来新增的 Playwright CLI 命令都可以使用。
 
-命名 Browser session 在 Worker 热切换过程中保持 Worker 亲和。空闲 session 数量受限，并会独立清理。
+Browser 改为惰性启动。正常 Worker 启动和普通项目校验不会预热 Playwright broker，也不会启动 Browser Computer Use。
 
-Junius 提供持久化 Browser 状态目录，但不会强制注入 Playwright CLI 的持久化选项。Browser/profile 是否持久化取决于调用方给出的命令和参数，例如 `--persistent` 或显式的 state-save/state-load。Browser 审计会记录命令标识和参数数量，但不会记录任意参数向量本身。
+命名 Browser session 在 Worker 热切换过程中保持 Worker 亲和。空闲 session 数量受限，并会独立关闭。
+
+默认情况下，Junius 管理的 Browser 数据只保留到本次 Browser 操作结束。每个 session 使用独立的管理目录；执行 `close` 时，Junius 会对该 session 调用 Playwright `delete-data`，并删除该 session 的管理目录，其中包括自动生成的 snapshot、截图、console 输出及相关 Browser 产物。用户明确要求保存到该管理目录之外的文件不视为可丢弃的 Browser 数据。
+
+设置 `JUNIUS_BROWSER_RETAIN_DATA=1` 可以让 Junius 管理的 Browser 数据在 `close` 后继续保留。开启后，Junius 不再自动清理这些保留数据，后续检查和删除责任由用户承担。Browser 审计会记录命令标识和参数数量，但不会记录任意参数向量本身。
 
 ## Windows 桌面计算机操作
 

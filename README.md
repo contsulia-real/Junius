@@ -315,17 +315,23 @@ These checks apply only to Junius's built-in file tools. They do not restrict an
 
 ## Browser Computer Use
 
-playwright_cli exposes the full installed Playwright CLI command surface.
+Browser access is opt-in per user task. Junius must not call `playwright_cli` unless the current user request explicitly asks ChatGPT to control the browser. This includes read-only inspection such as snapshots, tab/session listing, cookies, storage, console, and network data. Previous authorization does not carry forward, and loading the Browser contract does not grant authorization.
 
-Junius injects only the named session option:
+The first Browser call for a session must carry `explicit_user_authorization=true`. Once that current-task authorization is accepted, follow-up calls for the same active session omit the assertion even if an individual Browser command fails. `close` revokes authorization and ends that Browser operation lifecycle.
+
+`playwright_cli` exposes the full installed Playwright CLI command surface. Junius injects only the named session option:
 
     -s=<session>
 
 The requested command and argument vector are otherwise forwarded unchanged. There is no Junius Browser command whitelist or per-command argument policy. Commands such as eval, run-code, storage/cookie operations, network request inspection and routing, recording/tracing/video, WebMCP, attach/detach, install commands, and future Playwright CLI commands are available when supported by the installed CLI version.
 
-Named Browser sessions are Worker-affined across hot promotion. Idle sessions are bounded and cleaned up independently.
+Browser startup is lazy. Normal Worker startup and ordinary project validation do not prewarm the Playwright broker or start Browser Computer Use.
 
-Junius provides a persistent Browser state directory, but it does not force Playwright CLI persistence options. Browser/profile persistence therefore follows the command and options supplied by the caller, such as --persistent or explicit state-save/state-load. Browser audit records the command identity and argument count, but not the arbitrary argument vector.
+Named Browser sessions are Worker-affined across hot promotion. Idle sessions are bounded and closed independently.
+
+By default, Junius-managed Browser data lasts only for the current Browser operation. Each session uses its own managed directory; on `close`, Junius invokes Playwright `delete-data` for that session and deletes the managed session directory, including automatically generated snapshots, screenshots, console output, and related Browser artifacts. Files the user explicitly requested to save outside that managed directory are not treated as disposable Browser data.
+
+Set `JUNIUS_BROWSER_RETAIN_DATA=1` to keep Junius-managed Browser data after `close`. When this is enabled, automatic cleanup is disabled for that retained data and the user is responsible for reviewing and deleting it later. Browser audit records the command identity and argument count, but not the arbitrary argument vector.
 
 ## Windows Desktop Computer Use
 

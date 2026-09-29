@@ -4,6 +4,9 @@ export type PlaywrightCliErrorCode =
   | "playwright_cli_closing"
   | "playwright_cli_not_available"
   | "invalid_session"
+  | "authorization_required"
+  | "authorization_not_allowed"
+  | "data_cleanup_failed"
   | "spawn_failed"
   | "process_timeout"
   | "output_limit"
@@ -21,6 +24,7 @@ export class PlaywrightCliError extends Error {
 export interface PlaywrightCliServiceOptions {
   readonly sessionIdleMs?: number;
   readonly maxSessions?: number;
+  readonly retainData?: boolean;
 }
 
 export interface PlaywrightCliExecution {

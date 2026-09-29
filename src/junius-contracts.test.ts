@@ -139,6 +139,18 @@ test(
       JUNIUS_DESKTOP_CONTRACT,
       /Do not call the desktop tool at all/u,
     );
+    assert.match(
+      JUNIUS_CORE_CONTRACT,
+      /Do not call playwright_cli at all/u,
+    );
+    assert.match(
+      JUNIUS_BROWSER_CONTRACT,
+      /explicit_user_authorization to true/u,
+    );
+    assert.match(
+      JUNIUS_BROWSER_CONTRACT,
+      /JUNIUS_BROWSER_RETAIN_DATA=1/u,
+    );
   },
 );
 

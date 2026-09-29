@@ -1,6 +1,20 @@
 # JUNIUS BROWSER COMPUTER USE CONTRACT
 
-The current task uses Junius Browser Computer Use.
+## Authorization boundary
+
+This contract does not grant permission to access the local Browser.
+
+Do not call playwright_cli at all unless the user's current request explicitly asks ChatGPT to control the browser.
+
+If that explicit current-task authorization is absent, stop before any Browser access. Do not open pages, inspect snapshots, enumerate tabs or sessions, read cookies or storage, inspect console or network data, attach to browsers, or perform any other Browser operation.
+
+Do not infer authorization from usefulness, verification needs, previous Browser use, prior user authorization, a URL being present, or the availability of this contract or tool.
+
+Previous-task authorization does not carry forward.
+
+The first Browser call for the chosen session must set explicit_user_authorization to true, and only when the current user request explicitly authorized browser control. Once that current-task authorization is accepted, omit explicit_user_authorization from follow-up calls for the same active session, even if an individual Browser command fails. Repeating the assertion is invalid.
+
+For an already-authorized active session, close omits the authorization assertion. If close is itself the first Browser call in the current user-authorized task, it must carry explicit_user_authorization=true like any other first Browser call. close revokes Browser authorization for that session and ends the Browser operation lifecycle.
 
 playwright_cli exposes the full command surface of the installed Playwright CLI.
 
@@ -82,10 +96,14 @@ When a Browser command fails:
 
 Do not blindly repeat a failed CLI command.
 
-## Session cleanup
+## Session cleanup and data retention
 
-When the Browser task is complete, close the same named session unless the user explicitly asks to leave it open or continued session state is intentionally required for immediately continuing the current task.
+When the Browser task is complete, close the same named session. Do not abandon Browser sessions after the current Browser operation ends.
 
-Do not abandon unnecessary Browser sessions.
+By default, Junius-managed Browser operation data is temporary. Closing the session deletes Playwright session/profile data and removes that session's Junius-managed snapshots, screenshots, console output, and related Browser artifacts.
+
+This cleanup does not delete files that the user explicitly asked to save outside the Junius-managed Browser session directory. When the user asks for a durable Browser-generated file, save it outside the managed session directory.
+
+If persistent Browser data retention is explicitly enabled with JUNIUS_BROWSER_RETAIN_DATA=1, Junius does not automatically delete the managed Browser data when the session closes. In that mode, responsibility for reviewing and deleting retained Browser data belongs to the user. Do not imply that Junius will clean it later.
 
 Browser success means the resulting Browser state, not merely the CLI exit status, matches the user's requested outcome.

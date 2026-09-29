@@ -653,6 +653,57 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       expectedSpecializedContracts,
     );
 
+    const browserTool =
+      tools.find(
+        (tool) =>
+          tool.name ===
+          "playwright_cli",
+      );
+    const browserProperties =
+      browserTool?.inputSchema
+        ?.properties ?? {};
+    assert.equal(
+      browserProperties
+        .explicit_user_authorization
+        ?.const,
+      true,
+    );
+    assert.equal(
+      browserTool
+        ?.inputSchema
+        ?.required
+        ?.includes(
+          "explicit_user_authorization",
+        ) ?? false,
+      false,
+    );
+
+    const unauthorizedBrowser =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "playwright_cli",
+        {
+          session:
+            "browser-privacy-boundary",
+          command:
+            "snapshot",
+          args: [],
+        },
+        true,
+      );
+    assert.equal(
+      unauthorizedBrowser
+        .isError,
+      true,
+    );
+    assert.match(
+      unauthorizedBrowser
+        .textContents
+        .join("\n"),
+      /authorization_required/u,
+    );
+
     const desktopTool =
       tools.find(
         (tool) =>

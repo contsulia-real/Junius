@@ -243,11 +243,6 @@ export async function startAgentWorker(
 
   let closed = false;
 
-  setImmediate(() => {
-    if (closed) return;
-    void browser.prewarm();
-  });
-
   return {
     workerId,
     mcpPort,
