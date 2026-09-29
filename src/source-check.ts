@@ -225,6 +225,9 @@ export async function runSourceCheck(
     let stderr = "";
     let timedOut = false;
     let settled = false;
+    let terminationPromise:
+      Promise<void> |
+      undefined;
 
     const child = spawn(
       launcher.executable,
@@ -252,27 +255,54 @@ export async function runSourceCheck(
       reject(error);
     });
 
-    child.once("close", (exitCode, signal) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-
-      resolve({
-        ok: !timedOut && exitCode === 0,
+    child.once(
+      "close",
+      async (
         exitCode,
         signal,
-        stdout,
-        stderr,
-        durationMs: Math.round(performance.now() - startedAt),
-      });
-    });
+      ) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+
+        if (
+          terminationPromise !==
+          undefined
+        ) {
+          await terminationPromise;
+        }
+
+        resolve({
+          ok:
+            !timedOut &&
+            exitCode === 0,
+          exitCode,
+          signal,
+          stdout,
+          stderr,
+          durationMs:
+            Math.round(
+              performance.now() -
+                startedAt,
+            ),
+        });
+      },
+    );
 
     const timer = setTimeout(() => {
       timedOut = true;
-      void terminateProcessTree(
-        child,
-        childEnvironment,
-      );
+      terminationPromise =
+        terminateProcessTree(
+          child,
+          childEnvironment,
+        ).catch((error) => {
+          stderr =
+            appendBounded(
+              stderr,
+              "\nprocess_tree_termination_failed: " +
+                String(error),
+            );
+        });
     }, timeoutMs);
   });
 }

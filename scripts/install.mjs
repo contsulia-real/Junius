@@ -6,6 +6,7 @@ import {
   installPythonRequirements,
   packageRootFromImportMeta,
   startInstalledJunius,
+  stopInstalledJunius,
   validateInstalledApp,
   windowsInstallPaths,
   writeWindowsStartup,
@@ -99,6 +100,20 @@ export async function installJunius() {
       process.execPath,
     );
 
+  const runningInsideJunius =
+    process.env
+      .JUNIUS_PROJECT_ROOT !==
+    undefined;
+
+  let restarted = false;
+
+  if (!runningInsideJunius) {
+    const stopped =
+      await stopInstalledJunius();
+    restarted =
+      stopped.wasRunning;
+  }
+
   const started =
     await startInstalledJunius({
       ...startup,
@@ -108,9 +123,14 @@ export async function installJunius() {
 
   console.log("");
   console.log(
-    started.alreadyRunning
-      ? "Junius is already running."
-      : "Junius started successfully.",
+    runningInsideJunius &&
+      started.alreadyRunning
+      ? "Junius files were updated, but the current Junius process cannot restart itself from inside its own tool call. Restart Junius to activate the installed update."
+      : restarted
+        ? "Junius restarted successfully with the installed version."
+        : started.alreadyRunning
+          ? "Junius is already running."
+          : "Junius started successfully.",
   );
   console.log(
     "MCP: http://127.0.0.1:8787/mcp",

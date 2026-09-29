@@ -405,7 +405,7 @@ const COPY_FILES = [
   "README.md",
   "SECURITY.md",
   "package.json",
-  "pnpm-lock.yaml",
+  "install-lock.json",
   "requirements-desktop.txt",
   "tsconfig.json",
 ];
@@ -476,6 +476,28 @@ export async function copyApplication(
       join(
         appRoot,
         file,
+      ),
+      {
+        force: true,
+      },
+    );
+  }
+
+  const installLock =
+    join(
+      packageRoot,
+      "install-lock.json",
+    );
+  if (
+    await exists(
+      installLock,
+    )
+  ) {
+    await cp(
+      installLock,
+      join(
+        appRoot,
+        "npm-shrinkwrap.json",
       ),
       {
         force: true,
@@ -635,6 +657,7 @@ export async function installNodeDependencies(
       [
         npmCli,
         "install",
+        "--include=dev",
         "--no-audit",
         "--no-fund",
       ],
@@ -664,7 +687,7 @@ export async function installNodeDependencies(
         "/d",
         "/s",
         "/c",
-        "npm install --no-audit --no-fund",
+        "npm install --include=dev --no-audit --no-fund",
       ],
       {
         cwd: appRoot,
@@ -678,6 +701,7 @@ export async function installNodeDependencies(
     "npm",
     [
       "install",
+      "--include=dev",
       "--no-audit",
       "--no-fund",
     ],
@@ -687,10 +711,46 @@ export async function installNodeDependencies(
   );
 }
 
+function installedValidationEnvironment(
+  appRoot,
+) {
+  const environment = {};
+
+  for (
+    const [key, value] of
+    Object.entries(
+      process.env,
+    )
+  ) {
+    if (
+      key
+        .toUpperCase()
+        .startsWith(
+          "JUNIUS_",
+        )
+    ) {
+      continue;
+    }
+
+    environment[key] =
+      value;
+  }
+
+  environment
+    .JUNIUS_PROJECT_ROOT =
+    appRoot;
+
+  return environment;
+}
+
 export async function validateInstalledApp(
   nodeExecutable,
   appRoot,
 ) {
+  const environment =
+    installedValidationEnvironment(
+      appRoot,
+    );
   const npmCli =
     await resolveNpmCli(
       nodeExecutable,
@@ -709,6 +769,7 @@ export async function validateInstalledApp(
       ],
       {
         cwd: appRoot,
+        env: environment,
       },
     );
     return;
@@ -737,6 +798,7 @@ export async function validateInstalledApp(
       ],
       {
         cwd: appRoot,
+        env: environment,
       },
     );
     return;
@@ -751,6 +813,7 @@ export async function validateInstalledApp(
     ],
     {
       cwd: appRoot,
+      env: environment,
     },
   );
 }
@@ -824,7 +887,7 @@ export async function writeWindowsStartup(
   };
 }
 
-export async function hostHealthy(
+export async function readHostHealth(
   port = 8787,
 ) {
   try {
@@ -839,19 +902,133 @@ export async function hostHealthy(
         },
       );
     if (!response.ok) {
-      return false;
+      return undefined;
     }
+
     const body =
       await response.json();
-    return (
-      body?.ok === true &&
+
+    if (
+      body?.ok !== true ||
       typeof body
-        .activeWorkerId ===
+        .activeWorkerId !==
+        "string" ||
+      !Number.isSafeInteger(
+        body.pid,
+      ) ||
+      body.pid <= 0
+    ) {
+      return undefined;
+    }
+
+    return {
+      pid: body.pid,
+      activeWorkerId:
+        body.activeWorkerId,
+      releaseId:
+        typeof body.releaseId ===
         "string"
-    );
+          ? body.releaseId
+          : undefined,
+    };
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+export async function hostHealthy(
+  port = 8787,
+) {
+  return (
+    await readHostHealth(
+      port,
+    )
+  ) !== undefined;
+}
+
+async function stopWindowsProcessTree(
+  pid,
+) {
+  const systemRoot =
+    process.env.SystemRoot ??
+    process.env.SYSTEMROOT ??
+    "C:\\Windows";
+  const taskkill =
+    join(
+      systemRoot,
+      "System32",
+      "taskkill.exe",
+    );
+
+  await assertProcess(
+    "Junius Host restart",
+    taskkill,
+    [
+      "/PID",
+      String(pid),
+      "/T",
+      "/F",
+    ],
+  );
+}
+
+export async function stopInstalledJunius(
+  options = {},
+) {
+  const port =
+    options.port ?? 8787;
+  const timeoutMs =
+    options.timeoutMs ??
+    15_000;
+  const stopProcessTree =
+    options.stopProcessTree ??
+    stopWindowsProcessTree;
+
+  const health =
+    await readHostHealth(
+      port,
+    );
+
+  if (health === undefined) {
+    return {
+      wasRunning: false,
+    };
+  }
+
+  await stopProcessTree(
+    health.pid,
+  );
+
+  const deadline =
+    Date.now() + timeoutMs;
+
+  while (
+    Date.now() <
+    deadline
+  ) {
+    if (
+      await readHostHealth(
+        port,
+      ) === undefined
+    ) {
+      return {
+        wasRunning: true,
+        pid: health.pid,
+      };
+    }
+
+    await new Promise(
+      (resolvePromise) =>
+        setTimeout(
+          resolvePromise,
+          100,
+        ),
+    );
+  }
+
+  throw new Error(
+    "Existing Junius Host did not stop before restart.",
+  );
 }
 
 export async function startInstalledJunius(

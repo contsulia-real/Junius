@@ -86,11 +86,23 @@ async function walkFiles(root, relativeRoot = "") {
       : entry.name;
 
     if (entry.isDirectory()) {
+      if (
+        entry.name ===
+        "__pycache__"
+      ) {
+        continue;
+      }
+
       files.push(...await walkFiles(root, relativePath));
       continue;
     }
 
-    if (entry.isFile()) {
+    if (
+      entry.isFile() &&
+      !entry.name.endsWith(
+        ".pyc",
+      )
+    ) {
       files.push(relativePath);
     }
   }
@@ -114,6 +126,7 @@ async function fingerprintSource(root) {
   for (const file of [
     "package.json",
     "pnpm-lock.yaml",
+    "install-lock.json",
     "tsconfig.json",
     join("scripts", "host-bootstrap.mjs"),
     join("scripts", "host-launcher.mjs"),
@@ -155,6 +168,7 @@ async function copySnapshot(destination) {
   for (const file of [
     "package.json",
     "pnpm-lock.yaml",
+    "install-lock.json",
     "tsconfig.json",
     join("scripts", "host-bootstrap.mjs"),
     join("scripts", "host-launcher.mjs"),

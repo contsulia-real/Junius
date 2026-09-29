@@ -96,6 +96,8 @@ No administrator elevation is required for the normal per-user installation path
 
 After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used by npx, and the Desktop helper uses the installed .venv created from the user's existing Python.
 
+Running the install command again performs an in-place update: Junius copies and validates the new package first, then restarts an existing Host so the installed version becomes active immediately. If the installer itself is invoked through a running Junius tool call, it does not terminate its own execution tree; in that case it installs and validates the update, then reports that Junius must be restarted to activate it.
+
 The Host uses one loopback HTTP listener:
 
     http://127.0.0.1:8787
@@ -108,11 +110,35 @@ Its routes are:
 
 There is no separate Host-control port and no management UI.
 
-To use Junius from ChatGPT, expose only the exact MCP endpoint through the supported Secure MCP Tunnel flow:
+## Connect Junius to ChatGPT
 
-    http://127.0.0.1:8787/mcp
+The npm installer installs and starts the local Junius service. It does **not** create an OpenAI Secure MCP Tunnel or configure a ChatGPT plugin connection for you.
 
-The /__junius/* diagnostic routes are local-only operational diagnostics and should not be exposed by the tunnel.
+ChatGPT cannot connect directly to a loopback-only MCP server. For a local Junius installation, use OpenAI Secure MCP Tunnel:
+
+1. Create or select a tunnel in OpenAI Platform tunnel settings.
+2. Install and configure the current OpenAI `tunnel-client` on the same Windows machine.
+3. Point that tunnel profile at the exact Junius MCP URL:
+
+       http://127.0.0.1:8787/mcp
+
+4. Run `tunnel-client doctor` for the profile and confirm it is healthy.
+5. Keep `tunnel-client run` running while Junius is used.
+6. In ChatGPT, open **Plugins**, select the plus button, and add the MCP connection in Developer mode.
+7. Choose **Tunnel** as the connection type and select the corresponding Secure MCP Tunnel.
+8. Review the discovered Junius tools and create the personal plugin connection.
+
+Do not point the tunnel at the bare `http://127.0.0.1:8787` origin. The co-located `/__junius/*` routes are local operational diagnostics and are not part of the public MCP surface.
+
+Secure MCP Tunnel setup requires the appropriate OpenAI Platform tunnel permissions, a tunnel ID, and a runtime API key. These are OpenAI account/workspace resources and are intentionally not collected or stored by the Junius installer.
+
+Current OpenAI developer documentation:
+- ChatGPT developer platform overview: https://developers.openai.com/chatgpt
+- Plugins quickstart: https://developers.openai.com/plugins/quickstart
+- Connect and test a plugin: https://developers.openai.com/plugins/deploy/connect-chatgpt
+- Secure MCP Tunnel: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+
+OpenAI's current developer documentation states that ChatGPT Developer mode provides full Model Context Protocol support for read and write tools in ChatGPT Plus and Pro. Junius relies on that full MCP tool surface. Availability and UI can change independently of Junius, so prefer the current OpenAI Developers documentation over older product-help articles when they disagree.
 
 ## Development from source
 

@@ -14,6 +14,10 @@ jobs:
   windows-check:
     runs-on: windows-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "24"]
 
     steps:
       - name: Checkout
@@ -28,8 +32,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
       - name: Install ripgrep
         run: choco install ripgrep -y --no-progress
@@ -37,5 +46,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate Python helper syntax
+        run: python -m py_compile python/desktop_helper.py python/desktop_indicator.py
+
       - name: Validate
         run: pnpm run check
+
+      - name: Validate npm publication package
+        run: npm publish --dry-run --json

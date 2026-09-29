@@ -49,7 +49,9 @@ Those checks apply only to the built-in file tools. They are not a sandbox for p
 
 The Host uses one HTTP listener bound to loopback. It serves the MCP endpoint and local /__junius/* diagnostics on the same port.
 
-Only the exact /mcp endpoint is intended to be exposed through the supported ChatGPT tunnel path. The co-located /__junius/* routes are local diagnostics only and should not be exposed.
+Only the exact /mcp endpoint is intended to be forwarded through OpenAI Secure MCP Tunnel. Configure tunnel-client with http://127.0.0.1:8787/mcp, not the bare 8787 origin. The co-located /__junius/* routes are local diagnostics only and should not be exposed.
+
+The Junius installer does not request or persist OpenAI tunnel IDs, runtime API keys, or ChatGPT workspace credentials. Secure MCP Tunnel and ChatGPT developer-mode configuration are separate user-managed OpenAI account/workspace setup steps.
 
 Workers use random loopback ports and require a private Host-injected token for MCP, health, and configuration-reload traffic.
 

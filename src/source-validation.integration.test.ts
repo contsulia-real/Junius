@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -59,6 +61,66 @@ async function runValidationCommand(
     stderr,
   );
 }
+
+test("source validation ignores generated Python bytecode", async () => {
+  const root = await mkdtemp(
+    join(
+      tmpdir(),
+      "junius-source-validation-pycache-",
+    ),
+  );
+  const runtimeRoot = join(
+    root,
+    "runtime",
+  );
+  const pycacheRoot = join(
+    process.cwd(),
+    "python",
+    "__pycache__",
+  );
+  const bytecodePath = join(
+    pycacheRoot,
+    "release-audit-test.pyc",
+  );
+
+  try {
+    await mkdir(
+      pycacheRoot,
+      { recursive: true },
+    );
+    await runValidationCommand(
+      runtimeRoot,
+      "pycache",
+      "begin",
+    );
+    await writeFile(
+      bytecodePath,
+      Buffer.from([
+        0,
+        1,
+        2,
+        3,
+      ]),
+    );
+    await runValidationCommand(
+      runtimeRoot,
+      "pycache",
+      "commit",
+    );
+  } finally {
+    await rm(
+      bytecodePath,
+      { force: true },
+    );
+    await rm(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+});
 
 test("source validation keeps concurrent pending transactions independent", async () => {
   const root = await mkdtemp(

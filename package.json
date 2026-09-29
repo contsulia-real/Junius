@@ -14,7 +14,7 @@
     "LICENSE",
     "README.md",
     "SECURITY.md",
-    "pnpm-lock.yaml",
+    "install-lock.json",
     "requirements-desktop.txt",
     "tsconfig.json"
   ],
@@ -49,16 +49,18 @@
   "packageManager": "pnpm@12.6.0",
   "type": "module",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "latest"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.1.0",
+    "@modelcontextprotocol/server": "2.1.0",
     "@playwright/cli": "0.1.21",
-    "zod": "^4.6.5"
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "@types/node": "26.6.3",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
   }
 }
