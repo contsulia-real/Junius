@@ -42,8 +42,8 @@ export class DesktopComputerUseService {
     options:
       DesktopComputerUseOptions = {},
   ) {
-    this.#environment =
-      withoutEnvironmentVariables(
+    this.#environment = {
+      ...withoutEnvironmentVariables(
         {
           ...process.env,
           ...options.environment,
@@ -56,7 +56,11 @@ export class DesktopComputerUseService {
             "PYTHONINSPECT",
           ],
         },
-      );
+      ),
+      PYTHONIOENCODING:
+        "utf-8",
+      PYTHONUTF8: "1",
+    };
     this.#platform =
       options.platform ??
       process.platform;

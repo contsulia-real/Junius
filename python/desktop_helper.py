@@ -13,6 +13,11 @@ import pyautogui
 
 from desktop_indicator import DesktopActivityIndicator
 
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if callable(_reconfigure):
+        _reconfigure(encoding="utf-8")
+
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.03
 

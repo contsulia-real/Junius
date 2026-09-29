@@ -41,7 +41,9 @@ function responseFor(request) {
           PYTHONPATH: process.env.PYTHONPATH ?? null,
           PYTHONHOME: process.env.PYTHONHOME ?? null,
           PYTHONSTARTUP: process.env.PYTHONSTARTUP ?? null,
-          PYTHONINSPECT: process.env.PYTHONINSPECT ?? null
+          PYTHONINSPECT: process.env.PYTHONINSPECT ?? null,
+          PYTHONIOENCODING: process.env.PYTHONIOENCODING ?? null,
+          PYTHONUTF8: process.env.PYTHONUTF8 ?? null
         },
         windows: []
       }
@@ -182,6 +184,9 @@ test("desktop helper strips inherited Python preload environment", async () => {
       PYTHONSTARTUP:
         "C:\\evil\\startup.py",
       pythoninspect: "1",
+      PYTHONIOENCODING:
+        "cp1252",
+      PYTHONUTF8: "0",
     },
   });
 
@@ -203,6 +208,10 @@ test("desktop helper strips inherited Python preload environment", async () => {
             string | null;
           PYTHONINSPECT:
             string | null;
+          PYTHONIOENCODING:
+            string | null;
+          PYTHONUTF8:
+            string | null;
         };
       };
 
@@ -213,6 +222,9 @@ test("desktop helper strips inherited Python preload environment", async () => {
         PYTHONHOME: null,
         PYTHONSTARTUP: null,
         PYTHONINSPECT: null,
+        PYTHONIOENCODING:
+          "utf-8",
+        PYTHONUTF8: "1",
       },
     );
   } finally {
