@@ -2,8 +2,15 @@ import {
   createHash,
 } from "node:crypto";
 import {
+  existsSync,
   readFileSync,
 } from "node:fs";
+import {
+  resolve,
+} from "node:path";
+import {
+  fileURLToPath,
+} from "node:url";
 
 export const JUNIUS_CONTRACT_MODES = [
   "engineering",
@@ -17,11 +24,45 @@ export type JuniusContractMode =
 function readContract(
   filename: string,
 ): string {
+  const releasePath =
+    fileURLToPath(
+      new URL(
+        `../prompts/${filename}`,
+        import.meta.url,
+      ),
+    );
+
+  if (existsSync(releasePath)) {
+    return readFileSync(
+      releasePath,
+      "utf8",
+    );
+  }
+
+  // Migration bridge for last-known-good bootstraps created
+  // before prompt files became part of validated release snapshots.
+  const projectRoot =
+    process.env
+      .JUNIUS_PROJECT_ROOT
+      ?.trim();
+
+  if (projectRoot !== undefined && projectRoot.length > 0) {
+    const livePath = resolve(
+      projectRoot,
+      "prompts",
+      filename,
+    );
+
+    if (existsSync(livePath)) {
+      return readFileSync(
+        livePath,
+        "utf8",
+      );
+    }
+  }
+
   return readFileSync(
-    new URL(
-      `../prompts/${filename}`,
-      import.meta.url,
-    ),
+    releasePath,
     "utf8",
   );
 }
