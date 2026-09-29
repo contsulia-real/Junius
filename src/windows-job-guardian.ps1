@@ -345,18 +345,6 @@ try {
             break
         }
 
-        if ($bootstrap.HasExited) {
-            $bootstrapError = (
-                $bootstrap.StandardError.ReadToEnd()
-            ) -replace "[\r\n]+", " | "
-            throw (
-                "job_guardian_bootstrap_exited_before_ready:" +
-                $bootstrap.ExitCode +
-                ":" +
-                $bootstrapError
-            )
-        }
-
         if (Test-Path -LiteralPath $readyFile) {
             $readyText = (
                 Get-Content -LiteralPath $readyFile -Raw
@@ -372,6 +360,18 @@ try {
                 $payloadPid = $parsedPid
                 break
             }
+        }
+
+        if ($bootstrap.HasExited) {
+            $bootstrapError = (
+                $bootstrap.StandardError.ReadToEnd()
+            ) -replace "[\r\n]+", " | "
+            throw (
+                "job_guardian_bootstrap_exited_before_ready:" +
+                $bootstrap.ExitCode +
+                ":" +
+                $bootstrapError
+            )
         }
 
         if ([DateTime]::UtcNow -ge $readyDeadline) {
@@ -391,26 +391,33 @@ try {
             [uint32]$payloadPid
         )
         if ($payloadHandle -eq [IntPtr]::Zero) {
-            throw "job_guardian_payload_open_failed"
-        }
-
-        try {
-            $payloadInJob = $false
+            [void]$bootstrap.WaitForExit(100)
             if (
-                -not [JuniusJobNative]::IsProcessInJob(
-                    $payloadHandle,
-                    $job,
-                    [ref]$payloadInJob
-                ) -or
-                -not $payloadInJob
+                -not $bootstrap.HasExited -or
+                $bootstrap.ExitCode -ne 0
             ) {
-                throw "job_guardian_payload_not_in_job"
+                throw "job_guardian_payload_open_failed"
             }
         }
-        finally {
-            [void][JuniusJobNative]::CloseHandle(
-                $payloadHandle
-            )
+        else {
+            try {
+                $payloadInJob = $false
+                if (
+                    -not [JuniusJobNative]::IsProcessInJob(
+                        $payloadHandle,
+                        $job,
+                        [ref]$payloadInJob
+                    ) -or
+                    -not $payloadInJob
+                ) {
+                    throw "job_guardian_payload_not_in_job"
+                }
+            }
+            finally {
+                [void][JuniusJobNative]::CloseHandle(
+                    $payloadHandle
+                )
+            }
         }
 
         $ready = [System.Text.Encoding]::ASCII.GetBytes(
