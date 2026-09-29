@@ -39,6 +39,8 @@ The caller and user are responsible for deciding whether an operation should be 
 
 The built-in Workspace file tools have their own path-containment implementation. They reject traversal and protected control paths and perform link/canonicalization checks.
 
+When scoped AGENTS.md files apply, built-in mutations also require a digest acknowledgement of the current applicable instruction chain before changing files. This is an agent-instruction preflight, not an operating-system security boundary or a natural-language policy evaluator.
+
 Those checks apply only to the built-in file tools. They are not a sandbox for processes launched through command or Job execution.
 
 ### Network surfaces
@@ -53,7 +55,7 @@ Workers use random loopback ports and require a private Host-injected token for 
 
 Browser automation exposes the full installed Playwright CLI command surface and can interact with authenticated browser sessions, execute Playwright/browser code exposed by that CLI, inspect or modify browser storage, and inspect or route network activity.
 
-Desktop Computer Use can view and operate user-visible applications. Desktop clipboard access can read or replace Unicode text currently held by the user's Windows clipboard.
+Desktop Computer Use is screenshot-only perception and can view and operate user-visible applications through coordinate input, drag, mixed action batches, keyboard/text input, and clipboard access. Desktop clipboard access can read or replace Unicode text currently held by the user's Windows clipboard.
 
 During an active Desktop control scope Junius displays a top-center disclosure plus a breathing edge effect so the local user can see that ChatGPT is controlling the desktop.
 

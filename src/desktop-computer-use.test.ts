@@ -48,11 +48,24 @@ function responseFor(request) {
     };
   }
 
-  if (request.command === "screenshot") {
+  if (
+    request.command === "screenshot" ||
+    (
+      request.command === "action_batch" &&
+      request.screenshot_after === true
+    )
+  ) {
     return {
       ok: true,
       result: {
         helperPid: process.pid,
+        ...(request.command === "action_batch"
+          ? {
+              received: request,
+              actions: request.actions ?? [],
+              actionCount: request.actions?.length ?? 0
+            }
+          : {}),
         image: {
           mimeType: "image/jpeg",
           data: "ZmFrZS1pbWFnZQ=="
@@ -247,7 +260,7 @@ test("desktop screenshot separates MCP image data from metadata", async () => {
   }
 });
 
-test("desktop exposes only screenshot and coordinate keyboard/mouse commands", async () => {
+test("desktop exposes bounded screenshot and input primitives", async () => {
   const f = await fixture();
 
   try {
@@ -300,6 +313,182 @@ test("desktop exposes only screenshot and coordinate keyboard/mouse commands", a
         x: 10,
         y: 20,
       },
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("desktop drag, wait, and mixed action batches are bounded primitives", async () => {
+  const f = await fixture();
+
+  try {
+    const drag =
+      await f.service.run({
+        session: "desktop",
+        command: "drag",
+        handle: 42,
+        x: 10,
+        y: 20,
+        toX: 30,
+        toY: 40,
+        durationMs: 250,
+      });
+
+    assert.deepEqual(
+      (
+        drag.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command: "drag",
+        session: "desktop",
+        handle: 42,
+        x: 10,
+        y: 20,
+        to_x: 30,
+        to_y: 40,
+        duration_ms: 250,
+      },
+    );
+
+    const waited =
+      await f.service.run({
+        session: "desktop",
+        command: "wait",
+        durationMs: 25,
+      });
+
+    assert.deepEqual(
+      (
+        waited.result as {
+          received: unknown;
+        }
+      ).received,
+      {
+        command: "wait",
+        session: "desktop",
+        duration_ms: 25,
+      },
+    );
+
+    const batch =
+      await f.service.run({
+        session: "desktop",
+        command: "action_batch",
+        actions: [
+          {
+            action: "mouse_click",
+            handle: 42,
+            x: 5,
+            y: 6,
+          },
+          {
+            action: "wait",
+            durationMs: 10,
+          },
+          {
+            action: "key_press",
+            key: "enter",
+          },
+          {
+            action: "drag",
+            handle: 42,
+            x: 1,
+            y: 2,
+            toX: 3,
+            toY: 4,
+            durationMs: 100,
+          },
+        ],
+        screenshotAfter: true,
+        screenshotHandle: 42,
+      });
+
+    assert.equal(
+      batch.image?.mimeType,
+      "image/jpeg",
+    );
+    const batchResult =
+      batch.result as {
+        received: {
+          actions: unknown[];
+          screenshot_after: boolean;
+          screenshot_handle: number;
+        };
+        actionCount: number;
+        region: unknown;
+      };
+    assert.equal(
+      batchResult.actionCount,
+      4,
+    );
+    assert.equal(
+      batchResult.received
+        .screenshot_after,
+      true,
+    );
+    assert.equal(
+      batchResult.received
+        .screenshot_handle,
+      42,
+    );
+    assert.deepEqual(
+      batchResult.received
+        .actions[1],
+      {
+        action: "wait",
+        duration_ms: 10,
+      },
+    );
+    assert.deepEqual(
+      batchResult.received
+        .actions[3],
+      {
+        action: "drag",
+        handle: 42,
+        x: 1,
+        y: 2,
+        to_x: 3,
+        to_y: 4,
+        duration_ms: 100,
+      },
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "wait",
+        durationMs: 30_001,
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "arguments_not_allowed",
+    );
+
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "action_batch",
+        actions: [
+          {
+            action: "wait",
+            durationMs: 20_000,
+          },
+          {
+            action: "wait",
+            durationMs: 20_000,
+          },
+        ],
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "arguments_not_allowed",
     );
   } finally {
     await f.dispose();
@@ -642,6 +831,32 @@ test("desktop real Python helper supports screenshot-only perception when instal
         command:
           "screenshot",
       });
+    const batch =
+      await service.run({
+        session:
+          "integration",
+        command:
+          "action_batch",
+        actions: [
+          {
+            action: "wait",
+            durationMs: 5,
+          },
+        ],
+        screenshotAfter: true,
+      });
+    assert.equal(
+      batch.image?.mimeType,
+      "image/jpeg",
+    );
+    assert.equal(
+      (
+        batch.result as {
+          actionCount?: number;
+        }
+      ).actionCount,
+      1,
+    );
 
     const listedWindows =
       (

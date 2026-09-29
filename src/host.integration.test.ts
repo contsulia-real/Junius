@@ -7,7 +7,13 @@ import {
   type Server,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,9 +194,11 @@ async function callMcpTool(
   sessionId: string | undefined,
   name: string,
   args: Record<string, unknown>,
+  allowError = false,
 ): Promise<{
   readonly response: Response;
   readonly payload: Record<string, unknown>;
+  readonly isError: boolean;
 }> {
   const response = await fetch(
     origin + "/mcp",
@@ -240,11 +248,13 @@ async function callMcpTool(
       }
     ).result;
 
-    assert.notEqual(
-      result?.isError,
-      true,
-      body,
-    );
+    if (!allowError) {
+      assert.notEqual(
+        result?.isError,
+        true,
+        body,
+      );
+    }
 
     for (const item of result?.content ?? []) {
       if (
@@ -259,12 +269,105 @@ async function callMcpTool(
         payload: JSON.parse(
           item.text,
         ) as Record<string, unknown>,
+        isError:
+          result?.isError === true,
       };
     }
   }
 
   throw new Error(
     `mcp_tool_result_missing: ${name}: ${body}`,
+  );
+}
+
+async function listMcpTools(
+  origin: string,
+  sessionId: string | undefined,
+): Promise<readonly {
+  readonly name?: string;
+  readonly inputSchema?: {
+    readonly properties?: Record<
+      string,
+      {
+        readonly enum?: readonly string[];
+      }
+    >;
+  };
+}[]> {
+  const response = await fetch(
+    origin + "/mcp",
+    {
+      method: "POST",
+      headers: {
+        "content-type":
+          "application/json",
+        accept:
+          "application/json, text/event-stream",
+        ...(sessionId === undefined
+          ? {}
+          : {
+              "mcp-session-id":
+                sessionId,
+            }),
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 77,
+        method: "tools/list",
+        params: {},
+      }),
+    },
+  );
+  const body =
+    await response.text();
+  assert.equal(
+    response.status,
+    200,
+    body,
+  );
+
+  for (
+    const message of
+    jsonRpcMessages(body)
+  ) {
+    if (
+      typeof message !==
+        "object" ||
+      message === null ||
+      !("result" in message)
+    ) {
+      continue;
+    }
+
+    const result = (
+      message as {
+        result?: {
+          tools?: readonly {
+            name?: string;
+            inputSchema?: {
+              properties?: Record<
+                string,
+                {
+                  enum?: readonly string[];
+                }
+              >;
+            };
+          }[];
+        };
+      }
+    ).result;
+
+    if (
+      Array.isArray(
+        result?.tools,
+      )
+    ) {
+      return result.tools;
+    }
+  }
+
+  throw new Error(
+    `mcp_tools_list_missing: ${body}`,
   );
 }
 
@@ -381,6 +484,62 @@ test("Junius Host exposes MCP plus private health and supervisor control without
         mcpOrigin,
       );
 
+    const tools =
+      await listMcpTools(
+        mcpOrigin,
+        mcpSessionId,
+      );
+    const desktopTool =
+      tools.find(
+        (tool) =>
+          tool.name ===
+          "desktop",
+      );
+    assert.notEqual(
+      desktopTool,
+      undefined,
+    );
+    const desktopProperties =
+      desktopTool
+        ?.inputSchema
+        ?.properties ?? {};
+    const desktopCommands =
+      desktopProperties
+        .command
+        ?.enum ?? [];
+    for (
+      const command of [
+        "action_batch",
+        "drag",
+        "wait",
+      ]
+    ) {
+      assert.equal(
+        desktopCommands.includes(
+          command,
+        ),
+        true,
+        `Desktop schema missing command: ${command}`,
+      );
+    }
+    for (
+      const property of [
+        "actions",
+        "screenshot_after",
+        "screenshot_handle",
+        "to_x",
+        "to_y",
+        "duration_ms",
+      ]
+    ) {
+      assert.equal(
+        property in
+          desktopProperties,
+        true,
+        `Desktop schema missing property: ${property}`,
+      );
+    }
+
     const secondWorkspaceRoot = join(
       root,
       "second-workspace",
@@ -388,6 +547,14 @@ test("Junius Host exposes MCP plus private health and supervisor control without
     await mkdir(
       secondWorkspaceRoot,
       { recursive: true },
+    );
+    await writeFile(
+      join(
+        secondWorkspaceRoot,
+        "AGENTS.md",
+      ),
+      "MCP black-box instruction\n",
+      "utf8",
     );
 
     const created = await callMcpTool(
@@ -406,6 +573,119 @@ test("Junius Host exposes MCP plus private health and supervisor control without
         } | undefined
       )?.id,
       "second",
+    );
+
+    const blockedWrite =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "write",
+        {
+          workspace: "second",
+          files: [
+            {
+              path: "probe.txt",
+              content:
+                "blocked\n",
+            },
+          ],
+        },
+        true,
+      );
+    assert.equal(
+      blockedWrite.isError,
+      true,
+    );
+    assert.equal(
+      blockedWrite.payload.code,
+      "agents_ack_required",
+    );
+    const agentsDetails =
+      blockedWrite.payload
+        .details as {
+          agentsDigest?: unknown;
+          agentInstructions?: {
+            path?: unknown;
+            scope?: unknown;
+            content?: unknown;
+          }[];
+        } | undefined;
+    assert.equal(
+      typeof agentsDetails
+        ?.agentsDigest,
+      "string",
+    );
+    assert.match(
+      agentsDetails
+        ?.agentsDigest as string,
+      /^[a-f0-9]{64}$/u,
+    );
+    assert.deepEqual(
+      agentsDetails
+        ?.agentInstructions,
+      [
+        {
+          path:
+            "AGENTS.md",
+          scope: ".",
+          depth: 0,
+          content:
+            "MCP black-box instruction\n",
+        },
+      ],
+    );
+    await assert.rejects(
+      readFile(
+        join(
+          secondWorkspaceRoot,
+          "probe.txt",
+        ),
+        "utf8",
+      ),
+      (
+        error: unknown,
+      ) =>
+        typeof error ===
+          "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code ===
+          "ENOENT",
+    );
+
+    const acknowledgedWrite =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "write",
+        {
+          workspace: "second",
+          agents_digest:
+            agentsDetails
+              ?.agentsDigest,
+          files: [
+            {
+              path: "probe.txt",
+              content:
+                "allowed\n",
+            },
+          ],
+        },
+      );
+    assert.equal(
+      acknowledgedWrite
+        .payload.ok,
+      true,
+    );
+    assert.equal(
+      await readFile(
+        join(
+          secondWorkspaceRoot,
+          "probe.txt",
+        ),
+        "utf8",
+      ),
+      "allowed\n",
     );
 
     const command = await callMcpTool(

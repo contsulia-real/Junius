@@ -51,6 +51,12 @@ export function desktopHelperRequest(
     ...(request.y === undefined
       ? {}
       : { y: request.y }),
+    ...(request.toX === undefined
+      ? {}
+      : { to_x: request.toX }),
+    ...(request.toY === undefined
+      ? {}
+      : { to_y: request.toY }),
     ...(request.button === undefined
       ? {}
       : { button: request.button }),
@@ -60,6 +66,9 @@ export function desktopHelperRequest(
     ...(request.amount === undefined
       ? {}
       : { amount: request.amount }),
+    ...(request.durationMs === undefined
+      ? {}
+      : { duration_ms: request.durationMs }),
     ...(request.key === undefined
       ? {}
       : { key: request.key }),
@@ -69,6 +78,28 @@ export function desktopHelperRequest(
     ...(request.steps === undefined
       ? {}
       : { steps: request.steps }),
+    ...(request.actions === undefined
+      ? {}
+      : {
+          actions: request.actions.map((action) => ({
+            ...action,
+            ...("toX" in action ? { to_x: action.toX } : {}),
+            ...("toY" in action ? { to_y: action.toY } : {}),
+            ...("durationMs" in action
+              ? { duration_ms: action.durationMs }
+              : {}),
+            action: action.action,
+            toX: undefined,
+            toY: undefined,
+            durationMs: undefined,
+          })),
+        }),
+    ...(request.screenshotAfter === undefined
+      ? {}
+      : { screenshot_after: request.screenshotAfter }),
+    ...(request.screenshotHandle === undefined
+      ? {}
+      : { screenshot_handle: request.screenshotHandle }),
   };
 }
 
@@ -79,12 +110,12 @@ export function transformDesktopHelperResult(
   readonly result: unknown;
   readonly image?: DesktopHelperImage;
 } {
-  if (command !== "screenshot") {
-    return { result: value };
-  }
-
   const record = asRecord(value);
   const image = record?.image;
+
+  if (command !== "screenshot" && !isHelperImage(image)) {
+    return { result: value };
+  }
 
   if (
     record === undefined ||

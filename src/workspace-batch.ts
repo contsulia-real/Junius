@@ -54,36 +54,114 @@ async function executeOperation(
     let result: unknown;
 
     switch (operation.op) {
-      case "ls":
+      case "ls": {
+        const path =
+          operation.path ?? ".";
+        const depth =
+          operation.depth ?? 1;
+        const [
+          entries,
+          agentInstructions,
+        ] =
+          await Promise.all([
+            files.ls(
+              workspace,
+              path,
+              depth,
+            ),
+            files.agentInstructionsForScan(
+              workspace,
+              path,
+              depth,
+            ),
+          ]);
         result = {
-          entries: await files.ls(
-            workspace,
-            operation.path ?? ".",
-            operation.depth ?? 1,
-          ),
+          entries,
+          ...(agentInstructions
+            .instructions
+            .length === 0
+            ? {}
+            : {
+                agentInstructions,
+              }),
         };
         break;
+      }
 
-      case "read":
+      case "read": {
+        const [
+          readFiles,
+          agentInstructions,
+        ] =
+          await Promise.all([
+            files.read(
+              workspace,
+              operation.files,
+            ),
+            files.agentInstructionsForPaths(
+              workspace,
+              operation.files.map(
+                (file) =>
+                  file.path,
+              ),
+            ),
+          ]);
         result = {
-          files: await files.read(workspace, operation.files),
+          files: readFiles,
+          ...(agentInstructions
+            .instructions
+            .length === 0
+            ? {}
+            : {
+                agentInstructions,
+              }),
         };
         break;
+      }
 
-      case "rg":
+      case "rg": {
+        const path =
+          operation.path ?? ".";
+        const [
+          matches,
+          agentInstructions,
+        ] =
+          await Promise.all([
+            files.rg(workspace, {
+              query:
+                operation.query,
+              path:
+                operation.path,
+              globs:
+                operation.globs,
+              caseSensitive:
+                operation.caseSensitive,
+              fixedStrings:
+                operation.fixedStrings,
+              hidden:
+                operation.hidden,
+              maxResults:
+                operation.maxResults,
+            }),
+            files.agentInstructionsForScan(
+              workspace,
+              path,
+            ),
+          ]);
         result = {
-          query: operation.query,
-          matches: await files.rg(workspace, {
-            query: operation.query,
-            path: operation.path,
-            globs: operation.globs,
-            caseSensitive: operation.caseSensitive,
-            fixedStrings: operation.fixedStrings,
-            hidden: operation.hidden,
-            maxResults: operation.maxResults,
-          }),
+          query:
+            operation.query,
+          matches,
+          ...(agentInstructions
+            .instructions
+            .length === 0
+            ? {}
+            : {
+                agentInstructions,
+              }),
         };
         break;
+      }
     }
 
     const response = {

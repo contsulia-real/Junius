@@ -151,6 +151,9 @@ export function fileToolError(error: unknown) {
             ok: false,
             code: error.code,
             message: error.message,
+            ...(error.details === undefined
+              ? {}
+              : { details: error.details }),
           }),
         },
       ],

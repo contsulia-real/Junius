@@ -558,6 +558,214 @@ def focus_window(
     }
 
 
+def wait_action(
+    duration_ms: int,
+) -> dict[str, Any]:
+    time.sleep(duration_ms / 1000.0)
+    return {"durationMs": duration_ms}
+
+
+def drag_action(
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    start_x, start_y = point(request)
+    destination: dict[str, Any] = {
+        "x": int(request["to_x"]),
+        "y": int(request["to_y"]),
+    }
+    if request.get("handle") is not None:
+        destination["handle"] = int(
+            request["handle"]
+        )
+    end_x, end_y = point(destination)
+
+    button = str(
+        request.get(
+            "button",
+            "left",
+        )
+    )
+    duration_ms = int(
+        request.get(
+            "duration_ms",
+            0,
+        )
+    )
+    pyautogui.moveTo(
+        start_x,
+        start_y,
+    )
+    pyautogui.dragTo(
+        end_x,
+        end_y,
+        duration=(
+            duration_ms
+            / 1000.0
+        ),
+        button=button,
+    )
+    return {
+        "from": {
+            "x": start_x,
+            "y": start_y,
+        },
+        "to": {
+            "x": end_x,
+            "y": end_y,
+        },
+        "button": button,
+        "durationMs": duration_ms,
+    }
+
+
+def action_batch(
+    actions: list[dict[str, Any]],
+    screenshot_after: bool,
+    screenshot_handle: int | None,
+) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    held_keys: list[str] = []
+    held_buttons: list[str] = []
+
+    try:
+        for action in actions:
+            command = str(
+                action["action"]
+            )
+
+            if command == "wait":
+                result = wait_action(
+                    int(
+                        action[
+                            "duration_ms"
+                        ]
+                    )
+                )
+            elif command == "drag":
+                result = drag_action(
+                    action
+                )
+            elif command == "key_down":
+                key = str(
+                    action["key"]
+                )
+                pyautogui.keyDown(key)
+                held_keys.append(key)
+                result = {"key": key}
+            elif command == "key_up":
+                key = str(
+                    action["key"]
+                )
+                pyautogui.keyUp(key)
+                for index in range(
+                    len(held_keys) - 1,
+                    -1,
+                    -1,
+                ):
+                    if (
+                        held_keys[index]
+                        == key
+                    ):
+                        del held_keys[index]
+                        break
+                result = {"key": key}
+            elif command == "mouse_down":
+                x, y = point(action)
+                button = str(
+                    action.get(
+                        "button",
+                        "left",
+                    )
+                )
+                pyautogui.mouseDown(
+                    x=x,
+                    y=y,
+                    button=button,
+                )
+                held_buttons.append(
+                    button
+                )
+                result = {
+                    "x": x,
+                    "y": y,
+                    "button": button,
+                }
+            elif command == "mouse_up":
+                x, y = point(action)
+                button = str(
+                    action.get(
+                        "button",
+                        "left",
+                    )
+                )
+                pyautogui.mouseUp(
+                    x=x,
+                    y=y,
+                    button=button,
+                )
+                for index in range(
+                    len(held_buttons) - 1,
+                    -1,
+                    -1,
+                ):
+                    if (
+                        held_buttons[index]
+                        == button
+                    ):
+                        del held_buttons[
+                            index
+                        ]
+                        break
+                result = {
+                    "x": x,
+                    "y": y,
+                    "button": button,
+                }
+            else:
+                result = input_action(
+                    command,
+                    action,
+                )
+
+            results.append(
+                {
+                    "action": command,
+                    "result": result,
+                }
+            )
+    finally:
+        for key in reversed(
+            held_keys
+        ):
+            try:
+                pyautogui.keyUp(key)
+            except Exception:
+                pass
+        for button in reversed(
+            held_buttons
+        ):
+            try:
+                pyautogui.mouseUp(
+                    button=button
+                )
+            except Exception:
+                pass
+
+    response: dict[str, Any] = {
+        "actions": results,
+        "actionCount": len(
+            actions
+        ),
+    }
+    if screenshot_after:
+        response.update(
+            screenshot(
+                screenshot_handle
+            )
+        )
+    return response
+
+
 def input_action(
     command: str,
     request: dict[str, Any],
@@ -629,6 +837,20 @@ def input_action(
                     request["amount"]
                 ),
             }
+
+        if command == "drag":
+            return drag_action(
+                request
+            )
+
+        if command == "wait":
+            return wait_action(
+                int(
+                    request[
+                        "duration_ms"
+                    ]
+                )
+            )
 
         if command == "key_press":
             key = str(request["key"])
@@ -703,6 +925,9 @@ def execute(
         "mouse_down",
         "mouse_up",
         "mouse_wheel",
+        "drag",
+        "wait",
+        "action_batch",
         "key_press",
         "key_down",
         "key_up",
@@ -767,12 +992,52 @@ def execute(
             else int(handle)
         )
 
+    if command == "action_batch":
+        actions = request.get(
+            "actions"
+        )
+        if not isinstance(
+            actions,
+            list,
+        ):
+            raise DesktopHelperError(
+                "invalid_batch_actions",
+                (
+                    "Desktop action batch "
+                    "must be a list."
+                ),
+            )
+        screenshot_handle = (
+            request.get(
+                "screenshot_handle"
+            )
+        )
+        return action_batch(
+            actions,
+            bool(
+                request.get(
+                    "screenshot_after",
+                    False,
+                )
+            ),
+            (
+                None
+                if screenshot_handle
+                is None
+                else int(
+                    screenshot_handle
+                )
+            ),
+        )
+
     if command in {
         "mouse_move",
         "mouse_click",
         "mouse_down",
         "mouse_up",
         "mouse_wheel",
+        "drag",
+        "wait",
         "key_press",
         "key_down",
         "key_up",

@@ -99,6 +99,8 @@ All paths are Workspace-relative.
 
 These tools implement their own path checks and do not delegate user paths to a shell.
 
+Workspace inspection also loads directory-scoped AGENTS.md instructions. A file applies to its containing directory and descendants; deeper AGENTS.md files are ordered later and therefore represent the more specific instruction scope. Read-only scans return the applicable instruction chain and digest. Built-in write and workspace_apply calls require the current digest when instructions apply, so mutations cannot occur before the caller has received the current scoped instruction set.
+
 ### Direct process execution
 
     run_command(workspace, executable, args)
@@ -358,12 +360,18 @@ The persistent Python helper handles:
 - full-screen and window screenshot capture;
 - focus;
 - coordinate mouse actions;
+- first-class drag;
+- explicit wait;
+- mixed action_batch execution;
+- optional post-batch screenshot capture;
 - keyboard actions;
 - key macros;
 - Unicode clipboard read/write;
 - direct text input.
 
-There is no accessibility-tree or semantic-control dependency in the current Desktop implementation.
+action_batch keeps the whole sequence inside one helper request. Explicit wait plus drag durations are bounded, and keys/buttons held by the batch are released in a finally path. screenshot_after turns the same call into an act → observe round trip.
+
+There is intentionally no accessibility-tree, UI Automation, or semantic-control dependency in Desktop perception. The visual model remains screenshot-only.
 
 ### Task-level takeover disclosure
 
@@ -409,6 +417,16 @@ This is best-effort transactional behavior and is not described as filesystem-le
 write parent chains are revalidated around commit to narrow path-replacement races.
 
 rg applies user globs before Junius protection globs so a user include rule cannot re-enable reserved paths.
+
+### AGENTS.md instruction preflight
+
+The Workspace file subsystem discovers AGENTS.md without following symlinked directories or entering reserved/protected paths.
+
+For a target path, Junius loads AGENTS.md from the Workspace root through each containing directory. For recursive scans, it additionally discovers nested AGENTS.md files inside the scan scope. Results are ordered from broadest to most deeply nested scope.
+
+The instruction chain is hashed. Built-in mutation calls must supply the current hash as agents_digest when at least one AGENTS.md applies. A missing or stale digest produces agents_ack_required before any write is staged. The error includes the current digest and complete applicable instruction objects so the caller can apply them and retry.
+
+This mechanism guarantees instruction discovery and pre-action acknowledgement. Junius does not parse natural-language AGENTS.md content into its own policy engine; the calling agent is responsible for following the instructions it was given. Direct system/developer/user instructions remain higher priority.
 
 These restrictions apply only to built-in file tools.
 

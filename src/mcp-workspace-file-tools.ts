@@ -7,6 +7,18 @@ import {
   workspacePathSchema,
 } from "./mcp-tool-shared.js";
 
+function agentInstructionsField(
+  value: Awaited<
+    ReturnType<
+      WorkspaceFilesService["agentInstructionsForPaths"]
+    >
+  >,
+) {
+  return value.instructions.length === 0
+    ? {}
+    : { agentInstructions: value };
+}
+
 export function registerWorkspaceFileTools(
   server: McpServer,
   files: WorkspaceFilesService,
@@ -16,7 +28,7 @@ export function registerWorkspaceFileTools(
     {
       title: "List Workspace Files",
       description:
-        "List files and directories inside one registered Junius Workspace. Paths are Workspace-relative.",
+        "List files and directories inside one registered Junius Workspace. Paths are Workspace-relative. If AGENTS.md files apply to or are discovered within the scanned scope, Junius returns their contents and scope metadata so the agent must follow them.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         path: workspacePathSchema.default("."),
@@ -34,7 +46,22 @@ export function registerWorkspaceFileTools(
     },
     async ({ workspace, path, depth }) => {
       try {
-        const entries = await files.ls(workspace, path, depth);
+        const [
+          entries,
+          agentInstructions,
+        ] = await Promise.all([
+          files.ls(
+            workspace,
+            path,
+            depth,
+          ),
+          files.agentInstructionsForScan(
+            workspace,
+            path,
+            depth,
+          ),
+        ]);
+
         return {
           content: [
             {
@@ -44,6 +71,9 @@ export function registerWorkspaceFileTools(
                 workspace,
                 path,
                 entries,
+                ...agentInstructionsField(
+                  agentInstructions,
+                ),
               }),
             },
           ],
@@ -59,7 +89,7 @@ export function registerWorkspaceFileTools(
     {
       title: "Read Workspace Files",
       description:
-        "Read one or more UTF-8 text files from a registered Junius Workspace.",
+        "Read one or more UTF-8 text files from a registered Junius Workspace. Applicable AGENTS.md instructions are returned with the read result and must govern agent behavior for files in their scope.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
@@ -85,8 +115,7 @@ export function registerWorkspaceFileTools(
     },
     async ({ workspace, files: requests }) => {
       try {
-        const results = await files.read(
-          workspace,
+        const readRequests =
           requests.map((request) => ({
             path: request.path,
             ...(request.start_line === undefined
@@ -95,8 +124,24 @@ export function registerWorkspaceFileTools(
             ...(request.end_line === undefined
               ? {}
               : { endLine: request.end_line }),
-          })),
-        );
+          }));
+
+        const [
+          results,
+          agentInstructions,
+        ] = await Promise.all([
+          files.read(
+            workspace,
+            readRequests,
+          ),
+          files.agentInstructionsForPaths(
+            workspace,
+            readRequests.map(
+              (request) =>
+                request.path,
+            ),
+          ),
+        ]);
 
         return {
           content: [
@@ -106,6 +151,9 @@ export function registerWorkspaceFileTools(
                 ok: true,
                 workspace,
                 files: results,
+                ...agentInstructionsField(
+                  agentInstructions,
+                ),
               }),
             },
           ],
@@ -121,7 +169,7 @@ export function registerWorkspaceFileTools(
     {
       title: "Write Workspace Files",
       description:
-        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. A prior read is not required. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
+        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. Applicable AGENTS.md instructions are a mandatory preflight: when they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
@@ -143,7 +191,10 @@ export function registerWorkspaceFileTools(
                   .optional(),
               })
               .superRefine((file, context) => {
-                if ((file.content === undefined) === (file.edits === undefined)) {
+                if (
+                  (file.content === undefined) ===
+                  (file.edits === undefined)
+                ) {
                   context.addIssue({
                     code: "custom",
                     message:
@@ -154,6 +205,13 @@ export function registerWorkspaceFileTools(
           )
           .min(1)
           .max(16),
+        agents_digest: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/u)
+          .optional()
+          .describe(
+            "Digest returned by an AGENTS.md preflight. Required when applicable AGENTS.md instructions exist.",
+          ),
       }),
       _meta: {
         securitySchemes: [{ type: "noauth" }],
@@ -165,10 +223,13 @@ export function registerWorkspaceFileTools(
         openWorldHint: false,
       },
     },
-    async ({ workspace, files: requests }) => {
+    async ({
+      workspace,
+      files: requests,
+      agents_digest,
+    }) => {
       try {
-        const results = await files.write(
-          workspace,
+        const writeRequests =
           requests.map((request) => ({
             path: request.path,
             ...(request.content === undefined
@@ -183,8 +244,23 @@ export function registerWorkspaceFileTools(
                     replaceAll: edit.replace_all,
                   })),
                 }),
-          })),
+          }));
+
+        const results = await files.write(
+          workspace,
+          writeRequests,
+          "write",
+          agents_digest,
         );
+
+        const agentInstructions =
+          await files.agentInstructionsForPaths(
+            workspace,
+            writeRequests.map(
+              (request) =>
+                request.path,
+            ),
+          );
 
         return {
           content: [
@@ -194,6 +270,9 @@ export function registerWorkspaceFileTools(
                 ok: true,
                 workspace,
                 files: results,
+                ...agentInstructionsField(
+                  agentInstructions,
+                ),
               }),
             },
           ],
@@ -204,13 +283,12 @@ export function registerWorkspaceFileTools(
     },
   );
 
-
   server.registerTool(
     "rg",
     {
       title: "Search Workspace Text",
       description:
-        "Search text inside one registered Junius Workspace using ripgrep. Paths are Workspace-relative and ripgrep configuration files are disabled.",
+        "Search text inside one registered Junius Workspace using ripgrep. Paths are Workspace-relative and ripgrep configuration files are disabled. AGENTS.md files applicable to or nested inside the recursive search scope are returned so the agent must apply their directory-scoped instructions.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         query: z.string().min(1).max(4_096),
@@ -242,15 +320,24 @@ export function registerWorkspaceFileTools(
       max_results,
     }) => {
       try {
-        const matches = await files.rg(workspace, {
-          query,
-          path,
-          globs,
-          caseSensitive: case_sensitive,
-          fixedStrings: fixed_strings,
-          hidden,
-          maxResults: max_results,
-        });
+        const [
+          matches,
+          agentInstructions,
+        ] = await Promise.all([
+          files.rg(workspace, {
+            query,
+            path,
+            globs,
+            caseSensitive: case_sensitive,
+            fixedStrings: fixed_strings,
+            hidden,
+            maxResults: max_results,
+          }),
+          files.agentInstructionsForScan(
+            workspace,
+            path,
+          ),
+        ]);
 
         return {
           content: [
@@ -261,6 +348,9 @@ export function registerWorkspaceFileTools(
                 workspace,
                 query,
                 matches,
+                ...agentInstructionsField(
+                  agentInstructions,
+                ),
               }),
             },
           ],
@@ -270,5 +360,4 @@ export function registerWorkspaceFileTools(
       }
     },
   );
-
 }

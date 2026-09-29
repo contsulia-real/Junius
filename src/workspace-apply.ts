@@ -22,6 +22,7 @@ export async function runWorkspaceApply(
   workspace: string,
   writes: readonly WriteRequest[],
   verify: readonly WorkspaceReadBatchOperation[] = [],
+  agentsDigest?: string,
 ): Promise<WorkspaceApplyResult> {
   const startedAt = performance.now();
 
@@ -30,6 +31,7 @@ export async function runWorkspaceApply(
     workspace,
     writes,
     "workspace_apply",
+    agentsDigest,
   );
   const writeDurationMs = Math.round(
     performance.now() - writeStartedAt,

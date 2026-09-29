@@ -17,7 +17,7 @@ export function registerWorkspaceApplyTool(
     {
       title: "Apply Workspace Writes",
       description:
-        "Apply up to 16 Workspace file writes in one transactional batch, then optionally run up to 16 read-only ls/read/rg verification operations in the same MCP round trip. All write targets are prepared before commit; if commit fails, Junius attempts reverse rollback. Verification observes the committed result and does not make autonomous rollback decisions.",
+        "Apply up to 16 Workspace file writes in one transactional batch, then optionally run up to 16 read-only ls/read/rg verification operations in the same MCP round trip. Applicable AGENTS.md instructions are a mandatory preflight: if they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. All write targets are prepared before commit; if commit fails, Junius attempts reverse rollback.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         files: z
@@ -50,6 +50,13 @@ export function registerWorkspaceApplyTool(
           )
           .min(1)
           .max(16),
+        agents_digest: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/u)
+          .optional()
+          .describe(
+            "Digest returned by an AGENTS.md preflight. Required when applicable AGENTS.md instructions exist.",
+          ),
         verify: z
           .array(
             z.discriminatedUnion("op", [
@@ -107,7 +114,12 @@ export function registerWorkspaceApplyTool(
         openWorldHint: false,
       },
     },
-    async ({ workspace, files: requests, verify }) => {
+    async ({
+      workspace,
+      files: requests,
+      verify,
+      agents_digest,
+    }) => {
       try {
         const result = await runWorkspaceApply(
           files,
@@ -172,6 +184,7 @@ export function registerWorkspaceApplyTool(
                 };
             }
           }),
+          agents_digest,
         );
 
         return {

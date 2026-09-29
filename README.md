@@ -204,7 +204,21 @@ Important properties include:
 - configured Junius runtime/state and Browser profile paths are protected if they fall inside a Workspace;
 - rg cannot use later include globs to re-enable protected paths.
 
-These checks apply only to Junius's built-in file tools. They do not restrict an executable launched by run_command or start_job.
+### AGENTS.md behavior
+
+Workspace inspection follows Codex-style directory scoping for AGENTS.md:
+
+- an AGENTS.md applies to the directory that contains it and the entire subtree below that directory;
+- more deeply nested AGENTS.md files appear later in the instruction chain and take precedence for files in their narrower scope;
+- ls, read, rg, and workspace_batch automatically return applicable AGENTS.md content together with each file's scope and a SHA-256 digest;
+- recursive scans also discover nested AGENTS.md files inside the scanned subtree;
+- write and workspace_apply perform a mandatory AGENTS.md preflight. If applicable instructions exist and the caller has not supplied the current agents_digest, Junius rejects the mutation before changing files and returns the complete applicable instruction chain plus the digest;
+- if an applicable AGENTS.md changes, the old digest no longer authorizes the built-in file mutation;
+- oversized AGENTS.md instruction sets fail explicitly rather than being silently omitted.
+
+The calling agent must treat those instructions as binding within their scope. Direct system/developer/user instructions remain higher priority than AGENTS.md instructions.
+
+These checks apply only to Junius's built-in file tools. They do not restrict an executable launched by run_command or start_job; process execution remains unrestricted by Workspace file-tool policy.
 
 ## Browser Computer Use
 
@@ -222,7 +236,11 @@ Junius provides a persistent Browser state directory, but it does not force Play
 
 ## Windows Desktop Computer Use
 
-Desktop perception is screenshot-based. Junius can enumerate top-level native windows, capture the screen or one window, focus a window, perform coordinate mouse actions, send keyboard actions and macros, read/write Unicode clipboard text, and type text directly where supported.
+Desktop perception is deliberately screenshot-only. Junius does not use Windows UI Automation or an accessibility/semantic control tree. It can enumerate top-level native windows, capture the screen or one window, focus a window, perform coordinate mouse actions, drag, wait, send keyboard actions and macros, read/write Unicode clipboard text, and type text directly where supported.
+
+action_batch executes up to 128 mixed Desktop actions in one helper round trip. Batch actions can combine focus, mouse movement/click/down/up/wheel, drag, wait, keyboard actions/macros, clipboard access, and text input. Explicit wait and drag durations are bounded, and held keys/buttons are released on batch failure.
+
+For act → observe loops, action_batch supports screenshot_after. When enabled, the post-action screenshot is returned in the same MCP response; screenshot_handle can target one top-level window instead of the full screen.
 
 Desktop tasks have an explicit control lifecycle:
 

@@ -12,12 +12,15 @@ export type WorkspaceFileErrorCode =
   | "write_too_large"
   | "write_failed"
   | "rg_not_available"
-  | "rg_failed";
+  | "rg_failed"
+  | "agents_ack_required"
+  | "agents_instructions_too_large";
 
 export class WorkspaceFileError extends Error {
   constructor(
     readonly code: WorkspaceFileErrorCode,
     message: string,
+    readonly details?: unknown,
   ) {
     super(message);
   }

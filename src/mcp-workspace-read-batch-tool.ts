@@ -17,7 +17,7 @@ export function registerWorkspaceReadBatchTool(
     {
       title: "Batch Workspace Reads",
       description:
-        "Execute up to 16 independent read-only Workspace operations in one MCP round trip. Supports ls, read, and rg. Operations run concurrently, expected file errors are isolated per operation, and response sizes are bounded. Use this when multiple known inspections can be issued together instead of making separate ls/read/rg calls.",
+        "Execute up to 16 independent read-only Workspace operations in one MCP round trip. Supports ls, read, and rg. Each operation automatically returns applicable AGENTS.md instructions for its path or recursive scan scope. Operations run concurrently, expected file errors are isolated per operation, and response sizes are bounded.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         operations: z

@@ -295,6 +295,7 @@ export {
   DesktopComputerUseError,
 };
 export type {
+  DesktopBatchAction,
   DesktopCommand,
   DesktopComputerUseErrorCode,
   DesktopComputerUseOptions,

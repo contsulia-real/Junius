@@ -4,6 +4,9 @@ import { z } from "zod";
 import type {
   PlaywrightCliService,
 } from "./playwright-cli.js";
+import type {
+  DesktopBatchAction,
+} from "./desktop-computer-use.js";
 import {
   DESKTOP_COMMANDS,
   DESKTOP_KEY_MACRO_ACTIONS,
@@ -14,6 +17,200 @@ import {
   playwrightCliToolError,
   stableIdSchema,
 } from "./mcp-tool-shared.js";
+
+const desktopKeyMacroStepSchema =
+  z.object({
+    action: z.enum(
+      DESKTOP_KEY_MACRO_ACTIONS,
+    ),
+    key: z
+      .string()
+      .min(1)
+      .max(64),
+  });
+
+const desktopPointFields = {
+  handle: z
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  x: z.number().int(),
+  y: z.number().int(),
+};
+
+const desktopBatchActionSchema =
+  z.discriminatedUnion("action", [
+    z.object({
+      action: z.literal(
+        "focus_window",
+      ),
+      handle: z
+        .number()
+        .int()
+        .positive(),
+    }),
+    z.object({
+      action: z.literal(
+        "mouse_move",
+      ),
+      ...desktopPointFields,
+    }),
+    z.object({
+      action: z.literal(
+        "mouse_click",
+      ),
+      ...desktopPointFields,
+      button: z
+        .enum([
+          "left",
+          "right",
+          "middle",
+        ])
+        .optional(),
+      clicks: z
+        .number()
+        .int()
+        .min(1)
+        .max(4)
+        .optional(),
+    }),
+    z.object({
+      action: z.enum([
+        "mouse_down",
+        "mouse_up",
+      ]),
+      ...desktopPointFields,
+      button: z
+        .enum([
+          "left",
+          "right",
+          "middle",
+        ])
+        .optional(),
+    }),
+    z.object({
+      action: z.literal(
+        "mouse_wheel",
+      ),
+      ...desktopPointFields,
+      amount: z
+        .number()
+        .int(),
+    }),
+    z.object({
+      action: z.literal("drag"),
+      ...desktopPointFields,
+      to_x: z.number().int(),
+      to_y: z.number().int(),
+      button: z
+        .enum([
+          "left",
+          "right",
+          "middle",
+        ])
+        .optional(),
+      duration_ms: z
+        .number()
+        .int()
+        .min(0)
+        .max(10_000)
+        .optional(),
+    }),
+    z.object({
+      action: z.literal("wait"),
+      duration_ms: z
+        .number()
+        .int()
+        .min(0)
+        .max(30_000),
+    }),
+    z.object({
+      action: z.enum([
+        "key_press",
+        "key_down",
+        "key_up",
+      ]),
+      key: z
+        .string()
+        .min(1)
+        .max(64),
+    }),
+    z.object({
+      action: z.literal(
+        "key_macro",
+      ),
+      steps: z
+        .array(
+          desktopKeyMacroStepSchema,
+        )
+        .min(1)
+        .max(128),
+    }),
+    z.object({
+      action: z.literal(
+        "clipboard_read",
+      ),
+    }),
+    z.object({
+      action: z.enum([
+        "clipboard_write",
+        "type",
+      ]),
+      text: z
+        .string()
+        .max(65_536),
+    }),
+  ]);
+
+type DesktopBatchActionInput =
+  z.infer<
+    typeof desktopBatchActionSchema
+  >;
+
+function toDesktopBatchAction(
+  action: DesktopBatchActionInput,
+): DesktopBatchAction {
+  switch (action.action) {
+    case "drag":
+      return {
+        action: "drag",
+        ...(action.handle === undefined
+          ? {}
+          : {
+              handle:
+                action.handle,
+            }),
+        x: action.x,
+        y: action.y,
+        toX: action.to_x,
+        toY: action.to_y,
+        ...(action.button === undefined
+          ? {}
+          : {
+              button:
+                action.button,
+            }),
+        ...(action.duration_ms ===
+        undefined
+          ? {}
+          : {
+              durationMs:
+                action.duration_ms,
+            }),
+      };
+
+    case "wait":
+      return {
+        action: "wait",
+        durationMs:
+          action.duration_ms,
+      };
+
+    default:
+      return action;
+  }
+}
 
 export function registerComputerTools(
   server: McpServer,
@@ -125,7 +322,7 @@ export function registerComputerTools(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. For every desktop-control task, call control_begin once before the first desktop action and always call control_end for the same session before finishing, including when the task succeeds, cannot be completed, or encounters an error. The user-visible Junius takeover indicator remains active for that entire control scope. Use windows to discover top-level native windows, screenshot to understand the full screen or one window, coordinate mouse/keyboard commands to act, key_macro for bounded keyboard sequences, and clipboard_read/clipboard_write for Unicode text clipboard access. Screenshot coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. For every desktop-control task, call control_begin once before the first desktop action and always call control_end for the same session before finishing, including on failure. Perception remains screenshot-only: there is no UI Automation semantic tree. action_batch can execute mixed mouse, keyboard, text, clipboard, focus, drag, and wait actions in one helper round trip; set screenshot_after to observe the resulting screen in the same call. Coordinates are window-relative when a handle is supplied and screen-relative otherwise.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
@@ -143,28 +340,52 @@ export function registerComputerTools(
           ),
         x: z.number().int().optional(),
         y: z.number().int().optional(),
+        to_x: z.number().int().optional(),
+        to_y: z.number().int().optional(),
         button: z.enum(["left", "right", "middle"]).optional(),
         clicks: z.number().int().min(1).max(4).optional(),
         amount: z.number().int().optional(),
+        duration_ms: z
+          .number()
+          .int()
+          .min(0)
+          .max(30_000)
+          .optional(),
         key: z.string().min(1).max(64).optional(),
         text: z.string().max(65_536).optional(),
         steps: z
           .array(
-            z.object({
-              action: z.enum(
-                DESKTOP_KEY_MACRO_ACTIONS,
-              ),
-              key: z
-                .string()
-                .min(1)
-                .max(64),
-            }),
+            desktopKeyMacroStepSchema,
           )
           .min(1)
           .max(128)
           .optional()
           .describe(
             "Keyboard macro steps executed locally in order. Any key_down still held by this macro is released before the macro returns, including on failure.",
+          ),
+        actions: z
+          .array(
+            desktopBatchActionSchema,
+          )
+          .min(1)
+          .max(128)
+          .optional()
+          .describe(
+            "Mixed Desktop actions for action_batch. Total wait time is bounded to 30 seconds.",
+          ),
+        screenshot_after: z
+          .boolean()
+          .optional()
+          .describe(
+            "For action_batch, capture and return a screenshot after all actions complete.",
+          ),
+        screenshot_handle: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            "Optional top-level window handle for action_batch screenshot_after.",
           ),
       }),
       _meta: {
@@ -186,9 +407,15 @@ export function registerComputerTools(
       button,
       clicks,
       amount,
+      duration_ms,
+      to_x,
+      to_y,
       key,
       text,
       steps,
+      actions,
+      screenshot_after,
+      screenshot_handle,
     }) => {
       const startedAt = performance.now();
       const auditMetadata = {
@@ -210,6 +437,15 @@ export function registerComputerTools(
         ...(amount === undefined
           ? {}
           : { amount }),
+        ...(duration_ms === undefined
+          ? {}
+          : { durationMs: duration_ms }),
+        ...(to_x === undefined
+          ? {}
+          : { toX: to_x }),
+        ...(to_y === undefined
+          ? {}
+          : { toY: to_y }),
         ...(key === undefined
           ? {}
           : { key }),
@@ -219,6 +455,15 @@ export function registerComputerTools(
         ...(steps === undefined
           ? {}
           : { stepCount: steps.length }),
+        ...(actions === undefined
+          ? {}
+          : { actionCount: actions.length }),
+        ...(screenshot_after === undefined
+          ? {}
+          : { screenshotAfter: screenshot_after }),
+        ...(screenshot_handle === undefined
+          ? {}
+          : { screenshotHandle: screenshot_handle }),
       };
       try {
         const execution = await desktop.run({
@@ -230,9 +475,28 @@ export function registerComputerTools(
           ...(button === undefined ? {} : { button }),
           ...(clicks === undefined ? {} : { clicks }),
           ...(amount === undefined ? {} : { amount }),
+          ...(duration_ms === undefined
+            ? {}
+            : { durationMs: duration_ms }),
+          ...(to_x === undefined ? {} : { toX: to_x }),
+          ...(to_y === undefined ? {} : { toY: to_y }),
           ...(key === undefined ? {} : { key }),
           ...(text === undefined ? {} : { text }),
           ...(steps === undefined ? {} : { steps }),
+          ...(actions === undefined
+            ? {}
+            : {
+                actions:
+                  actions.map(
+                    toDesktopBatchAction,
+                  ),
+              }),
+          ...(screenshot_after === undefined
+            ? {}
+            : { screenshotAfter: screenshot_after }),
+          ...(screenshot_handle === undefined
+            ? {}
+            : { screenshotHandle: screenshot_handle }),
         });
 
         audit?.record({

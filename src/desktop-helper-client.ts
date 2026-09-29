@@ -19,7 +19,7 @@ export {
   type DesktopHelperResponse,
 } from "./desktop-helper-protocol.js";
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_STDERR_BYTES = 64 * 1024;
 
 interface PendingRequest {

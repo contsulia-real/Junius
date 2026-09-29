@@ -24,6 +24,12 @@ import {
   runRg,
   type RgMatch,
 } from "./workspace-rg.js";
+import {
+  agentsForPaths,
+  agentsForScan,
+  assertAgentsDigest,
+  type WorkspaceAgentInstructions,
+} from "./workspace-agents.js";
 
 export {
   WorkspaceFileError,
@@ -47,6 +53,36 @@ export class WorkspaceFilesService {
     private readonly protectedPaths: readonly string[] = [],
     private readonly audit?: AuditStore,
   ) {}
+
+  async agentInstructionsForPaths(
+    workspace: string,
+    paths: readonly string[],
+  ): Promise<WorkspaceAgentInstructions> {
+    return agentsForPaths(
+      getResolver(
+        this.manager,
+        workspace,
+        this.protectedPaths,
+      ),
+      paths,
+    );
+  }
+
+  async agentInstructionsForScan(
+    workspace: string,
+    path = ".",
+    maxDepth?: number,
+  ): Promise<WorkspaceAgentInstructions> {
+    return agentsForScan(
+      getResolver(
+        this.manager,
+        workspace,
+        this.protectedPaths,
+      ),
+      path,
+      maxDepth,
+    );
+  }
 
   async ls(
     workspace: string,
@@ -89,6 +125,7 @@ export class WorkspaceFilesService {
     auditAction:
       "write" | "workspace_apply" =
       "write",
+    agentsDigest?: string,
   ): Promise<readonly WriteResult[]> {
     const startedAt = performance.now();
     const requestedPaths =
@@ -112,13 +149,25 @@ export class WorkspaceFilesService {
     }
 
     try {
+      const resolver =
+        getResolver(
+          this.manager,
+          workspace,
+          this.protectedPaths,
+        );
+      const agentInstructions =
+        await agentsForPaths(
+          resolver,
+          requestedPaths,
+        );
+      assertAgentsDigest(
+        agentInstructions,
+        agentsDigest,
+      );
+
       const results =
         await transactionalWrite(
-          getResolver(
-            this.manager,
-            workspace,
-            this.protectedPaths,
-          ),
+          resolver,
           files,
         );
 
