@@ -94,6 +94,217 @@ class PaintStruct(ctypes.Structure):
     ]
 
 
+def _configure_win32_api() -> None:
+    handle = ctypes.c_void_p
+    rect_pointer = ctypes.POINTER(
+        wintypes.RECT
+    )
+    paint_pointer = ctypes.POINTER(
+        PaintStruct
+    )
+    message_pointer = ctypes.POINTER(
+        wintypes.MSG
+    )
+
+    kernel32.GetModuleHandleW.argtypes = [
+        wintypes.LPCWSTR,
+    ]
+    kernel32.GetModuleHandleW.restype = handle
+
+    user32.RegisterClassW.argtypes = [
+        ctypes.POINTER(WndClassW),
+    ]
+    user32.RegisterClassW.restype = ctypes.c_ushort
+
+    user32.CreateWindowExW.argtypes = [
+        wintypes.DWORD,
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.HWND,
+        handle,
+        handle,
+        ctypes.c_void_p,
+    ]
+    user32.CreateWindowExW.restype = wintypes.HWND
+
+    user32.BeginPaint.argtypes = [
+        wintypes.HWND,
+        paint_pointer,
+    ]
+    user32.BeginPaint.restype = handle
+
+    user32.GetClientRect.argtypes = [
+        wintypes.HWND,
+        rect_pointer,
+    ]
+    user32.GetClientRect.restype = wintypes.BOOL
+
+    user32.FillRect.argtypes = [
+        handle,
+        rect_pointer,
+        handle,
+    ]
+    user32.FillRect.restype = ctypes.c_int
+
+    user32.DrawTextW.argtypes = [
+        handle,
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        rect_pointer,
+        wintypes.UINT,
+    ]
+    user32.DrawTextW.restype = ctypes.c_int
+
+    user32.EndPaint.argtypes = [
+        wintypes.HWND,
+        paint_pointer,
+    ]
+    user32.EndPaint.restype = wintypes.BOOL
+
+    user32.DefWindowProcW.argtypes = [
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    ]
+    user32.DefWindowProcW.restype = LRESULT
+
+    user32.SendMessageW.argtypes = [
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    ]
+    user32.SendMessageW.restype = LRESULT
+
+    user32.GetSystemMetrics.argtypes = [
+        ctypes.c_int,
+    ]
+    user32.GetSystemMetrics.restype = ctypes.c_int
+
+    user32.SetWindowRgn.argtypes = [
+        wintypes.HWND,
+        handle,
+        wintypes.BOOL,
+    ]
+    user32.SetWindowRgn.restype = ctypes.c_int
+
+    user32.SetLayeredWindowAttributes.argtypes = [
+        wintypes.HWND,
+        wintypes.DWORD,
+        ctypes.c_ubyte,
+        wintypes.DWORD,
+    ]
+    user32.SetLayeredWindowAttributes.restype = wintypes.BOOL
+
+    user32.DestroyWindow.argtypes = [
+        wintypes.HWND,
+    ]
+    user32.DestroyWindow.restype = wintypes.BOOL
+
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.UINT,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
+
+    user32.ShowWindow.argtypes = [
+        wintypes.HWND,
+        ctypes.c_int,
+    ]
+    user32.ShowWindow.restype = wintypes.BOOL
+
+    user32.InvalidateRect.argtypes = [
+        wintypes.HWND,
+        rect_pointer,
+        wintypes.BOOL,
+    ]
+    user32.InvalidateRect.restype = wintypes.BOOL
+
+    user32.PeekMessageW.argtypes = [
+        message_pointer,
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.UINT,
+        wintypes.UINT,
+    ]
+    user32.PeekMessageW.restype = wintypes.BOOL
+
+    user32.TranslateMessage.argtypes = [
+        message_pointer,
+    ]
+    user32.TranslateMessage.restype = wintypes.BOOL
+
+    user32.DispatchMessageW.argtypes = [
+        message_pointer,
+    ]
+    user32.DispatchMessageW.restype = LRESULT
+
+    gdi32.CreateSolidBrush.argtypes = [
+        wintypes.DWORD,
+    ]
+    gdi32.CreateSolidBrush.restype = handle
+
+    gdi32.CreateFontW.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPCWSTR,
+    ]
+    gdi32.CreateFontW.restype = handle
+
+    gdi32.SetBkMode.argtypes = [
+        handle,
+        ctypes.c_int,
+    ]
+    gdi32.SetBkMode.restype = ctypes.c_int
+
+    gdi32.SetTextColor.argtypes = [
+        handle,
+        wintypes.DWORD,
+    ]
+    gdi32.SetTextColor.restype = wintypes.DWORD
+
+    gdi32.SelectObject.argtypes = [
+        handle,
+        handle,
+    ]
+    gdi32.SelectObject.restype = handle
+
+    gdi32.CreateRoundRectRgn.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    gdi32.CreateRoundRectRgn.restype = handle
+
+
+_configure_win32_api()
+
+
 def rgb(
     red: int,
     green: int,
