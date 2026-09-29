@@ -22,11 +22,15 @@ The caller decides what should be done. Junius performs the selected local opera
 
 ## One-command Windows installation
 
-The published npm package exposes the Junius CLI so a Windows user can install with:
+Junius is distributed publicly through GitHub Releases.
 
-    npx --yes junius@latest install
+A Windows user installs or updates Junius with:
 
-The installer reuses the Node executable that is already running npx and an existing Python 3.10+ interpreter discovered on the machine. It does not download or replace either runtime.
+    irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex
+
+The bootstrap resolves the newest published GitHub Release, including prereleases, downloads `junius-windows.tgz` plus `SHA256SUMS.txt`, verifies the package SHA-256, extracts the verified package, and invokes the packaged Junius CLI.
+
+The packaged installer reuses the user's existing Node.js 20+ runtime and an existing Python 3.10+ interpreter discovered on the machine. It does not download or replace either runtime.
 
 The persistent per-user application root is:
 
@@ -54,7 +58,9 @@ The logon startup entry records the exact Node executable used for installation 
 
 The installed Browser adapter prefers the app-local @playwright/cli package before PATH. The Desktop adapter uses the app-local .venv, whose base interpreter comes from the user's existing Python installation.
 
-Repository development can still use pnpm, but an installed user does not need pnpm on PATH.
+Repository development can still use pnpm, but an installed user does not need pnpm on PATH. npm is used only inside the verified release package to install the locked JavaScript dependency tree; Junius itself is not distributed through the npm registry.
+
+A tag matching `v<package.version>` triggers the Windows release workflow. The workflow validates the repository, builds the release assets, creates a draft GitHub Release, installs Junius back from those draft assets, verifies Host health, and only then publishes the Release.
 
 ## Instruction injection model
 

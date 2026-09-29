@@ -78,13 +78,22 @@ Prerequisites already present on the user's computer:
 - Node.js 20+ with npm/npx
 - Python 3.10+
 
-Install Junius with one command:
+Install Junius on Windows with one PowerShell command:
 
-    npx --yes junius@latest install
+    irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex
 
-The installer does not download or replace Node or Python. It reuses the Node executable that is running npx, finds an existing compatible Python installation, and then:
+GitHub Releases is the public Junius distribution channel. The bootstrap script:
+
+- resolves the newest published Junius GitHub Release, including prereleases;
+- downloads `junius-windows.tgz` and `SHA256SUMS.txt`;
+- verifies the release package SHA-256 before executing anything from it;
+- unpacks the verified package into a temporary directory;
+- invokes the packaged Junius installer with the user's existing Node.js runtime.
+
+The installer does not download or replace Node or Python. It requires Node.js 20 or newer, finds an existing compatible Python installation, and then:
 
 - installs Junius under %LOCALAPPDATA%\Junius\app;
+- materializes the packaged dependency lock as npm-shrinkwrap.json;
 - installs Junius's npm dependencies, including the Browser CLI;
 - creates %LOCALAPPDATA%\Junius\app\.venv using the user's Python;
 - installs requirements-desktop.txt into that virtual environment;
@@ -94,9 +103,9 @@ The installer does not download or replace Node or Python. It reuses the Node ex
 
 No administrator elevation is required for the normal per-user installation path.
 
-After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used by npx, and the Desktop helper uses the installed .venv created from the user's existing Python.
+After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used for installation, and the Desktop helper uses the installed .venv created from the user's existing Python.
 
-Running the install command again performs an in-place update: Junius copies and validates the new package first, then restarts an existing Host so the installed version becomes active immediately. If the installer itself is invoked through a running Junius tool call, it does not terminate its own execution tree; in that case it installs and validates the update, then reports that Junius must be restarted to activate it.
+Running the same PowerShell command again performs an in-place update from the newest published GitHub Release: Junius copies and validates the new package first, then restarts an existing Host so the installed version becomes active immediately. If the installer itself is invoked through a running Junius tool call, it does not terminate its own execution tree; in that case it installs and validates the update, then reports that Junius must be restarted to activate it.
 
 The Host uses one loopback HTTP listener:
 
@@ -112,7 +121,7 @@ There is no separate Host-control port and no management UI.
 
 ## Connect Junius to ChatGPT
 
-The npm installer installs and starts the local Junius service. It does **not** create an OpenAI Secure MCP Tunnel or configure a ChatGPT plugin connection for you.
+The GitHub Release installer installs and starts the local Junius service. It does **not** create an OpenAI Secure MCP Tunnel or configure a ChatGPT plugin connection for you.
 
 ChatGPT cannot connect directly to a loopback-only MCP server. For a local Junius installation, use OpenAI Secure MCP Tunnel:
 
@@ -147,7 +156,13 @@ Repository development uses pnpm 12.6.0:
     pnpm install
     pnpm dev
 
-The one-command installer does not require the user to have pnpm installed.
+Release assets are built with:
+
+    npm run release:build
+
+That produces `dist/junius-windows.tgz`, `dist/SHA256SUMS.txt`, `dist/install.ps1`, and `dist/release.json`.
+
+The one-command installer does not require the user to have pnpm installed. npm remains an internal dependency installer inside the verified Junius application package; npm is not the public Junius distribution channel.
 
 ## Chat-first Workspace management
 

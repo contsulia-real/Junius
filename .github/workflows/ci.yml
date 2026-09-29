@@ -52,5 +52,5 @@ jobs:
       - name: Validate
         run: pnpm run check
 
-      - name: Validate npm publication package
-        run: npm publish --dry-run --json
+      - name: Validate GitHub release package
+        run: npm run release:build

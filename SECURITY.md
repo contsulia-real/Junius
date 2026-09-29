@@ -53,6 +53,8 @@ Only the exact /mcp endpoint is intended to be forwarded through OpenAI Secure M
 
 The Junius installer does not request or persist OpenAI tunnel IDs, runtime API keys, or ChatGPT workspace credentials. Secure MCP Tunnel and ChatGPT developer-mode configuration are separate user-managed OpenAI account/workspace setup steps.
 
+Public Junius installation uses GitHub Release assets. The PowerShell bootstrap verifies the SHA-256 of `junius-windows.tgz` against the release's `SHA256SUMS.txt` before extracting or executing the package. npm is used only after verification to materialize the dependency tree described by the packaged install lock; the npm registry is not the Junius distribution channel.
+
 Workers use random loopback ports and require a private Host-injected token for MCP, health, and configuration-reload traffic.
 
 ### Browser and Desktop

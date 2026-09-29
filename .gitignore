@@ -5,3 +5,4 @@ __pycache__/
 .junius/
 .playwright-cli/
 junius-*.tgz
+dist/

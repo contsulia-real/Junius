@@ -12,7 +12,7 @@ function usage() {
       "  junius install",
       "",
       "One-command install:",
-      "  npx --yes junius@latest install",
+      "  irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex",
     ].join("\n"),
   );
 }

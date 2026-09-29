@@ -1,6 +1,7 @@
 {
   "name": "junius",
   "version": "0.0.1-alpha-ChatGPT",
+  "private": true,
   "description": "Local MCP computer control service for ChatGPT",
   "bin": {
     "junius": "bin/junius.mjs"
@@ -14,6 +15,7 @@
     "LICENSE",
     "README.md",
     "SECURITY.md",
+    "install.ps1",
     "install-lock.json",
     "requirements-desktop.txt",
     "tsconfig.json"
@@ -23,9 +25,11 @@
     "start": "node scripts/host-launcher.mjs",
     "start:host-source": "tsx src/host.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\" && node --test scripts/install-core.test.mjs",
-    "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs && node --check scripts/install-core.mjs && node --check scripts/install.mjs && node --check bin/junius.mjs",
-    "check": "node scripts/source-validation.mjs begin && npm run check:bootstrap && npm run typecheck && npm test && node scripts/source-validation.mjs commit"
+    "test": "tsx --test \"src/**/*.test.ts\" && node --test scripts/install-core.test.mjs scripts/release-distribution.test.mjs",
+    "check:bootstrap": "node --check scripts/host-launcher.mjs && node --check scripts/host-bootstrap.mjs && node --check scripts/install-core.mjs && node --check scripts/install.mjs && node --check scripts/build-release.mjs && node --check bin/junius.mjs",
+    "check": "node scripts/source-validation.mjs begin && npm run check:bootstrap && npm run typecheck && npm test && node scripts/source-validation.mjs commit",
+    "release:build": "node scripts/build-release.mjs",
+    "prepublishOnly": "node scripts/block-npm-publish.mjs"
   },
   "keywords": [
     "mcp",
@@ -48,11 +52,6 @@
   },
   "packageManager": "pnpm@12.6.0",
   "type": "module",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/",
-    "tag": "latest"
-  },
   "dependencies": {
     "@modelcontextprotocol/server": "2.1.0",
     "@playwright/cli": "0.1.21",
