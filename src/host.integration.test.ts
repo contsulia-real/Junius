@@ -422,10 +422,9 @@ async function listMcpTools(
   );
 }
 
-test("Junius Host exposes MCP plus private health and supervisor control without a public management UI", async () => {
+test("Junius Host serves MCP and local diagnostics on one loopback listener", async () => {
   const root = await mkdtemp(join(tmpdir(), "junius-host-integration-"));
   const mcpPort = await freePort();
-  const controlPort = await freePort();
   const hostPath = fileURLToPath(
     new URL("./host.ts", import.meta.url),
   );
@@ -440,7 +439,6 @@ test("Junius Host exposes MCP plus private health and supervisor control without
       env: {
         ...process.env,
         JUNIUS_MCP_PORT: String(mcpPort),
-        JUNIUS_CONTROL_PORT: String(controlPort),
         JUNIUS_WORKSPACE_ID: "host-test",
         JUNIUS_WORKSPACE_ROOT: root,
         JUNIUS_WORKSPACE_STATE_PATH: join(
@@ -461,10 +459,10 @@ test("Junius Host exposes MCP plus private health and supervisor control without
   });
 
   try {
-    const controlOrigin =
-      `http://127.0.0.1:${controlPort}`;
+    const hostOrigin =
+      `http://127.0.0.1:${mcpPort}`;
 
-    const health = await waitForHealth(controlOrigin);
+    const health = await waitForHealth(hostOrigin);
     const healthBody = await health.json() as {
       ok: boolean;
       activeWorkerId?: string;
@@ -477,7 +475,7 @@ test("Junius Host exposes MCP plus private health and supervisor control without
     );
 
     const hostileHost = await rawRequest(
-      controlPort,
+      mcpPort,
       "/__junius/host-health",
       {
         Host: "example.invalid",
@@ -521,7 +519,7 @@ test("Junius Host exposes MCP plus private health and supervisor control without
     );
 
     const stateResponse = await fetch(
-      controlOrigin + "/state",
+      hostOrigin + "/state",
     );
     assert.equal(
       stateResponse.status,
@@ -529,7 +527,7 @@ test("Junius Host exposes MCP plus private health and supervisor control without
     );
 
     const mcpOrigin =
-      `http://127.0.0.1:${mcpPort}`;
+      hostOrigin;
     const initializedMcp =
       await initializeMcp(
         mcpOrigin,
@@ -954,7 +952,7 @@ test("Junius Host exposes MCP plus private health and supervisor control without
     );
 
     const supervisorResponse = await fetch(
-      controlOrigin + "/__junius/supervisor",
+      hostOrigin + "/__junius/supervisor",
     );
     assert.equal(supervisorResponse.status, 200);
 

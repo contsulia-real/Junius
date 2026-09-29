@@ -47,9 +47,9 @@ Those checks apply only to the built-in file tools. They are not a sandbox for p
 
 ### Network surfaces
 
-The public MCP listener and Host-control listener bind to loopback.
+The Host uses one HTTP listener bound to loopback. It serves the MCP endpoint and local /__junius/* diagnostics on the same port.
 
-Only the MCP endpoint is intended to be exposed through the supported ChatGPT tunnel path. The Host-control endpoint is local diagnostics only.
+Only the exact /mcp endpoint is intended to be exposed through the supported ChatGPT tunnel path. The co-located /__junius/* routes are local diagnostics only and should not be exposed.
 
 Workers use random loopback ports and require a private Host-injected token for MCP, health, and configuration-reload traffic.
 

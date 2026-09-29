@@ -116,7 +116,7 @@ export async function installJunius() {
     "MCP: http://127.0.0.1:8787/mcp",
   );
   console.log(
-    "Control: http://127.0.0.1:8788/__junius/host-health",
+    "Health: http://127.0.0.1:8787/__junius/host-health",
   );
   console.log(
     "Junius will start automatically when this Windows user signs in.",

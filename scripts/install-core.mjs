@@ -825,7 +825,7 @@ export async function writeWindowsStartup(
 }
 
 export async function hostHealthy(
-  port = 8788,
+  port = 8787,
 ) {
   try {
     const response =

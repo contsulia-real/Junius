@@ -96,18 +96,23 @@ No administrator elevation is required for the normal per-user installation path
 
 After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used by npx, and the Desktop helper uses the installed .venv created from the user's existing Python.
 
-The Host binds locally to:
+The Host uses one loopback HTTP listener:
 
-    MCP:          http://127.0.0.1:8787/mcp
-    Host control: http://127.0.0.1:8788/__junius/host-health
+    http://127.0.0.1:8787
 
-Port 8788 is not a management UI. It exposes only local Host diagnostics such as health and supervisor state.
+Its routes are:
 
-To use Junius from ChatGPT, expose only the MCP endpoint through the supported Secure MCP Tunnel flow and point the tunnel at:
+    MCP:        /mcp
+    Health:     /__junius/host-health
+    Supervisor: /__junius/supervisor
+
+There is no separate Host-control port and no management UI.
+
+To use Junius from ChatGPT, expose only the exact MCP endpoint through the supported Secure MCP Tunnel flow:
 
     http://127.0.0.1:8787/mcp
 
-Do not expose the Host-control endpoint.
+The /__junius/* diagnostic routes are local-only operational diagnostics and should not be exposed by the tunnel.
 
 ## Development from source
 
@@ -389,7 +394,7 @@ The Workspace is:
 
 It is not a process sandbox, filesystem jail for launched executables, network isolation, registry isolation, or credential isolation.
 
-The MCP and Host-control listeners remain bound to loopback. Worker private endpoints require their internal token. If the MCP endpoint is tunneled to ChatGPT, only that endpoint should be exposed.
+The single Host HTTP listener remains bound to loopback. Worker private endpoints require their internal token. If Junius is tunneled to ChatGPT, expose only the exact /mcp endpoint; do not expose the co-located /__junius/* diagnostic routes.
 
 See SECURITY.md and docs/architecture.md for more detail.
 

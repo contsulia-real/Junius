@@ -6,7 +6,6 @@ export interface RuntimeConfig {
   readonly mcpHost: string;
   readonly mcpPort: number;
   readonly controlHost: string;
-  readonly controlPort: number;
   readonly workspaceId: string;
   readonly workspaceRoot: string;
   readonly workspaceStatePath: string;
@@ -95,10 +94,6 @@ export async function loadRuntimeConfig():
       8787,
     ),
     controlHost: "127.0.0.1",
-    controlPort: parsePort(
-      process.env.JUNIUS_CONTROL_PORT,
-      8788,
-    ),
     workspaceId:
       process.env
         .JUNIUS_WORKSPACE_ID ??

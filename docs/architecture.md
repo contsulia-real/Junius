@@ -169,7 +169,13 @@ Browser and Desktop are first-class MCP services rather than Workspace-scoped pr
 
 Junius is split into a stable Host and replaceable Workers.
 
-    public MCP :8787
+    loopback HTTP :8787
+          |
+          +---- /mcp
+          |
+          +---- /__junius/host-health
+          |
+          +---- /__junius/supervisor
           |
           v
         Host
@@ -181,7 +187,7 @@ Junius is split into a stable Host and replaceable Workers.
                  in-flight work,
                  and rollback
 
-The Host owns the public listening ports and routing state.
+The Host owns one fixed loopback HTTP listener and the routing state. Only /mcp is intended for the supported ChatGPT tunnel; /__junius/* remains local diagnostics.
 
 Each Worker listens on random loopback ports.
 
@@ -194,12 +200,12 @@ The Worker control listener is private infrastructure. It exposes only:
 
 It is not a user management API.
 
-The Host control listener remains loopback-only and exposes diagnostics such as:
+Host diagnostics share the same 8787 loopback listener as MCP:
 
-    /__junius/host-health
-    /__junius/supervisor
+    GET /__junius/host-health
+    GET /__junius/supervisor
 
-All other management interaction is through MCP tools.
+There is no separate Host control listener. Unknown Host paths return 404, and all other management interaction is through MCP tools.
 
 ## Workspace persistence
 

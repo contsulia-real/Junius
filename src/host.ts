@@ -70,8 +70,6 @@ const config = loadHostConfig();
 const cwd = process.cwd();
 const publicMcpOrigin =
   `http://${config.mcpHost}:${config.mcpPort}`;
-const publicControlOrigin =
-  `http://${config.controlHost}:${config.controlPort}`;
 
 const jobHistory = new JobHistoryStore(
   resolveJobHistoryPath(),
@@ -244,7 +242,7 @@ function allowPublicRequest(
   return false;
 }
 
-const mcpHttpServer = createHttpServer((req, res) => {
+const hostHttpServer = createHttpServer((req, res) => {
   if (
     !allowPublicRequest(
       req,
@@ -252,6 +250,65 @@ const mcpHttpServer = createHttpServer((req, res) => {
       publicMcpOrigin,
     )
   ) {
+    return;
+  }
+
+  const pathname =
+    new URL(
+      req.url ?? "/",
+      publicMcpOrigin,
+    ).pathname;
+
+  if (
+    req.method === "GET" &&
+    pathname ===
+      "/__junius/supervisor"
+  ) {
+    sendHostJson(res, 200, {
+      host: {
+        pid: process.pid,
+        uptimeSeconds:
+          Math.floor(
+            process.uptime(),
+          ),
+        restartRequired:
+          hostRestartRequired,
+        releaseId:
+          process.env
+            .JUNIUS_RELEASE_ID ??
+          null,
+      },
+      supervisor:
+        supervisor.state(),
+      latencyTraces:
+        latencyTraces.list(),
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    pathname ===
+      "/__junius/host-health"
+  ) {
+    sendHostJson(res, 200, {
+      ok: true,
+      pid: process.pid,
+      activeWorkerId:
+        supervisor.state()
+          .activeWorkerId,
+      releaseId:
+        process.env
+          .JUNIUS_RELEASE_ID ??
+        null,
+    });
+    return;
+  }
+
+  if (pathname !== "/mcp") {
+    sendHostJson(res, 404, {
+      error: "not_found",
+    });
     return;
   }
 
@@ -263,86 +320,32 @@ const mcpHttpServer = createHttpServer((req, res) => {
   );
 });
 
-const controlHttpServer = createHttpServer((req, res) => {
-  if (
-    !allowPublicRequest(
-      req,
-      res,
-      publicControlOrigin,
-    )
-  ) {
-    return;
-  }
-
-  if (req.url === "/__junius/config-reload") {
-    sendHostJson(res, 404, { error: "not_found" });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    req.url === "/__junius/supervisor"
-  ) {
-    sendHostJson(res, 200, {
-      host: {
-        pid: process.pid,
-        uptimeSeconds: Math.floor(process.uptime()),
-        restartRequired: hostRestartRequired,
-        releaseId:
-          process.env.JUNIUS_RELEASE_ID ?? null,
-      },
-      supervisor: supervisor.state(),
-      latencyTraces: latencyTraces.list(),
-    });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    req.url === "/__junius/host-health"
-  ) {
-    sendHostJson(res, 200, {
-      ok: true,
-      pid: process.pid,
-      activeWorkerId: supervisor.state().activeWorkerId,
-      releaseId:
-        process.env.JUNIUS_RELEASE_ID ?? null,
-    });
-    return;
-  }
-
-  sendHostJson(res, 404, {
-    error: "not_found",
-  });
-});
-
 try {
   await listen(
-    mcpHttpServer,
+    hostHttpServer,
     config.mcpPort,
     config.mcpHost,
-  );
-  await listen(
-    controlHttpServer,
-    config.controlPort,
-    config.controlHost,
   );
 } catch (error) {
   for (const watcher of watchers) watcher.close();
   await Promise.allSettled([
-    closeServer(mcpHttpServer),
-    closeServer(controlHttpServer),
+    closeServer(hostHttpServer),
     supervisor.close(),
   ]);
   throw error;
 }
 
-console.error(`Junius Host MCP: ${publicMcpOrigin}/mcp`);
 console.error(
-  `Junius Host Control: ${publicControlOrigin}/__junius/host-health`,
+  `Junius Host: ${publicMcpOrigin}`,
 );
 console.error(
-  `Junius Supervisor: ${publicControlOrigin}/__junius/supervisor`,
+  `Junius MCP: ${publicMcpOrigin}/mcp`,
+);
+console.error(
+  `Junius Health: ${publicMcpOrigin}/__junius/host-health`,
+);
+console.error(
+  `Junius Supervisor: ${publicMcpOrigin}/__junius/supervisor`,
 );
 
 async function shutdown(signal: string): Promise<void> {
@@ -361,8 +364,7 @@ async function shutdown(signal: string): Promise<void> {
   for (const watcher of watchers) watcher.close();
 
   await Promise.allSettled([
-    closeServer(mcpHttpServer),
-    closeServer(controlHttpServer),
+    closeServer(hostHttpServer),
   ]);
   await supervisor.close();
 }
