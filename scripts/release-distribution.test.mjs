@@ -108,6 +108,7 @@ function runProcess(
 const requiredPackFiles = [
   "package.json",
   "AGENTS.md",
+  "icon.svg",
   "install.ps1",
   "install-lock.json",
   "bin/junius.mjs",

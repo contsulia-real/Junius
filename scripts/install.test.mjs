@@ -170,6 +170,14 @@ test(
         "# repository instructions\n",
         "utf8",
       );
+      await writeFile(
+        join(
+          packageRoot,
+          "icon.svg",
+        ),
+        "<svg aria-label=\"Junius\" />\n",
+        "utf8",
+      );
       await mkdir(
         join(
           packageRoot,
@@ -239,6 +247,16 @@ test(
           "utf8",
         ),
         "# repository instructions\n",
+      );
+      assert.equal(
+        await readFile(
+          join(
+            appRoot,
+            "icon.svg",
+          ),
+          "utf8",
+        ),
+        "<svg aria-label=\"Junius\" />\n",
       );
     } finally {
       await rm(

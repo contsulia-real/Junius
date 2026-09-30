@@ -1,5 +1,9 @@
 # Junius
 
+<p align="center">
+  <img src="icon.svg" alt="Junius" width="128" height="128" />
+</p>
+
 **English** | [简体中文](README.zh-CN.md)
 
 **Local computer control for ChatGPT over MCP.**

@@ -74,6 +74,7 @@ const COPY_DIRECTORIES = [
 
 const COPY_FILES = [
   "AGENTS.md",
+  "icon.svg",
   "LICENSE",
   "README.md",
   "SECURITY.md",

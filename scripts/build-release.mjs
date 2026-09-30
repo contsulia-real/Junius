@@ -205,6 +205,7 @@ export function validatePackedFiles(
     const required of [
       "package.json",
       "AGENTS.md",
+      "icon.svg",
       "install.ps1",
       "install-lock.json",
       "bin/junius.mjs",
