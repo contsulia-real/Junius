@@ -41,6 +41,17 @@ function copyReleaseContractModule(
     ),
     releaseModule,
   );
+  copyFileSync(
+    new URL(
+      "../package.json",
+      import.meta.url,
+    ),
+    join(
+      releaseSrc,
+      "..",
+      "package.json",
+    ),
+  );
   return releaseModule;
 }
 
