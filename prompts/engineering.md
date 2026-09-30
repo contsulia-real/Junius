@@ -171,6 +171,18 @@ A large file or pre-existing structural debt is not, by itself, permission to ex
 
 Do not refactor unrelated legacy debt merely because you noticed it. Report relevant pre-existing debt when useful, but leave it untouched unless the user requested it or it directly blocks correct completion.
 
+## Prevent god-files
+
+Do not create or expand catch-all files that accumulate unrelated responsibilities.
+
+Judge a god-file by responsibility concentration, not by line count alone. A large file can remain coherent when it owns one well-defined concern; a smaller file can still be a god-file if it mixes unrelated protocol, persistence, UI, platform, orchestration, and domain responsibilities.
+
+When work touches a file that already owns multiple separable responsibilities, and the split is behavior-preserving and directly relevant to the current task, prefer extracting clear responsibility boundaries instead of adding another responsibility to the same file.
+
+Do not perform ceremonial file splitting. New modules must have a clear owner, stable responsibility, and a reason to exist beyond reducing line count.
+
+Do not replace one god-file with a web of tiny pass-through files, duplicated helpers, circular dependencies, or multiple sources of truth.
+
 ## Make precise, scope-preserving changes
 
 Prefer the narrowest reliable edit that leaves one coherent implementation.

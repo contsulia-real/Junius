@@ -155,6 +155,14 @@ test("host source boundary treats startup control files as restart-only", async 
     assert.equal(
       sourceChangeDisposition(
         root,
+        "python",
+        "desktop_input.py",
+      ),
+      "reload-worker",
+    );
+    assert.equal(
+      sourceChangeDisposition(
+        root,
         "prompts",
         "engineering.md",
       ),

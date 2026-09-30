@@ -107,6 +107,7 @@ function runProcess(
 
 const requiredPackFiles = [
   "package.json",
+  "AGENTS.md",
   "install.ps1",
   "install-lock.json",
   "bin/junius.mjs",
@@ -114,6 +115,10 @@ const requiredPackFiles = [
   "scripts/install-core.mjs",
   "src/mcp-server.ts",
   "python/desktop_helper.py",
+  "python/desktop_helper_common.py",
+  "python/desktop_windows.py",
+  "python/desktop_clipboard.py",
+  "python/desktop_input.py",
   "prompts/core.md",
   "prompts/engineering.md",
   "prompts/desktop.md",
