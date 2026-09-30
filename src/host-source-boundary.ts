@@ -31,6 +31,11 @@ const ROOT_CONTROL_FILES = new Set([
 
 const SCRIPT_CONTROL_FILES = new Set([
   "host-bootstrap.mjs",
+  "host-bootstrap-paths.mjs",
+  "host-bootstrap-source.mjs",
+  "host-bootstrap-check.mjs",
+  "host-bootstrap-releases.mjs",
+  "host-bootstrap-host.mjs",
   "host-launcher.mjs",
   "source-validation.mjs",
 ]);

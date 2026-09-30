@@ -14,13 +14,19 @@ import test from "node:test";
 import {
   copyApplication,
   installNodeDependencies,
-  stopInstalledJunius,
-  supportedPythonVersion,
   validateInstalledApp,
+} from "./install-application.mjs";
+import {
   windowsInstallPaths,
   windowsRunValue,
   windowsStartupVbs,
-} from "./install-core.mjs";
+} from "./install-paths.mjs";
+import {
+  supportedPythonVersion,
+} from "./install-python.mjs";
+import {
+  stopInstalledJunius,
+} from "./install-windows-host.mjs";
 
 test(
   "installer accepts Python 3.10 or newer",
@@ -130,6 +136,14 @@ test(
         lockText,
         "utf8",
       );
+      await writeFile(
+        join(
+          packageRoot,
+          "AGENTS.md",
+        ),
+        "# repository instructions\n",
+        "utf8",
+      );
       await mkdir(
         join(
           packageRoot,
@@ -189,6 +203,16 @@ test(
           "utf8",
         ),
         "# custom core\n",
+      );
+      assert.equal(
+        await readFile(
+          join(
+            appRoot,
+            "AGENTS.md",
+          ),
+          "utf8",
+        ),
+        "# repository instructions\n",
       );
     } finally {
       await rm(

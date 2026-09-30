@@ -1,16 +1,22 @@
 import {
   copyApplication,
+  installNodeDependencies,
+  validateInstalledApp,
+} from "./install-application.mjs";
+import {
+  packageRootFromImportMeta,
+  windowsInstallPaths,
+} from "./install-paths.mjs";
+import {
   ensureVenv,
   findExistingPython,
-  installNodeDependencies,
   installPythonRequirements,
-  packageRootFromImportMeta,
+} from "./install-python.mjs";
+import {
   startInstalledJunius,
   stopInstalledJunius,
-  validateInstalledApp,
-  windowsInstallPaths,
   writeWindowsStartup,
-} from "./install-core.mjs";
+} from "./install-windows-host.mjs";
 
 function versionText(
   version,

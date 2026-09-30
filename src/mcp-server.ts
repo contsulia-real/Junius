@@ -7,7 +7,8 @@ import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { DesktopComputerUseService } from "./desktop-computer-use.js";
 import type { AuditStore } from "./audit-store.js";
 import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
-import { registerComputerTools } from "./mcp-computer-tools.js";
+import { registerBrowserTool } from "./mcp-browser-tool.js";
+import { registerDesktopTool } from "./mcp-desktop-tool.js";
 import { registerJobTools } from "./mcp-job-tools.js";
 import { registerRunCommandTool } from "./mcp-command-tool.js";
 import { registerContractTool } from "./mcp-contract-tool.js";
@@ -39,9 +40,13 @@ export function createMcpServer(
 
   registerContractTool(server);
   registerWorkspaceTools(server, workspaces, files);
-  registerComputerTools(
+  registerBrowserTool(
     server,
     playwrightCli,
+    audit,
+  );
+  registerDesktopTool(
+    server,
     desktop,
     audit,
   );

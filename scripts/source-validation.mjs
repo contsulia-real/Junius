@@ -124,6 +124,11 @@ async function fingerprintSource(root) {
     "install-lock.json",
     "tsconfig.json",
     join("scripts", "host-bootstrap.mjs"),
+    join("scripts", "host-bootstrap-paths.mjs"),
+    join("scripts", "host-bootstrap-source.mjs"),
+    join("scripts", "host-bootstrap-check.mjs"),
+    join("scripts", "host-bootstrap-releases.mjs"),
+    join("scripts", "host-bootstrap-host.mjs"),
     join("scripts", "host-launcher.mjs"),
     join("scripts", "source-validation.mjs"),
   ]) {

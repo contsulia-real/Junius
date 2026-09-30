@@ -123,6 +123,11 @@ test("host source boundary treats startup control files as restart-only", async 
 
     for (const file of [
       "host-bootstrap.mjs",
+      "host-bootstrap-paths.mjs",
+      "host-bootstrap-source.mjs",
+      "host-bootstrap-check.mjs",
+      "host-bootstrap-releases.mjs",
+      "host-bootstrap-host.mjs",
       "host-launcher.mjs",
       "source-validation.mjs",
     ]) {

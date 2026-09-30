@@ -253,6 +253,34 @@ test("manual bootstrap promotes a validated release and falls back to last-known
     );
     assert.equal(promotedBootstrap, liveBootstrap);
 
+    for (const file of [
+      "host-bootstrap-paths.mjs",
+      "host-bootstrap-source.mjs",
+      "host-bootstrap-check.mjs",
+      "host-bootstrap-releases.mjs",
+      "host-bootstrap-host.mjs",
+    ]) {
+      assert.equal(
+        await readFile(
+          join(
+            root,
+            "runtime",
+            "bootstrap",
+            file,
+          ),
+          "utf8",
+        ),
+        await readFile(
+          join(
+            process.cwd(),
+            "scripts",
+            file,
+          ),
+          "utf8",
+        ),
+      );
+    }
+
     const unchanged = await runBootstrap(
       root,
       "fail",
