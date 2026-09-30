@@ -99,6 +99,14 @@ test(
       workflow,
       /--generate-notes/u,
     );
+    assert.match(
+      workflow,
+      /gh release view "\$env:GITHUB_REF_NAME" --json databaseId,isDraft,tagName/u,
+    );
+    assert.doesNotMatch(
+      workflow,
+      /releases\?per_page=100/u,
+    );
 
     const changelog =
       await readFile(
