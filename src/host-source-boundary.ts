@@ -37,6 +37,8 @@ const SCRIPT_CONTROL_FILES = new Set([
   "host-bootstrap-releases.mjs",
   "host-bootstrap-host.mjs",
   "host-launcher.mjs",
+  "windows-only.mjs",
+  "windows-only.d.mts",
   "source-validation.mjs",
 ]);
 

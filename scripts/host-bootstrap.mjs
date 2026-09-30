@@ -22,6 +22,11 @@ import {
   startRelease,
   stopChild,
 } from "./host-bootstrap-host.mjs";
+import {
+  assertWindowsPlatform,
+} from "./windows-only.mjs";
+
+assertWindowsPlatform();
 
 async function main() {
   await mkdir(

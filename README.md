@@ -14,7 +14,7 @@ Junius is **not an operating-system sandbox**. Processes launched by Junius run 
 
 ## One-command installation
 
-The current one-command installer targets Windows.
+Junius supports **Windows only**. Linux, macOS, and every other operating system are intentionally unsupported, and Junius runtime entrypoints refuse to start on them.
 
 Prerequisites already present on the user's computer:
 
@@ -64,7 +64,7 @@ There is no separate Host-control port and no management UI.
 
 ## Supported usage scope and distribution model
 
-Junius is deliberately a **personal/local MCP product**, not a public-directory plugin.
+Junius is deliberately a **Windows-only personal/local MCP product**, not a public-directory plugin.
 
 Its supported product scope is **ChatGPT Plus and higher**. Junius is designed around the paid ChatGPT experience where a user can create a personal MCP connection in Developer mode and give ChatGPT a sufficiently capable model plus the MCP tool surface needed for open-ended local execution. Free and Go are not target tiers for Junius. The project will not add a degraded read-only path, reduced-permission compatibility layer, or lower-capability-model-specific UX solely to make Junius fit those tiers.
 
@@ -237,14 +237,9 @@ Remove a Workspace registration:
 
 delete_workspace removes only the Junius registration. It never deletes the directory or its files.
 
-Workspace registrations are persisted outside the repository.
+Workspace registrations are persisted outside the repository:
 
-    Windows:
     %LOCALAPPDATA%\Junius\workspace-state.json
-
-    Linux/macOS:
-    $XDG_STATE_HOME/Junius/workspace-state.json
-    or ~/.local/state/Junius/workspace-state.json
 
 Override with JUNIUS_WORKSPACE_STATE_PATH.
 
@@ -281,7 +276,7 @@ Execution uses direct process spawning with shell disabled:
       shell: false
     })
 
-If shell semantics are required, the caller can explicitly launch a shell executable such as cmd.exe, PowerShell, or /bin/sh and provide that shell's arguments. Junius does not parse a command for safety or intent.
+If shell semantics are required, the caller can explicitly launch a Windows shell executable such as cmd.exe or PowerShell and provide that shell's arguments. Junius does not parse a command for safety or intent.
 
 Synchronous execution retains runtime engineering bounds:
 

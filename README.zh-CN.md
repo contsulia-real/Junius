@@ -14,7 +14,7 @@ Junius **不是操作系统沙箱**。由 Junius 启动的进程拥有启动 Jun
 
 ## 一行命令安装
 
-当前的一行安装器面向 Windows。
+Junius **只支持 Windows**。Linux、macOS 和其他所有操作系统都属于明确不支持的平台，Junius 的运行入口会直接拒绝在这些系统上启动。
 
 用户电脑需要预先具备：
 
@@ -64,7 +64,7 @@ Host 只使用一个回环 HTTP 监听器：
 
 ## 可用范围与分发模式
 
-Junius 刻意定位为**个人/本地 MCP 产品**，而不是公开插件目录中的插件。
+Junius 刻意定位为**仅支持 Windows 的个人/本地 MCP 产品**，而不是公开插件目录中的插件。
 
 Junius 的产品支持范围是 **ChatGPT Plus 及以上**。它围绕付费 ChatGPT 的使用方式设计：用户能够在 Developer mode 中自行创建个人 MCP 连接，并使用足够强的模型与 Junius 所需要的 MCP 工具表面完成开放式本地执行。Free 和 Go 不属于 Junius 的目标套餐。项目不会仅仅为了兼容这些套餐而增加降级的只读路径、受限权限兼容层，或专门针对低能力模型的交互方案。
 
@@ -238,14 +238,9 @@ Workspace 被刻意设计得很小：
 
 `delete_workspace` 只删除 Junius 中的注册信息，绝不会删除对应目录或目录里的文件。
 
-Workspace 注册状态持久化在仓库之外。
+Workspace 注册状态持久化在仓库之外：
 
-    Windows:
     %LOCALAPPDATA%\Junius\workspace-state.json
-
-    Linux/macOS:
-    $XDG_STATE_HOME/Junius/workspace-state.json
-    或 ~/.local/state/Junius/workspace-state.json
 
 可通过 `JUNIUS_WORKSPACE_STATE_PATH` 覆盖默认路径。
 
@@ -282,7 +277,7 @@ Junius 不要求事先注册可执行文件，也不会应用参数白名单。
       shell: false
     })
 
-如果确实需要 shell 语义，调用方可以显式启动 `cmd.exe`、PowerShell 或 `/bin/sh` 等 shell 可执行文件，并传入该 shell 的参数。Junius 不会为了判断安全性或意图去解析命令字符串。
+如果确实需要 shell 语义，调用方可以显式启动 Windows 的 `cmd.exe` 或 PowerShell，并传入该 shell 的参数。Junius 不会为了判断安全性或意图去解析命令字符串。
 
 同步执行保留以下运行时工程边界：
 

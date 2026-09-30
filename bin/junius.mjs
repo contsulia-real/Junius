@@ -2,6 +2,11 @@
 import {
   installJunius,
 } from "../scripts/install.mjs";
+import {
+  assertWindowsPlatform,
+} from "../scripts/windows-only.mjs";
+
+assertWindowsPlatform();
 
 function usage() {
   console.log(

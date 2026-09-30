@@ -22,6 +22,11 @@ import {
   proxyToActiveWorker,
 } from "./reverse-proxy.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
+import {
+  assertWindowsPlatform,
+} from "../scripts/windows-only.mjs";
+
+assertWindowsPlatform();
 
 function parsePositiveInteger(
   value: string | undefined,

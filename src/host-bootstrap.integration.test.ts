@@ -259,6 +259,7 @@ test("manual bootstrap promotes a validated release and falls back to last-known
       "host-bootstrap-check.mjs",
       "host-bootstrap-releases.mjs",
       "host-bootstrap-host.mjs",
+      "windows-only.mjs",
     ]) {
       assert.equal(
         await readFile(

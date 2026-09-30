@@ -50,6 +50,7 @@ export const STABLE_BOOTSTRAP_FILES = [
   "host-bootstrap-check.mjs",
   "host-bootstrap-releases.mjs",
   "host-bootstrap-host.mjs",
+  "windows-only.mjs",
   "host-bootstrap.mjs",
 ];
 
@@ -64,6 +65,10 @@ export const SOURCE_CONTROL_FILES = [
   join(
     "scripts",
     "host-launcher.mjs",
+  ),
+  join(
+    "scripts",
+    "windows-only.d.mts",
   ),
   join(
     "scripts",

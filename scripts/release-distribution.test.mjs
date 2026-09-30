@@ -117,6 +117,8 @@ const requiredPackFiles = [
   "scripts/install-python.mjs",
   "scripts/install-application.mjs",
   "scripts/install-windows-host.mjs",
+  "scripts/windows-only.mjs",
+  "scripts/windows-only.d.mts",
   "scripts/host-bootstrap.mjs",
   "scripts/host-bootstrap-paths.mjs",
   "scripts/host-bootstrap-source.mjs",
@@ -180,6 +182,11 @@ test(
       packageJson.private,
       true,
       "package must be private so npm publish cannot become the public distribution path",
+    );
+    assert.deepEqual(
+      packageJson.os,
+      ["win32"],
+      "Junius package metadata must reject every non-Windows operating system",
     );
     assert.equal(
       "publishConfig" in

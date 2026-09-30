@@ -129,6 +129,8 @@ test("host source boundary treats startup control files as restart-only", async 
       "host-bootstrap-releases.mjs",
       "host-bootstrap-host.mjs",
       "host-launcher.mjs",
+      "windows-only.mjs",
+      "windows-only.d.mts",
       "source-validation.mjs",
     ]) {
       assert.equal(

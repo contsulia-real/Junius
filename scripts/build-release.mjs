@@ -214,6 +214,8 @@ export function validatePackedFiles(
       "scripts/install-python.mjs",
       "scripts/install-application.mjs",
       "scripts/install-windows-host.mjs",
+      "scripts/windows-only.mjs",
+      "scripts/windows-only.d.mts",
       "scripts/host-bootstrap.mjs",
       "scripts/host-bootstrap-paths.mjs",
       "scripts/host-bootstrap-source.mjs",

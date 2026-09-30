@@ -17,6 +17,9 @@ import {
   stopInstalledJunius,
   writeWindowsStartup,
 } from "./install-windows-host.mjs";
+import {
+  assertWindowsPlatform,
+} from "./windows-only.mjs";
 
 function versionText(
   version,
@@ -25,14 +28,7 @@ function versionText(
 }
 
 export async function installJunius() {
-  if (
-    process.platform !==
-    "win32"
-  ) {
-    throw new Error(
-      "Junius one-command installation currently supports Windows only.",
-    );
-  }
+  assertWindowsPlatform();
 
   const packageRoot =
     packageRootFromImportMeta(

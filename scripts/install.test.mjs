@@ -27,6 +27,32 @@ import {
 import {
   stopInstalledJunius,
 } from "./install-windows-host.mjs";
+import {
+  assertWindowsPlatform,
+  WINDOWS_ONLY_MESSAGE,
+} from "./windows-only.mjs";
+
+test(
+  "Junius rejects every non-Windows platform",
+  () => {
+    assert.doesNotThrow(
+      () => assertWindowsPlatform("win32"),
+    );
+
+    for (const platform of [
+      "linux",
+      "darwin",
+      "freebsd",
+    ]) {
+      assert.throws(
+        () => assertWindowsPlatform(platform),
+        new Error(
+          WINDOWS_ONLY_MESSAGE,
+        ),
+      );
+    }
+  },
+);
 
 test(
   "installer accepts Python 3.10 or newer",

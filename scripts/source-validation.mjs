@@ -130,6 +130,8 @@ async function fingerprintSource(root) {
     join("scripts", "host-bootstrap-releases.mjs"),
     join("scripts", "host-bootstrap-host.mjs"),
     join("scripts", "host-launcher.mjs"),
+    join("scripts", "windows-only.mjs"),
+    join("scripts", "windows-only.d.mts"),
     join("scripts", "source-validation.mjs"),
   ]) {
     if (await exists(join(root, file))) {

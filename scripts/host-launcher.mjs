@@ -9,6 +9,11 @@ import {
   resolve,
 } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertWindowsPlatform,
+} from "./windows-only.mjs";
+
+assertWindowsPlatform();
 
 const projectRoot = resolve(
   process.env.JUNIUS_PROJECT_ROOT ??
