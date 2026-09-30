@@ -20,7 +20,9 @@ import {
   JUNIUS_CORE_CONTRACT,
   JUNIUS_DESKTOP_CONTRACT,
   JUNIUS_ENGINEERING_CONTRACT,
+  isJuniusDevelopmentInstance,
   loadJuniusContracts,
+  resolveJuniusCoreContract,
 } from "./junius-contracts.js";
 
 function copyReleaseContractModule(
@@ -161,6 +163,57 @@ test(
     assert.match(
       JUNIUS_BROWSER_CONTRACT,
       /JUNIUS_BROWSER_RETAIN_DATA=1/u,
+    );
+  },
+);
+
+test(
+  "development instance instructions are TEST ONLY while production stays unchanged",
+  () => {
+    const productionEnvironment = {};
+    const developmentEnvironment = {
+      JUNIUS_INSTANCE_ROLE:
+        "development",
+    };
+
+    assert.equal(
+      isJuniusDevelopmentInstance(
+        productionEnvironment,
+      ),
+      false,
+    );
+    assert.equal(
+      resolveJuniusCoreContract(
+        productionEnvironment,
+      ),
+      JUNIUS_CORE_CONTRACT,
+    );
+
+    assert.equal(
+      isJuniusDevelopmentInstance(
+        developmentEnvironment,
+      ),
+      true,
+    );
+
+    const developmentContract =
+      resolveJuniusCoreContract(
+        developmentEnvironment,
+      );
+
+    assert.match(
+      developmentContract,
+      /JUNIUS DEVELOPMENT INSTANCE — TEST ONLY/u,
+    );
+    assert.match(
+      developmentContract,
+      /including editing Junius source code, use the production Junius connection instead/u,
+    );
+    assert.equal(
+      developmentContract.endsWith(
+        JUNIUS_CORE_CONTRACT,
+      ),
+      true,
     );
   },
 );

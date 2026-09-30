@@ -216,7 +216,12 @@ export async function runSourceCheck(
   const childEnvironment = withoutEnvironmentVariables(
     environment,
     {
-      names: ["NODE_OPTIONS", "NODE_PATH"],
+      names: [
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "JUNIUS_INSTANCE_ROLE",
+        "JUNIUS_MCP_PORT",
+      ],
     },
   );
 

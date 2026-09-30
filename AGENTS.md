@@ -6,6 +6,7 @@ Scope: this entire repository.
 
 - The project name is **Junius**.
 - Junius supports **Windows only**. Linux, macOS, and every other operating system are unsupported product targets and must be rejected by Junius entrypoints rather than accommodated with fallback behavior.
+- The normal installed Junius instance owns port **8787** and is the default tool for ordinary work, including editing the Junius repository itself. `pnpm dev` is the explicitly test-only development instance, pinned to port **18787**; it should be used only when the current user request explicitly asks to test, exercise, validate, or debug the development build.
 - Junius is a personal/local MCP product for ChatGPT Plus and higher. Free and Go are not supported target tiers; do not add degraded or reduced-permission compatibility paths solely for those tiers unless the user explicitly changes the product scope.
 - Junius is not intended for the public ChatGPT/Codex plugin directory. The supported connection model is a user-owned local Junius MCP server + OpenAI Secure MCP Tunnel + personal MCP/plugin connection created by the user. GitHub Releases remain the public software distribution channel.
 - Junius is an execution service, not a policy engine. Do not introduce command allowlists, capability policy, or speculative safety layers unless the user explicitly changes that architecture.

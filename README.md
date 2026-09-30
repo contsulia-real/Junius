@@ -206,6 +206,10 @@ Repository development uses pnpm 12.6.0:
     pnpm install
     pnpm dev
 
+`pnpm dev` starts the **Junius Dev** instance on `127.0.0.1:18787`. It is deliberately separate from the normal installed Junius instance on `127.0.0.1:8787`. The Dev MCP server identifies itself as **Junius Dev — TEST ONLY** and its MCP instructions tell ChatGPT to use it only when the current user request explicitly asks to test, exercise, validate, or debug the development build. Ordinary computer-control work — including editing the Junius repository — should use the normal installed Junius connection.
+
+`pnpm start` retains the normal launcher behavior and default port `8787`; it is not the development-instance entrypoint.
+
 Release assets are built with:
 
     npm run release:build
@@ -439,7 +443,7 @@ A successful create_workspace or delete_workspace response is buffered by the Ho
 
 ## Last-known-good startup
 
-pnpm dev and pnpm start enter scripts/host-launcher.mjs.
+`pnpm dev` and `pnpm start` both enter `scripts/host-launcher.mjs`, but with different identities. `pnpm dev` passes `--dev`, which pins the Dev instance to port `18787` and marks its MCP identity as development/test-only. `pnpm start` keeps the normal `8787` identity.
 
 The launcher prefers the last validated bootstrap copy. The bootstrap fingerprints source/runtime control inputs and uses full validation before advancing the last-known-good release.
 

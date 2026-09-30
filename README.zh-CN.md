@@ -207,6 +207,10 @@ Core 契约要求：进行实质性软件工程工作前先加载 Engineering �
     pnpm install
     pnpm dev
 
+`pnpm dev` 会启动 **Junius Dev**，固定监听 `127.0.0.1:18787`，与正常安装版 Junius 使用的 `127.0.0.1:8787` 明确分离。Dev MCP server 会将自己标识为 **Junius Dev — TEST ONLY**，并在 MCP instructions 中要求 ChatGPT：只有当前用户请求明确要求测试、运行、验证或调试开发版 Junius 时才能使用 Dev。普通本地计算机控制工作——包括修改 Junius 仓库源码——都应使用正常安装版连接。
+
+`pnpm start` 保留普通 launcher 行为和默认 `8787` 端口；它不是开发实例入口。
+
 构建 Release 资产：
 
     npm run release:build
@@ -440,7 +444,7 @@ Workspace 修改属于共享持久化配置。
 
 ## 最后已知良好版本启动
 
-`pnpm dev` 和 `pnpm start` 都会进入 `scripts/host-launcher.mjs`。
+`pnpm dev` 和 `pnpm start` 都会进入 `scripts/host-launcher.mjs`，但身份不同。`pnpm dev` 会传入 `--dev`，把 Dev 实例固定到 `18787` 并标记为 development/test-only MCP；`pnpm start` 则保留普通 `8787` 身份。
 
 Launcher 优先使用最后一个已验证的 bootstrap 副本。Bootstrap 会为源码/运行时控制输入生成指纹，并且只有完整验证通过后才推进 last-known-good Release。
 

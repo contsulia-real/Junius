@@ -32,7 +32,7 @@ async function waitForProcessExit(
   assert.fail("descendant_still_running_after_timeout");
 }
 
-test("runSourceCheck strips inherited Node preload environment", async () => {
+test("runSourceCheck strips inherited preload and Junius instance environment", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-source-check-env-"),
   );
@@ -45,6 +45,7 @@ test("runSourceCheck strips inherited Node preload environment", async () => {
       fakePnpm,
       [
         'if (process.env.NODE_OPTIONS || process.env.NODE_PATH || process.env.node_options) process.exit(9);',
+        'if (process.env.JUNIUS_INSTANCE_ROLE || process.env.JUNIUS_MCP_PORT) process.exit(7);',
         'if (process.argv.slice(2).join(" ") !== "run check") process.exit(8);',
         'process.stdout.write("ok");',
         '',
@@ -65,6 +66,10 @@ test("runSourceCheck strips inherited Node preload environment", async () => {
         NODE_PATH: "C:\\evil\\modules",
         node_options:
           "--require=another-missing-junius-module",
+        JUNIUS_INSTANCE_ROLE:
+          "development",
+        JUNIUS_MCP_PORT:
+          "18787",
       },
       5_000,
     );

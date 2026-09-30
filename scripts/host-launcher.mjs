@@ -15,6 +15,11 @@ import {
 
 assertWindowsPlatform();
 
+const developmentMode =
+  process.argv
+    .slice(2)
+    .includes("--dev");
+
 const projectRoot = resolve(
   process.env.JUNIUS_PROJECT_ROOT ??
     dirname(
@@ -38,6 +43,22 @@ const liveBootstrapPath = join(
   "host-bootstrap.mjs",
 );
 
+const childEnvironment = {
+  ...process.env,
+  JUNIUS_PROJECT_ROOT:
+    projectRoot,
+  ...(
+    developmentMode
+      ? {
+          JUNIUS_MCP_PORT:
+            "18787",
+          JUNIUS_INSTANCE_ROLE:
+            "development",
+        }
+      : {}
+  ),
+};
+
 let activeBootstrap;
 
 async function exists(path) {
@@ -51,6 +72,12 @@ async function exists(path) {
 
 async function main() {
   await mkdir(runtimeRoot, { recursive: true });
+
+  if (developmentMode) {
+    console.error(
+      "[launcher] Junius Dev is TEST ONLY on http://127.0.0.1:18787.",
+    );
+  }
 
   const bootstrapPath =
     await exists(stableBootstrapPath)
@@ -68,11 +95,8 @@ async function main() {
     [bootstrapPath],
     {
       cwd: projectRoot,
-      env: {
-        ...process.env,
-        JUNIUS_PROJECT_ROOT:
-          projectRoot,
-      },
+      env:
+        childEnvironment,
       stdio: "inherit",
       windowsHide: false,
     },

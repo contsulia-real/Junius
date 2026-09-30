@@ -28,7 +28,7 @@
     "tsconfig.json"
   ],
   "scripts": {
-    "dev": "node scripts/host-launcher.mjs",
+    "dev": "node scripts/host-launcher.mjs --dev",
     "start": "node scripts/host-launcher.mjs",
     "start:host-source": "tsx src/host.ts",
     "typecheck": "tsc --noEmit",

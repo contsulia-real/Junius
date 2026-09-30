@@ -70,6 +70,45 @@ function readContract(
 export const JUNIUS_CORE_CONTRACT =
   readContract("core.md");
 
+const JUNIUS_DEVELOPMENT_INSTANCE_NOTICE = `# JUNIUS DEVELOPMENT INSTANCE — TEST ONLY
+
+This MCP server is the Junius development instance. It is not the normal production Junius connection.
+
+Use this instance only when the current user request explicitly asks to test, exercise, validate, or debug the Junius development build. For ordinary computer-control work, including editing Junius source code, use the production Junius connection instead.
+
+Do not use this development instance merely because a task concerns the Junius repository.
+`;
+
+export function isJuniusDevelopmentInstance(
+  environment:
+    NodeJS.ProcessEnv =
+    process.env,
+): boolean {
+  return environment
+    .JUNIUS_INSTANCE_ROLE ===
+    "development";
+}
+
+export function resolveJuniusCoreContract(
+  environment:
+    NodeJS.ProcessEnv =
+    process.env,
+): string {
+  if (
+    !isJuniusDevelopmentInstance(
+      environment,
+    )
+  ) {
+    return JUNIUS_CORE_CONTRACT;
+  }
+
+  return (
+    JUNIUS_DEVELOPMENT_INSTANCE_NOTICE +
+    "\n" +
+    JUNIUS_CORE_CONTRACT
+  );
+}
+
 export const JUNIUS_ENGINEERING_CONTRACT =
   readContract("engineering.md");
 

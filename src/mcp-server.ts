@@ -12,7 +12,10 @@ import { registerDesktopTool } from "./mcp-desktop-tool.js";
 import { registerJobTools } from "./mcp-job-tools.js";
 import { registerRunCommandTool } from "./mcp-command-tool.js";
 import { registerContractTool } from "./mcp-contract-tool.js";
-import { JUNIUS_CORE_CONTRACT } from "./junius-contracts.js";
+import {
+  isJuniusDevelopmentInstance,
+  resolveJuniusCoreContract,
+} from "./junius-contracts.js";
 import { JUNIUS_VERSION } from "./project-version.js";
 
 export { formatRunCommandResult } from "./mcp-tool-shared.js";
@@ -26,15 +29,21 @@ export function createMcpServer(
   desktop: DesktopComputerUseService,
   audit?: AuditStore,
 ): McpServer {
+  const developmentInstance =
+    isJuniusDevelopmentInstance();
+
   const server = new McpServer(
     {
       name: "Junius",
-      title: "Junius Local Computer",
+      title:
+        developmentInstance
+          ? "Junius Dev — TEST ONLY"
+          : "Junius Local Computer",
       version: JUNIUS_VERSION,
     },
     {
       instructions:
-        JUNIUS_CORE_CONTRACT,
+        resolveJuniusCoreContract(),
     },
   );
 

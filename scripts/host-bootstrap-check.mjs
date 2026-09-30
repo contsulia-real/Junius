@@ -308,6 +308,17 @@ async function npmInvocation() {
   );
 }
 
+function validationEnvironment() {
+  const environment = {
+    ...process.env,
+  };
+  delete environment
+    .JUNIUS_INSTANCE_ROLE;
+  delete environment
+    .JUNIUS_MCP_PORT;
+  return environment;
+}
+
 export async function runCheck() {
   const startedAt =
     performance.now();
@@ -347,7 +358,8 @@ export async function runCheck() {
         ],
         {
           cwd: projectRoot,
-          env: process.env,
+          env:
+            validationEnvironment(),
           shell: false,
           windowsHide: true,
           stdio: [
