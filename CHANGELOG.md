@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.0.7-alpha
+
+- Release validation now runs the Escape interrupt helper self-test with the Python interpreter provided by the CI environment when a project-local virtual environment is not present.
+
 ## 0.0.6-alpha
 
 - Physical Escape now interrupts active Desktop and Playwright computer-use operations without treating Junius-injected Escape key events as user cancellation.

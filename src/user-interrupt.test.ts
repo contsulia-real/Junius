@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   mkdtemp,
   rm,
@@ -17,11 +18,22 @@ import {
 test(
   "escape interrupt helper ignores injected Escape events",
   () => {
+    const setupPython =
+      process.env.pythonLocation ===
+      undefined
+        ? undefined
+        : join(
+            process.env.pythonLocation,
+            "python.exe",
+          );
     const python =
-      resolveDesktopPythonExecutable(
-        DEFAULT_USER_INTERRUPT_HELPER_PATH,
-        process.env,
-      );
+      setupPython !== undefined &&
+      existsSync(setupPython)
+        ? setupPython
+        : resolveDesktopPythonExecutable(
+            DEFAULT_USER_INTERRUPT_HELPER_PATH,
+            process.env,
+          );
     assert.notEqual(
       python,
       undefined,
