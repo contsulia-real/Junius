@@ -11,6 +11,8 @@ import { registerBrowserTool } from "./mcp-browser-tool.js";
 import { registerDesktopTool } from "./mcp-desktop-tool.js";
 import { registerJobTools } from "./mcp-job-tools.js";
 import { registerRunCommandTool } from "./mcp-command-tool.js";
+import { registerRunCommandsTool } from "./mcp-command-batch-tool.js";
+import { registerGitTools } from "./mcp-git-tools.js";
 import { registerContractTool } from "./mcp-contract-tool.js";
 import {
   isJuniusDevelopmentInstance,
@@ -61,6 +63,14 @@ export function createMcpServer(
   );
   registerJobTools(server, jobs);
   registerRunCommandTool(server, commands);
+  registerRunCommandsTool(
+    server,
+    commands,
+  );
+  registerGitTools(
+    server,
+    commands,
+  );
 
   return server;
 }

@@ -577,6 +577,22 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       ),
       true,
     );
+    for (const toolName of [
+      "run_commands",
+      "git_snapshot",
+      "git_prepare_commit",
+      "git_commit",
+    ]) {
+      assert.equal(
+        tools.some(
+          (tool) =>
+            tool.name ===
+            toolName,
+        ),
+        true,
+        `missing MCP tool: ${toolName}`,
+      );
+    }
 
     const loadedContracts =
       await callMcpTool(

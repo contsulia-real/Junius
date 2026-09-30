@@ -219,6 +219,17 @@ Core 契约要求：进行实质性软件工程工作前先加载 Engineering �
 
 一行安装器不要求用户系统里安装 pnpm。npm 仅作为经过验证的 Junius 应用包内部的依赖安装器使用；npm registry 不是 Junius 的公开分发渠道。
 
+## 高层工程工具
+
+Junius 保留底层执行原语，同时为常见工程流程提供减少 MCP 往返的高层等价能力：
+
+- `run_commands` 可在同一个 Workspace 中一次执行最多 16 条短命令，支持并行或串行，并继续复用 `run_command` 的无限制执行路径。
+- `git_snapshot` 一次返回 branch/status、已暂存与未暂存摘要以及最近提交。
+- `git_prepare_commit` 只暂存显式指定的路径，检查 staged diff，并返回完整 staged diff 和用于审核的 Git tree token。
+- `git_commit` 只有在当前 staged tree 仍与审核过的 token 完全一致时才会提交；它永远不会 push。
+
+长时间运行的命令仍使用 Jobs。这些工具只是执行层便利能力，不会把 Junius 变成自动决定工程流程的策略引擎。
+
 ## 以对话为中心的工作区管理
 
 Workspace 被刻意设计得很小：

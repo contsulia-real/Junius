@@ -221,6 +221,18 @@ Examples:
 
 For visual changes, inspect the rendered result. Do not substitute type checks, DOM structure, or unit tests for visual confirmation.
 
+## Prefer high-level batching when it preserves semantics
+
+Reduce unnecessary MCP round trips when Junius already exposes a higher-level equivalent.
+
+- Use `run_commands` instead of repeated `run_command` calls for multiple short commands in the same Workspace. Use parallel mode when commands are independent and serial mode when order matters.
+- Use `git_snapshot` to collect branch/status, staged and unstaged summaries, and recent commits in one call instead of issuing those Git reads separately.
+- Use `git_prepare_commit` with explicit paths to stage and review the exact staged diff. Review the returned diff and tree token before committing.
+- After review, use `git_commit` with the returned tree token so the commit is refused if the staged tree changed after review.
+- Do not use batching when it would hide a dependency, obscure a failure that needs inspection, or change the real execution semantics.
+
+These tools are execution conveniences, not policy. They do not decide what to run, what to stage, what to commit, or whether to push.
+
 ## Handle long-running validation correctly
 
 If a build, test, or check may exceed foreground execution limits, use start_job.

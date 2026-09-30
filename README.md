@@ -218,6 +218,17 @@ That produces `dist/junius-windows.tgz`, `dist/SHA256SUMS.txt`, `dist/install.ps
 
 The one-command installer does not require the user to have pnpm installed. npm remains an internal dependency installer inside the verified Junius application package; npm is not the public Junius distribution channel.
 
+## Higher-level engineering tools
+
+Junius keeps the low-level execution primitives, but common engineering round trips also have higher-level equivalents:
+
+- `run_commands` runs up to 16 short commands in one Workspace, in parallel or serially, through the same unrestricted execution path as `run_command`.
+- `git_snapshot` returns branch/status, staged and unstaged summaries, and recent commits in one call.
+- `git_prepare_commit` stages only explicit paths, checks the staged diff, and returns the full staged diff plus a Git tree token for review.
+- `git_commit` commits only when the staged tree still matches that reviewed token. It never pushes.
+
+Long-running commands still use Jobs. Junius does not turn these helpers into an automatic engineering policy engine.
+
 ## Chat-first Workspace management
 
 A Workspace is deliberately small:

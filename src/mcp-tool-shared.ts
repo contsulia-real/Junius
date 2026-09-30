@@ -41,11 +41,11 @@ export const runCommandInputSchema = z.object({
     ),
 });
 
-export function formatRunCommandResult(
+export function runCommandResultPayload(
   result: RunCommandResult,
-): string {
+) {
   if (!result.ok) {
-    return JSON.stringify({
+    return {
       ok: false,
       workspace: result.workspace,
       executable: result.executable,
@@ -63,10 +63,10 @@ export function formatRunCommandResult(
               durationMs: result.execution.durationMs,
             },
           }),
-    });
+    };
   }
 
-  return JSON.stringify({
+  return {
     ok: true,
     workspace: result.workspace,
     executable: result.executable,
@@ -77,7 +77,17 @@ export function formatRunCommandResult(
       stderr: result.execution.stderr,
       durationMs: result.execution.durationMs,
     },
-  });
+  };
+}
+
+export function formatRunCommandResult(
+  result: RunCommandResult,
+): string {
+  return JSON.stringify(
+    runCommandResultPayload(
+      result,
+    ),
+  );
 }
 
 export function desktopToolError(error: unknown) {
