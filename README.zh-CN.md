@@ -134,6 +134,37 @@ Host 只使用一个回环 HTTP 监听器：
 
 没有单独的 Host 控制端口，也没有管理界面。
 
+## 可用范围与分发模式
+
+Junius 刻意定位为**个人/本地 MCP 产品**，而不是公开插件目录中的插件。
+
+Junius 的产品支持范围是 **ChatGPT Plus 及以上**。它围绕付费 ChatGPT 的使用方式设计：用户能够在 Developer mode 中自行创建个人 MCP 连接，并使用足够强的模型与 Junius 所需要的 MCP 工具表面完成开放式本地执行。Free 和 Go 不属于 Junius 的目标套餐。项目不会仅仅为了兼容这些套餐而增加降级的只读路径、受限权限兼容层，或专门针对低能力模型的交互方案。
+
+这是 Junius 自己的支持政策，并不意味着 OpenAI 的套餐、模型、Developer mode 权限或 MCP 权限永远不会变化。OpenAI 的产品可用性可以独立于 Junius 调整；实际连接时应以当时最新的 OpenAI 开发者文档为准。
+
+### 为什么 Junius 不进入公开插件目录
+
+Junius **不会**提交到公开的 ChatGPT/Codex 插件目录。
+
+它预期的部署方式就是：
+
+1. 在你自己的 Windows 电脑上安装并运行 Junius；
+2. Junius MCP Server 继续只监听本机回环地址；
+3. 由你自己创建 OpenAI Secure MCP Tunnel，并且只连接到精确的 `/mcp` 端点；
+4. 在 ChatGPT Developer mode 中创建**个人** MCP/插件连接；
+5. 只用这个连接控制你明确选择暴露的这台本地电脑。
+
+公开插件目录并不适合 Junius，原因包括：
+
+- **Junius 没有一个所有用户共用的托管服务。** 每个 Junius 实例都属于某一台用户自己的电脑，并以启动 Junius 的本地操作系统用户权限执行。
+- **连接天然是私有且绑定具体机器的。** Tunnel ID、运行时凭据、本地路径、Workspace、Browser 状态和 Desktop 访问权都属于拥有这台机器的用户。
+- **Junius 不应该把 Host 直接暴露到公网。** Host 始终只监听 loopback；只有精确的 `/mcp` 路由通过用户自己的 Secure MCP Tunnel 暴露给 ChatGPT，旁边的诊断路由仍然只留在本机。
+- **“被发现”不是这个产品的使用入口。** 用户先获得并安装 Junius 本地程序，再明确创建自己的个人 MCP 连接；公开目录发现并不会给这条流程增加实际价值。
+- **公开目录会制造错误预期。** 安装一个目录条目本身无法替用户把 Junius 安装到 PC、启动本地 Host、创建 Tunnel，也不能自动取得这台电脑的控制能力。这些动作必须由用户明确完成并掌握。
+- **Junius 没必要为了扩大目录覆盖面承担最低套餐兼容成本。** 项目支持基线就是 Plus 及以上，因此可以围绕足够强的模型和完整的目标 MCP 执行工作流设计，而不是维护 Free/Go 的 fallback 行为。
+
+GitHub Releases 仍然是 Junius 的**公开软件分发渠道**。这和“把 Junius 发布成公开 ChatGPT/Codex 插件”是两回事：Release 用于分发本地程序；ChatGPT 里的连接始终由用户自己创建并保持为个人连接。
+
 ## 将 Junius 连接到 ChatGPT
 
 GitHub Release 安装器负责安装并启动本地 Junius 服务。它**不会**替你创建 OpenAI Secure MCP Tunnel，也不会自动配置 ChatGPT 插件连接。
@@ -163,7 +194,7 @@ Secure MCP Tunnel 的配置需要相应的 OpenAI Platform Tunnel 权限、Tunne
 - 连接并测试插件：https://developers.openai.com/plugins/deploy/connect-chatgpt
 - Secure MCP Tunnel：https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 
-OpenAI 当前开发者文档说明，ChatGPT Developer mode 在 ChatGPT Plus 和 Pro 中提供对读写工具的完整 Model Context Protocol 支持。Junius 依赖这套完整 MCP 工具表面。产品可用性和界面可能独立于 Junius 发生变化，因此如果旧的产品帮助文章与当前开发者文档冲突，应优先参考最新 OpenAI Developers 文档。
+Junius 自己的支持基线从 ChatGPT Plus 开始。实际用于 Junius 的账户或 Workspace 必须具备上述工作流所需要的 Developer mode、Secure MCP Tunnel，以及 MCP 读写能力。OpenAI 可以独立调整套餐权限、模型可用性、界面和 Workspace 策略，而且不同官方文档在功能逐步上线期间也可能描述不同的可用状态。因此实际配置时，应以该账户当前真正具备的能力和最新 OpenAI Developers 文档为准。如果这些能力不存在，Junius 不会再额外维护 Free/Go 的降级 fallback。
 
 ## 从源码开发
 

@@ -5,6 +5,8 @@ Scope: this entire repository.
 ## Product and architecture
 
 - The project name is **Junius**.
+- Junius is a personal/local MCP product for ChatGPT Plus and higher. Free and Go are not supported target tiers; do not add degraded or reduced-permission compatibility paths solely for those tiers unless the user explicitly changes the product scope.
+- Junius is not intended for the public ChatGPT/Codex plugin directory. The supported connection model is a user-owned local Junius MCP server + OpenAI Secure MCP Tunnel + personal MCP/plugin connection created by the user. GitHub Releases remain the public software distribution channel.
 - Junius is an execution service, not a policy engine. Do not introduce command allowlists, capability policy, or speculative safety layers unless the user explicitly changes that architecture.
 - Do not invent material product or architecture decisions. Surface unresolved choices that change product behavior, public interfaces, persistence, compatibility, or architecture.
 - Reuse existing execution paths, stores, helpers, and sources of truth before creating new ones. Do not maintain parallel implementations of the same behavior.

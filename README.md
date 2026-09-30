@@ -134,6 +134,37 @@ Its routes are:
 
 There is no separate Host-control port and no management UI.
 
+## Supported usage scope and distribution model
+
+Junius is deliberately a **personal/local MCP product**, not a public-directory plugin.
+
+Its supported product scope is **ChatGPT Plus and higher**. Junius is designed around the paid ChatGPT experience where a user can create a personal MCP connection in Developer mode and give ChatGPT a sufficiently capable model plus the MCP tool surface needed for open-ended local execution. Free and Go are not target tiers for Junius. The project will not add a degraded read-only path, reduced-permission compatibility layer, or lower-capability-model-specific UX solely to make Junius fit those tiers.
+
+This is a Junius support policy, not a promise that OpenAI will keep every plan, model, Developer mode entitlement, or MCP permission unchanged. OpenAI product availability can change independently of Junius; the current OpenAI developer documentation should be checked when setting up a connection.
+
+### Why Junius is not published to the public plugin directory
+
+Junius is intentionally **not** submitted to the public ChatGPT/Codex plugin directory.
+
+The intended deployment model is:
+
+1. install and run Junius on your own Windows machine;
+2. keep the Junius MCP server bound to local loopback;
+3. create your own OpenAI Secure MCP Tunnel to the exact `/mcp` endpoint;
+4. create a **personal** MCP/plugin connection in ChatGPT Developer mode;
+5. use that connection only for the local machine you chose to expose.
+
+A public-directory listing is the wrong distribution model for Junius for several reasons:
+
+- **There is no shared hosted Junius service.** Each Junius instance belongs to one user's computer and executes with that user's local operating-system permissions.
+- **The connection is intentionally private and machine-specific.** Tunnel IDs, runtime credentials, local paths, Workspaces, Browser state, and Desktop access belong to the user who owns that machine.
+- **Junius should not expose its Host publicly.** The Host remains loopback-only; only the exact `/mcp` route is bridged through the user's Secure MCP Tunnel. The co-located diagnostic routes remain local.
+- **Discovery is not the product goal.** Users obtain Junius as local software, then explicitly create their own personal MCP connection. Public catalog discovery adds no useful step to that workflow.
+- **A public listing would create the wrong expectation.** Installing a directory entry cannot install Junius on a user's PC, start its local Host, create the user's tunnel, or grant access to that machine. Those steps must remain explicit and user-owned.
+- **Junius does not need lowest-tier compatibility to widen directory reach.** Its supported baseline is Plus and higher, so the project can optimize for capable models and the intended MCP execution workflow instead of carrying Free/Go fallback behavior.
+
+GitHub Releases remain Junius's **public software distribution channel**. That is separate from publishing Junius as a public ChatGPT/Codex plugin: the release distributes the local program; the ChatGPT connection remains personal.
+
 ## Connect Junius to ChatGPT
 
 The GitHub Release installer installs and starts the local Junius service. It does **not** create an OpenAI Secure MCP Tunnel or configure a ChatGPT plugin connection for you.
@@ -162,7 +193,7 @@ Current OpenAI developer documentation:
 - Connect and test a plugin: https://developers.openai.com/plugins/deploy/connect-chatgpt
 - Secure MCP Tunnel: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 
-OpenAI's current developer documentation states that ChatGPT Developer mode provides full Model Context Protocol support for read and write tools in ChatGPT Plus and Pro. Junius relies on that full MCP tool surface. Availability and UI can change independently of Junius, so prefer the current OpenAI Developers documentation over older product-help articles when they disagree.
+Junius's own supported baseline starts at ChatGPT Plus. In practice, the account or workspace used for Junius must expose the Developer mode, Secure MCP Tunnel, and MCP read/write capabilities required by the workflow above. OpenAI can change plan entitlements, model availability, UI, and workspace policy independently of Junius, and OpenAI documentation can temporarily describe different rollout states. Treat the capabilities actually available to the account together with the latest OpenAI Developers documentation as the setup authority. Junius does not add a Free/Go fallback when those capabilities are absent.
 
 ## Development from source
 
