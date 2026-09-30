@@ -31,6 +31,28 @@ interface BootstrapRun {
   readonly stderr: string;
 }
 
+function isolatedJuniusEnvironment(
+  overrides:
+    NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  const environment = {
+    ...process.env,
+  };
+
+  for (const key of [
+    "JUNIUS_PROJECT_ROOT",
+    "JUNIUS_INSTANCE_ROLE",
+    "JUNIUS_MCP_PORT",
+  ]) {
+    delete environment[key];
+  }
+
+  return {
+    ...environment,
+    ...overrides,
+  };
+}
+
 async function runBootstrap(
   root: string,
   checkResult: "pass" | "fail",
@@ -58,8 +80,7 @@ process.exit(result === "pass" ? 0 : 1);
     [join(process.cwd(), "scripts", "host-bootstrap.mjs")],
     {
       cwd: process.cwd(),
-      env: {
-        ...process.env,
+      env: isolatedJuniusEnvironment({
         PATH: [
           fakeBin,
           process.env.PATH ?? "",
@@ -82,7 +103,7 @@ process.exit(result === "pass" ? 0 : 1);
         ),
         JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
         JUNIUS_WORKER_ROLLBACK_MS: "1000",
-      },
+      }),
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -138,10 +159,9 @@ async function markCurrentSourceValidated(
       [script, command],
       {
         cwd: process.cwd(),
-        env: {
-          ...process.env,
+        env: isolatedJuniusEnvironment({
           JUNIUS_RUNTIME_ROOT: runtimeRoot,
-        },
+        }),
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       },

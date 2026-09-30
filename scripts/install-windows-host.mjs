@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
 import {
   mkdir,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
 import {
   windowsRunValue,
-  windowsStartupVbs,
+  windowsStartupPowerShell,
 } from "./install-paths.mjs";
 import {
   assertProcess,
@@ -20,11 +21,13 @@ export async function writeWindowsStartup(
     process.env.SystemRoot ??
     process.env.SYSTEMROOT ??
     "C:\\Windows";
-  const wscript =
+  const powershell =
     join(
       systemRoot,
       "System32",
-      "wscript.exe",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
     );
   const reg =
     join(
@@ -40,7 +43,7 @@ export async function writeWindowsStartup(
     );
 
   const script =
-    windowsStartupVbs(
+    windowsStartupPowerShell(
       nodeExecutable,
       launcherPath,
       paths.appRoot,
@@ -55,6 +58,10 @@ export async function writeWindowsStartup(
     script,
     "utf8",
   );
+  await rm(
+    paths.legacyStartupScript,
+    { force: true },
+  );
 
   await assertProcess(
     "Windows startup registration",
@@ -68,7 +75,7 @@ export async function writeWindowsStartup(
       "REG_SZ",
       "/d",
       windowsRunValue(
-        wscript,
+        powershell,
         paths.startupScript,
       ),
       "/f",
@@ -76,7 +83,7 @@ export async function writeWindowsStartup(
   );
 
   return {
-    wscript,
+    powershell,
     launcherPath,
   };
 }
@@ -239,10 +246,15 @@ export async function startInstalledJunius(
   }
 
   const child = spawn(
-    startup.wscript,
+    startup.powershell,
     [
-      "//B",
-      "//Nologo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-WindowStyle",
+      "Hidden",
+      "-File",
       startup.startupScript,
     ],
     {

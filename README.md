@@ -50,7 +50,7 @@ The installer does not download or replace Node or Python. It requires Node.js 2
 
 No administrator elevation is required for the normal per-user installation path.
 
-After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used for installation, and the Desktop helper uses the installed .venv created from the user's existing Python.
+After installation, Junius starts automatically when that Windows user signs in. The per-user HKCU Run entry launches a hidden PowerShell startup script that records the exact Node executable used for installation; Junius no longer depends on VBScript/WScript for startup. The Desktop helper uses the installed .venv created from the user's existing Python.
 
 Junius has a first-class updater. The CLI supports `junius update --check` to compare the current package version with the newest published GitHub Release and `junius update` to install it. The normal installed product path is available directly to ChatGPT through the production MCP tools `check_junius_update` and `update_junius`. The Dev MCP instance does not expose these production-update tools.
 

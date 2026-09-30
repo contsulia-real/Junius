@@ -37,6 +37,10 @@ export function windowsInstallPaths(
     appRoot: join(root, "app"),
     startupScript: join(
       root,
+      "start-junius.ps1",
+    ),
+    legacyStartupScript: join(
+      root,
       "start-junius.vbs",
     ),
     venvRoot: join(
@@ -47,32 +51,44 @@ export function windowsInstallPaths(
   };
 }
 
-export function vbsString(value) {
-  return String(value)
-    .replaceAll('"', '""');
+function powershellLiteral(
+  value,
+) {
+  return (
+    "'" +
+    String(value)
+      .replaceAll(
+        "'",
+        "''",
+      ) +
+    "'"
+  );
 }
 
-export function windowsStartupVbs(
+export function windowsStartupPowerShell(
   nodeExecutable,
   launcherPath,
   appRoot,
 ) {
-  const command =
-    `"${nodeExecutable}" "${launcherPath}"`;
-
   return [
-    'Set shell = CreateObject("WScript.Shell")',
-    `shell.CurrentDirectory = "${vbsString(appRoot)}"`,
-    `shell.Run "${vbsString(command)}", 0, False`,
+    "$ErrorActionPreference = 'Stop'",
+    "$startInfo = New-Object System.Diagnostics.ProcessStartInfo",
+    `$startInfo.FileName = ${powershellLiteral(nodeExecutable)}`,
+    `$startInfo.Arguments = ${powershellLiteral(`"${launcherPath}"`)}`,
+    `$startInfo.WorkingDirectory = ${powershellLiteral(appRoot)}`,
+    "$startInfo.UseShellExecute = $false",
+    "$startInfo.CreateNoWindow = $true",
+    "$startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden",
+    "[void][System.Diagnostics.Process]::Start($startInfo)",
     "",
   ].join("\r\n");
 }
 
 export function windowsRunValue(
-  wscriptExecutable,
+  powershellExecutable,
   startupScript,
 ) {
   return (
-    `"${wscriptExecutable}" //B //Nologo "${startupScript}"`
+    `"${powershellExecutable}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "${startupScript}"`
   );
 }

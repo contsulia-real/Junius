@@ -50,7 +50,7 @@ GitHub Releases 是 Junius 的公开分发渠道。Bootstrap 脚本会：
 
 正常的按用户安装路径不需要管理员提权。
 
-安装完成后，该 Windows 用户登录时 Junius 会自动启动。启动项会记录安装时使用的精确 Node 可执行文件；Desktop helper 则使用基于用户现有 Python 创建的已安装 `.venv`。
+安装完成后，该 Windows 用户登录时 Junius 会自动启动。当前用户的 HKCU Run 启动项会调用隐藏的 PowerShell 启动脚本，并记录安装时使用的精确 Node 可执行文件；Junius 不再依赖 VBScript/WScript 启动。Desktop helper 则使用基于用户现有 Python 创建的已安装 `.venv`。
 
 Junius 现在提供正式更新功能。CLI 支持 `junius update --check` 比较当前包版本与最新已发布 GitHub Release，并通过 `junius update` 安装最新版本。正常安装后的产品路径则直接向 ChatGPT 提供正式版 MCP 工具 `check_junius_update` 与 `update_junius`。Dev MCP 实例不会暴露这些正式版更新工具。
 

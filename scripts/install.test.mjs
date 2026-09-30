@@ -19,7 +19,7 @@ import {
 import {
   windowsInstallPaths,
   windowsRunValue,
-  windowsStartupVbs,
+  windowsStartupPowerShell,
 } from "./install-paths.mjs";
 import {
   supportedPythonVersion,
@@ -100,6 +100,14 @@ test(
     assert.equal(
       paths.appRoot,
       "C:\\Users\\Demo\\AppData\\Local\\Junius\\app",
+    );
+    assert.equal(
+      paths.startupScript,
+      "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.ps1",
+    );
+    assert.equal(
+      paths.legacyStartupScript,
+      "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.vbs",
     );
     assert.equal(
       paths.venvRoot,
@@ -628,15 +636,23 @@ test(
 );
 
 test(
-  "installer startup reuses the selected Node executable and hides the Host",
+  "installer startup uses hidden PowerShell without VBScript",
   () => {
     const script =
-      windowsStartupVbs(
+      windowsStartupPowerShell(
         "C:\\Program Files\\nodejs\\node.exe",
         "C:\\Users\\Demo\\AppData\\Local\\Junius\\app\\scripts\\host-launcher.mjs",
         "C:\\Users\\Demo\\AppData\\Local\\Junius\\app",
       );
 
+    assert.match(
+      script,
+      /ProcessStartInfo/u,
+    );
+    assert.match(
+      script,
+      /CreateNoWindow = \$true/u,
+    );
     assert.match(
       script,
       /node\.exe/u,
@@ -645,17 +661,17 @@ test(
       script,
       /host-launcher\.mjs/u,
     );
-    assert.match(
+    assert.doesNotMatch(
       script,
-      /, 0, False/u,
+      /WScript/u,
     );
 
     assert.equal(
       windowsRunValue(
-        "C:\\Windows\\System32\\wscript.exe",
-        "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.vbs",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.ps1",
       ),
-      '"C:\\Windows\\System32\\wscript.exe" //B //Nologo "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.vbs"',
+      '"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.ps1"',
     );
   },
 );
