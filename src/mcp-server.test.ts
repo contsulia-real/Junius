@@ -22,7 +22,7 @@ test(
 
     assert.equal(
       packageJson.version,
-      "0.0.2-alpha-ChatGPT",
+      "0.0.3-alpha-ChatGPT",
     );
     assert.equal(
       JUNIUS_VERSION,
