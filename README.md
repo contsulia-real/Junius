@@ -12,78 +12,6 @@ Junius is a local MCP execution service designed for ChatGPT chat. It gives the 
 
 Junius is **not an operating-system sandbox**. Processes launched by Junius run with the permissions of the operating-system user that started Junius.
 
-## MCP surface
-
-    load_junius_contracts(modes)
-
-    list_workspaces()
-    create_workspace(id, root_path)
-    delete_workspace(id)
-
-    ls(workspace, ...)
-    read(workspace, ...)
-    write(workspace, ...)
-    workspace_apply(workspace, files, verify)
-    rg(workspace, ...)
-    workspace_batch(workspace, operations)
-
-    run_command(workspace, executable, args)
-
-    start_job(workspace, executable, args)
-    get_job(job)
-    wait_job(job, timeout_ms)
-    read_job_output(job, stream, offset, limit)
-    cancel_job(job)
-
-    playwright_cli(session, command, args)
-
-    desktop(session, command, ...)
-
-There is no management Web UI. Workspace creation, removal, inspection, command execution, Jobs, Browser control, and Desktop control are intended to be driven through ChatGPT conversation.
-
-## Injected operating contracts
-
-Junius uses MCP-native instructions for its ChatGPT execution contract.
-
-The Core Operating Contract is sent in the MCP initialize result through the server's `instructions` field. It contains only cross-cutting Junius behavior: explicit user constraints, truthful state reporting, real-path problem handling, instruction precedence, Workspace/AGENTS.md semantics, process and Job semantics, verification, cleanup, and final constraint convergence.
-
-Large task-specific behavior is deliberately not embedded in Core. Junius keeps three separate contracts:
-
-- `engineering` — software-engineering decision boundaries, reuse-before-creation, avoiding speculative compatibility and unnecessary machinery, bug reproduction and RED → GREEN discipline, relevant structural convergence, real-surface QA, Git discipline, and final engineering review;
-- `desktop` — screenshot-only Desktop Computer Use, control lifecycle, coordinate semantics, primitive selection including `key_macro` and `action_batch`, act-observe verification, and cleanup;
-- `browser` — the unrestricted Playwright CLI surface, Browser session continuity, state-dependent references, act-observe verification, and session cleanup.
-
-ChatGPT loads only the modes needed for the current task:
-
-    load_junius_contracts(
-      modes = ["engineering"]
-    )
-
-or, when several apply:
-
-    load_junius_contracts(
-      modes = ["engineering", "browser"]
-    )
-
-The result starts with mode/digest metadata and then returns each selected contract as its own raw Markdown text block. Duplicate modes are deduplicated while requested order is preserved.
-
-The Core contract requires the Engineering contract before substantive software-engineering work, the Desktop contract before the first `desktop` call in a task, and the Browser contract before the first `playwright_cli` call.
-
-These contracts guide the calling assistant. They are not executable authorization rules and do not reintroduce a Junius command/capability policy layer. The existing AGENTS.md mutation preflight remains a separate built-in file-tool mechanism.
-
-### Customizing Junius prompts
-
-The operating contracts are not hardcoded in TypeScript. Junius loads them as UTF-8 Markdown from the repository's `prompts/` directory:
-
-- `prompts/core.md` — the Core Operating Contract sent through MCP `instructions`;
-- `prompts/engineering.md` — software-engineering work mode;
-- `prompts/desktop.md` — Desktop Computer Use contract;
-- `prompts/browser.md` — Browser Computer Use contract.
-
-Edit these Markdown files to customize the instructions Junius supplies to ChatGPT. The files are included in source fingerprints, last-known-good snapshots, installed release packages, and normal source validation. A running Host watches `prompts/*.md`; a prompt edit follows the same validated Worker hot-reload path as other Worker-side source changes.
-
-For a normal Windows installation, the editable copies live under `%LOCALAPPDATA%\Junius\app\prompts`. In-place Junius updates refresh the packaged `prompts` directory, so keep any long-lived custom prompt changes under version control or reapply them after updating.
-
 ## One-command installation
 
 The current one-command installer targets Windows.
@@ -194,6 +122,78 @@ Current OpenAI developer documentation:
 - Secure MCP Tunnel: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 
 Junius's own supported baseline starts at ChatGPT Plus. In practice, the account or workspace used for Junius must expose the Developer mode, Secure MCP Tunnel, and MCP read/write capabilities required by the workflow above. OpenAI can change plan entitlements, model availability, UI, and workspace policy independently of Junius, and OpenAI documentation can temporarily describe different rollout states. Treat the capabilities actually available to the account together with the latest OpenAI Developers documentation as the setup authority. Junius does not add a Free/Go fallback when those capabilities are absent.
+
+## MCP surface
+
+    load_junius_contracts(modes)
+
+    list_workspaces()
+    create_workspace(id, root_path)
+    delete_workspace(id)
+
+    ls(workspace, ...)
+    read(workspace, ...)
+    write(workspace, ...)
+    workspace_apply(workspace, files, verify)
+    rg(workspace, ...)
+    workspace_batch(workspace, operations)
+
+    run_command(workspace, executable, args)
+
+    start_job(workspace, executable, args)
+    get_job(job)
+    wait_job(job, timeout_ms)
+    read_job_output(job, stream, offset, limit)
+    cancel_job(job)
+
+    playwright_cli(session, command, args)
+
+    desktop(session, command, ...)
+
+There is no management Web UI. Workspace creation, removal, inspection, command execution, Jobs, Browser control, and Desktop control are intended to be driven through ChatGPT conversation.
+
+## Injected operating contracts
+
+Junius uses MCP-native instructions for its ChatGPT execution contract.
+
+The Core Operating Contract is sent in the MCP initialize result through the server's `instructions` field. It contains only cross-cutting Junius behavior: explicit user constraints, truthful state reporting, real-path problem handling, instruction precedence, Workspace/AGENTS.md semantics, process and Job semantics, verification, cleanup, and final constraint convergence.
+
+Large task-specific behavior is deliberately not embedded in Core. Junius keeps three separate contracts:
+
+- `engineering` — software-engineering decision boundaries, reuse-before-creation, avoiding speculative compatibility and unnecessary machinery, bug reproduction and RED → GREEN discipline, relevant structural convergence, real-surface QA, Git discipline, and final engineering review;
+- `desktop` — screenshot-only Desktop Computer Use, control lifecycle, coordinate semantics, primitive selection including `key_macro` and `action_batch`, act-observe verification, and cleanup;
+- `browser` — the unrestricted Playwright CLI surface, Browser session continuity, state-dependent references, act-observe verification, and session cleanup.
+
+ChatGPT loads only the modes needed for the current task:
+
+    load_junius_contracts(
+      modes = ["engineering"]
+    )
+
+or, when several apply:
+
+    load_junius_contracts(
+      modes = ["engineering", "browser"]
+    )
+
+The result starts with mode/digest metadata and then returns each selected contract as its own raw Markdown text block. Duplicate modes are deduplicated while requested order is preserved.
+
+The Core contract requires the Engineering contract before substantive software-engineering work, the Desktop contract before the first `desktop` call in a task, and the Browser contract before the first `playwright_cli` call.
+
+These contracts guide the calling assistant. They are not executable authorization rules and do not reintroduce a Junius command/capability policy layer. The existing AGENTS.md mutation preflight remains a separate built-in file-tool mechanism.
+
+### Customizing Junius prompts
+
+The operating contracts are not hardcoded in TypeScript. Junius loads them as UTF-8 Markdown from the repository's `prompts/` directory:
+
+- `prompts/core.md` — the Core Operating Contract sent through MCP `instructions`;
+- `prompts/engineering.md` — software-engineering work mode;
+- `prompts/desktop.md` — Desktop Computer Use contract;
+- `prompts/browser.md` — Browser Computer Use contract.
+
+Edit these Markdown files to customize the instructions Junius supplies to ChatGPT. The files are included in source fingerprints, last-known-good snapshots, installed release packages, and normal source validation. A running Host watches `prompts/*.md`; a prompt edit follows the same validated Worker hot-reload path as other Worker-side source changes.
+
+For a normal Windows installation, the editable copies live under `%LOCALAPPDATA%\Junius\app\prompts`. In-place Junius updates refresh the packaged `prompts` directory, so keep any long-lived custom prompt changes under version control or reapply them after updating.
 
 ## Development from source
 

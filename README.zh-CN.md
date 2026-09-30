@@ -12,78 +12,6 @@ Junius 是一个面向 ChatGPT 对话的本地 MCP 执行服务。它让调用�
 
 Junius **不是操作系统沙箱**。由 Junius 启动的进程拥有启动 Junius 的操作系统用户所拥有的权限。
 
-## MCP 接口
-
-    load_junius_contracts(modes)
-
-    list_workspaces()
-    create_workspace(id, root_path)
-    delete_workspace(id)
-
-    ls(workspace, ...)
-    read(workspace, ...)
-    write(workspace, ...)
-    workspace_apply(workspace, files, verify)
-    rg(workspace, ...)
-    workspace_batch(workspace, operations)
-
-    run_command(workspace, executable, args)
-
-    start_job(workspace, executable, args)
-    get_job(job)
-    wait_job(job, timeout_ms)
-    read_job_output(job, stream, offset, limit)
-    cancel_job(job)
-
-    playwright_cli(session, command, args)
-
-    desktop(session, command, ...)
-
-Junius 没有管理 Web 界面。Workspace 的创建、删除与检查，命令执行、Job、浏览器控制和桌面控制，都设计为直接通过 ChatGPT 对话驱动。
-
-## 注入式运行契约
-
-Junius 使用 MCP 原生 instructions 机制向 ChatGPT 提供执行契约。
-
-Core Operating Contract 会通过 MCP 初始化结果中的 `instructions` 字段发送。Core 只包含跨任务通用的 Junius 行为规则：用户明确约束、真实状态汇报、已确认问题的真实路径处理、指令优先级、Workspace/AGENTS.md 语义、进程和 Job 语义、验证、清理，以及最终约束收敛。
-
-体积较大的任务专用行为不会全部塞入 Core。Junius 将它们拆成三个独立契约：
-
-- `engineering` —— 软件工程决策边界、复用优先、禁止无依据的兼容和没必要的机制、Bug 复现与 RED → GREEN、相关结构收敛、真实表面 QA、Git 纪律和最终工程审查；
-- `desktop` —— 仅基于截图的桌面 Computer Use、控制生命周期、坐标语义、包括 `key_macro` 和 `action_batch` 在内的原语选择、操作后观察验证和清理；
-- `browser` —— 不受 Junius 命令白名单限制的 Playwright CLI 表面、浏览器会话连续性、依赖当前状态的引用、操作后观察验证和会话清理。
-
-ChatGPT 只加载当前任务真正需要的模式：
-
-    load_junius_contracts(
-      modes = ["engineering"]
-    )
-
-需要多个模式时：
-
-    load_junius_contracts(
-      modes = ["engineering", "browser"]
-    )
-
-结果首先返回 mode/digest 元数据，随后将每个选中的契约作为独立的原始 Markdown 文本块返回。重复模式会去重，同时保留首次请求的顺序。
-
-Core 契约要求：进行实质性软件工程工作前先加载 Engineering 契约；在某个任务中第一次调用 `desktop` 前先加载 Desktop 契约；第一次调用 `playwright_cli` 前先加载 Browser 契约。
-
-这些契约用于约束调用 Junius 的助手，而不是可执行的授权规则，也不会重新引入 Junius 自己的命令/能力策略层。现有 AGENTS.md 修改前预检仍是内置文件工具的一套独立机制。
-
-### 自定义 Junius 提示词
-
-运行契约不再硬编码在 TypeScript 中。Junius 会从仓库的 `prompts/` 目录读取 UTF-8 Markdown：
-
-- `prompts/core.md` —— 通过 MCP `instructions` 发送的 Core Operating Contract；
-- `prompts/engineering.md` —— 软件工程工作模式；
-- `prompts/desktop.md` —— Desktop Computer Use 契约；
-- `prompts/browser.md` —— Browser Computer Use 契约。
-
-直接编辑这些 Markdown 文件即可自定义 Junius 提供给 ChatGPT 的指令。它们会被纳入源码指纹、last-known-good 快照、正式 Release 包和常规源码验证。正在运行的 Host 会监听 `prompts/*.md`；提示词发生变化后，会像其他 Worker 侧源码变更一样走完整验证后的 Worker 热重载流程。
-
-正常 Windows 安装后，可编辑文件位于 `%LOCALAPPDATA%\Junius\app\prompts`。Junius 原地更新会刷新 Release 中的 `prompts` 目录，因此长期自定义内容建议自行纳入版本控制，或在更新后重新应用。
-
 ## 一行命令安装
 
 当前的一行安装器面向 Windows。
@@ -195,6 +123,78 @@ Secure MCP Tunnel 的配置需要相应的 OpenAI Platform Tunnel 权限、Tunne
 - Secure MCP Tunnel：https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 
 Junius 自己的支持基线从 ChatGPT Plus 开始。实际用于 Junius 的账户或 Workspace 必须具备上述工作流所需要的 Developer mode、Secure MCP Tunnel，以及 MCP 读写能力。OpenAI 可以独立调整套餐权限、模型可用性、界面和 Workspace 策略，而且不同官方文档在功能逐步上线期间也可能描述不同的可用状态。因此实际配置时，应以该账户当前真正具备的能力和最新 OpenAI Developers 文档为准。如果这些能力不存在，Junius 不会再额外维护 Free/Go 的降级 fallback。
+
+## MCP 接口
+
+    load_junius_contracts(modes)
+
+    list_workspaces()
+    create_workspace(id, root_path)
+    delete_workspace(id)
+
+    ls(workspace, ...)
+    read(workspace, ...)
+    write(workspace, ...)
+    workspace_apply(workspace, files, verify)
+    rg(workspace, ...)
+    workspace_batch(workspace, operations)
+
+    run_command(workspace, executable, args)
+
+    start_job(workspace, executable, args)
+    get_job(job)
+    wait_job(job, timeout_ms)
+    read_job_output(job, stream, offset, limit)
+    cancel_job(job)
+
+    playwright_cli(session, command, args)
+
+    desktop(session, command, ...)
+
+Junius 没有管理 Web 界面。Workspace 的创建、删除与检查，命令执行、Job、浏览器控制和桌面控制，都设计为直接通过 ChatGPT 对话驱动。
+
+## 注入式运行契约
+
+Junius 使用 MCP 原生 instructions 机制向 ChatGPT 提供执行契约。
+
+Core Operating Contract 会通过 MCP 初始化结果中的 `instructions` 字段发送。Core 只包含跨任务通用的 Junius 行为规则：用户明确约束、真实状态汇报、已确认问题的真实路径处理、指令优先级、Workspace/AGENTS.md 语义、进程和 Job 语义、验证、清理，以及最终约束收敛。
+
+体积较大的任务专用行为不会全部塞入 Core。Junius 将它们拆成三个独立契约：
+
+- `engineering` —— 软件工程决策边界、复用优先、禁止无依据的兼容和没必要的机制、Bug 复现与 RED → GREEN、相关结构收敛、真实表面 QA、Git 纪律和最终工程审查；
+- `desktop` —— 仅基于截图的桌面 Computer Use、控制生命周期、坐标语义、包括 `key_macro` 和 `action_batch` 在内的原语选择、操作后观察验证和清理；
+- `browser` —— 不受 Junius 命令白名单限制的 Playwright CLI 表面、浏览器会话连续性、依赖当前状态的引用、操作后观察验证和会话清理。
+
+ChatGPT 只加载当前任务真正需要的模式：
+
+    load_junius_contracts(
+      modes = ["engineering"]
+    )
+
+需要多个模式时：
+
+    load_junius_contracts(
+      modes = ["engineering", "browser"]
+    )
+
+结果首先返回 mode/digest 元数据，随后将每个选中的契约作为独立的原始 Markdown 文本块返回。重复模式会去重，同时保留首次请求的顺序。
+
+Core 契约要求：进行实质性软件工程工作前先加载 Engineering 契约；在某个任务中第一次调用 `desktop` 前先加载 Desktop 契约；第一次调用 `playwright_cli` 前先加载 Browser 契约。
+
+这些契约用于约束调用 Junius 的助手，而不是可执行的授权规则，也不会重新引入 Junius 自己的命令/能力策略层。现有 AGENTS.md 修改前预检仍是内置文件工具的一套独立机制。
+
+### 自定义 Junius 提示词
+
+运行契约不再硬编码在 TypeScript 中。Junius 会从仓库的 `prompts/` 目录读取 UTF-8 Markdown：
+
+- `prompts/core.md` —— 通过 MCP `instructions` 发送的 Core Operating Contract；
+- `prompts/engineering.md` —— 软件工程工作模式；
+- `prompts/desktop.md` —— Desktop Computer Use 契约；
+- `prompts/browser.md` —— Browser Computer Use 契约。
+
+直接编辑这些 Markdown 文件即可自定义 Junius 提供给 ChatGPT 的指令。它们会被纳入源码指纹、last-known-good 快照、正式 Release 包和常规源码验证。正在运行的 Host 会监听 `prompts/*.md`；提示词发生变化后，会像其他 Worker 侧源码变更一样走完整验证后的 Worker 热重载流程。
+
+正常 Windows 安装后，可编辑文件位于 `%LOCALAPPDATA%\Junius\app\prompts`。Junius 原地更新会刷新 Release 中的 `prompts` 目录，因此长期自定义内容建议自行纳入版本控制，或在更新后重新应用。
 
 ## 从源码开发
 
