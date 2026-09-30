@@ -282,6 +282,8 @@ Job 保留：
 
 当前 Job 历史写入使用以 executable 为核心的 v2 schema。历史 v1 记录中保存的 command key 仍可以读取并会被规范化。
 
+终态 Job 历史默认保留 7 天。默认只按时间保留，不设置默认条数上限，因此 Job 数量增加不会让尚未过期的历史提前被淘汰。`JUNIUS_JOB_HISTORY_MAX_AGE_MS` 可以覆盖保留时长，`JUNIUS_JOB_HISTORY_MAX_ENTRIES` 可以额外设置明确的条数上限。Job 捕获的 stdout/stderr 属于历史数据，会随过期 Job 记录一起删除。
+
 ## 工作区文件工具
 
 内置文件工具与进程执行刻意采用不同模型。它们使用 Workspace 相对路径，并实现自己的路径包含边界。

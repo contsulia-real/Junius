@@ -1,6 +1,9 @@
 import { join, resolve } from "node:path";
 import type { JobHistoryRetention } from "./job-history-types.js";
 
+const DEFAULT_MAX_AGE_MS =
+  7 * 24 * 60 * 60 * 1_000;
+
 function positiveInteger(
   value: string | undefined,
 ): number | undefined {
@@ -22,25 +25,20 @@ function positiveInteger(
 export function resolveJobHistoryRetention(
   environment: NodeJS.ProcessEnv = process.env,
 ): JobHistoryRetention {
-  return {
-    ...(positiveInteger(
-      environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
-    ) === undefined
-      ? {}
-      : {
-          maxEntries: positiveInteger(
-            environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
-          ),
-        }),
-    ...(positiveInteger(
+  const maxEntries = positiveInteger(
+    environment.JUNIUS_JOB_HISTORY_MAX_ENTRIES,
+  );
+  const maxAgeMs =
+    positiveInteger(
       environment.JUNIUS_JOB_HISTORY_MAX_AGE_MS,
-    ) === undefined
+    ) ??
+    DEFAULT_MAX_AGE_MS;
+
+  return {
+    ...(maxEntries === undefined
       ? {}
-      : {
-          maxAgeMs: positiveInteger(
-            environment.JUNIUS_JOB_HISTORY_MAX_AGE_MS,
-          ),
-        }),
+      : { maxEntries }),
+    maxAgeMs,
   };
 }
 

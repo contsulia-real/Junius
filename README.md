@@ -281,6 +281,8 @@ Jobs preserve:
 
 Current Job history writes use the executable-oriented v2 schema. Historical v1 records that stored a command key are still read and normalized.
 
+Terminal Job history is retained for 7 days by default. The default applies by age only; there is no default entry-count limit, so high Job volume does not evict otherwise unexpired history. `JUNIUS_JOB_HISTORY_MAX_AGE_MS` overrides the age window, and `JUNIUS_JOB_HISTORY_MAX_ENTRIES` can add an explicit count limit. Captured stdout/stderr are part of Job history and are deleted with the Job record when it expires.
+
 ## Workspace file tools
 
 Built-in file tools are intentionally different from process execution. They use Workspace-relative paths and apply their own path-containment implementation.

@@ -38,7 +38,7 @@ function record(
   };
 }
 
-test("job history configuration resolves runtime path and opt-in retention", () => {
+test("job history configuration defaults to seven-day retention and supports overrides", () => {
   const runtimeRoot = join(
     tmpdir(),
     "junius-custom-runtime",
@@ -57,7 +57,10 @@ test("job history configuration resolves runtime path and opt-in retention", () 
 
   assert.deepEqual(
     resolveJobHistoryRetention({}),
-    {},
+    {
+      maxAgeMs:
+        7 * 24 * 60 * 60 * 1_000,
+    },
   );
 
   assert.deepEqual(
@@ -73,14 +76,28 @@ test("job history configuration resolves runtime path and opt-in retention", () 
 
   assert.deepEqual(
     resolveJobHistoryRetention({
+      JUNIUS_JOB_HISTORY_MAX_ENTRIES: "25",
+    }),
+    {
+      maxEntries: 25,
+      maxAgeMs:
+        7 * 24 * 60 * 60 * 1_000,
+    },
+  );
+
+  assert.deepEqual(
+    resolveJobHistoryRetention({
       JUNIUS_JOB_HISTORY_MAX_ENTRIES: "0",
       JUNIUS_JOB_HISTORY_MAX_AGE_MS: "nope",
     }),
-    {},
+    {
+      maxAgeMs:
+        7 * 24 * 60 * 60 * 1_000,
+    },
   );
 });
 
-test("JobHistoryStore defaults to retaining all terminal history", async () => {
+test("JobHistoryStore without a retention policy retains all terminal history", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-job-retain-all-"),
   );
