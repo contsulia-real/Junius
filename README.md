@@ -52,7 +52,9 @@ No administrator elevation is required for the normal per-user installation path
 
 After installation, Junius starts automatically when that Windows user signs in. The startup entry records the exact Node executable used for installation, and the Desktop helper uses the installed .venv created from the user's existing Python.
 
-Running the same PowerShell command again performs an in-place update from the newest published GitHub Release: Junius copies and validates the new package first, then restarts an existing Host so the installed version becomes active immediately. If the installer itself is invoked through a running Junius tool call, it does not terminate its own execution tree; in that case it installs and validates the update, then reports that Junius must be restarted to activate it.
+Junius has a first-class updater. The CLI supports `junius update --check` to compare the current package version with the newest published GitHub Release and `junius update` to install it. The normal installed product path is available directly to ChatGPT through the production MCP tools `check_junius_update` and `update_junius`. The Dev MCP instance does not expose these production-update tools.
+
+The updater reuses the same GitHub Release bootstrap and SHA-256 verification as installation. A CLI update running outside Junius stops and restarts the installed Host so the new version becomes active immediately. An MCP self-update never kills its own active tool call; it installs and validates the new version, returns `restartRequired: true`, and requires Junius to be restarted afterward. Re-running the original PowerShell install command remains a valid in-place update path.
 
 The Host uses one loopback HTTP listener:
 

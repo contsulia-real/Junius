@@ -13,6 +13,9 @@ import {
   join,
   resolve,
 } from "node:path";
+import {
+  SOURCE_CONTROL_FILES,
+} from "./host-bootstrap-paths.mjs";
 
 const VALIDATION_VERSION = 1;
 const PENDING_MAX_AGE_MS =
@@ -118,22 +121,10 @@ async function fingerprintSource(root) {
     }
   }
 
-  for (const file of [
-    "package.json",
-    "pnpm-lock.yaml",
-    "install-lock.json",
-    "tsconfig.json",
-    join("scripts", "host-bootstrap.mjs"),
-    join("scripts", "host-bootstrap-paths.mjs"),
-    join("scripts", "host-bootstrap-source.mjs"),
-    join("scripts", "host-bootstrap-check.mjs"),
-    join("scripts", "host-bootstrap-releases.mjs"),
-    join("scripts", "host-bootstrap-host.mjs"),
-    join("scripts", "host-launcher.mjs"),
-    join("scripts", "windows-only.mjs"),
-    join("scripts", "windows-only.d.mts"),
-    join("scripts", "source-validation.mjs"),
-  ]) {
+  for (
+    const file of
+    SOURCE_CONTROL_FILES
+  ) {
     if (await exists(join(root, file))) {
       sources.push(file);
     }

@@ -94,7 +94,7 @@ test("host source boundary follows transitive relative imports", async () => {
   }
 });
 
-test("host source boundary treats startup control files as restart-only", async () => {
+test("host source boundary separates host restart controls from worker update files", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-host-controls-"),
   );
@@ -140,6 +140,30 @@ test("host source boundary treats startup control files as restart-only", async 
           file,
         ),
         "restart-host",
+      );
+    }
+
+    assert.equal(
+      sourceChangeDisposition(
+        root,
+        "root",
+        "install.ps1",
+      ),
+      "reload-worker",
+    );
+
+    for (const file of [
+      "install-paths.mjs",
+      "install-process.mjs",
+      "update.mjs",
+    ]) {
+      assert.equal(
+        sourceChangeDisposition(
+          root,
+          "scripts",
+          file,
+        ),
+        "reload-worker",
       );
     }
 

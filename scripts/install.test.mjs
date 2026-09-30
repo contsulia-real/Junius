@@ -178,6 +178,14 @@ test(
         "<svg aria-label=\"Junius\" />\n",
         "utf8",
       );
+      await writeFile(
+        join(
+          packageRoot,
+          "install.ps1",
+        ),
+        "# update bootstrap\n",
+        "utf8",
+      );
       await mkdir(
         join(
           packageRoot,
@@ -257,6 +265,16 @@ test(
           "utf8",
         ),
         "<svg aria-label=\"Junius\" />\n",
+      );
+      assert.equal(
+        await readFile(
+          join(
+            appRoot,
+            "install.ps1",
+          ),
+          "utf8",
+        ),
+        "# update bootstrap\n",
       );
     } finally {
       await rm(

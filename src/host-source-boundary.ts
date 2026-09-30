@@ -29,6 +29,10 @@ const ROOT_CONTROL_FILES = new Set([
   "tsconfig.json",
 ]);
 
+const ROOT_WORKER_FILES = new Set([
+  "install.ps1",
+]);
+
 const SCRIPT_CONTROL_FILES = new Set([
   "host-bootstrap.mjs",
   "host-bootstrap-paths.mjs",
@@ -40,6 +44,12 @@ const SCRIPT_CONTROL_FILES = new Set([
   "windows-only.mjs",
   "windows-only.d.mts",
   "source-validation.mjs",
+]);
+
+const SCRIPT_WORKER_FILES = new Set([
+  "install-paths.mjs",
+  "install-process.mjs",
+  "update.mjs",
 ]);
 
 function pathInside(
@@ -187,14 +197,34 @@ export function sourceChangeDisposition(
   }
 
   if (area === "root") {
-    return ROOT_CONTROL_FILES.has(normalized)
-      ? "restart-host"
+    if (
+      ROOT_CONTROL_FILES.has(
+        normalized,
+      )
+    ) {
+      return "restart-host";
+    }
+
+    return ROOT_WORKER_FILES.has(
+      normalized,
+    )
+      ? "reload-worker"
       : "ignore";
   }
 
   if (area === "scripts") {
-    return SCRIPT_CONTROL_FILES.has(normalized)
-      ? "restart-host"
+    if (
+      SCRIPT_CONTROL_FILES.has(
+        normalized,
+      )
+    ) {
+      return "restart-host";
+    }
+
+    return SCRIPT_WORKER_FILES.has(
+      normalized,
+    )
+      ? "reload-worker"
       : "ignore";
   }
 

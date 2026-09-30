@@ -583,6 +583,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       "git_snapshot",
       "git_prepare_commit",
       "git_commit",
+      "check_junius_update",
+      "update_junius",
     ]) {
       assert.equal(
         tools.some(

@@ -58,6 +58,7 @@ export const SOURCE_CONTROL_FILES = [
   "package.json",
   "pnpm-lock.yaml",
   "install-lock.json",
+  "install.ps1",
   "tsconfig.json",
   ...STABLE_BOOTSTRAP_FILES.map(
     (file) => join("scripts", file),
@@ -73,5 +74,17 @@ export const SOURCE_CONTROL_FILES = [
   join(
     "scripts",
     "source-validation.mjs",
+  ),
+  join(
+    "scripts",
+    "install-paths.mjs",
+  ),
+  join(
+    "scripts",
+    "install-process.mjs",
+  ),
+  join(
+    "scripts",
+    "update.mjs",
   ),
 ];

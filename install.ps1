@@ -4,6 +4,9 @@ param(
   [long]$ReleaseId = 0,
   [string]$Repository = "contsulia-real/Junius",
   [string]$ApiBaseUrl = "https://api.github.com",
+  [string]$CurrentVersion = "",
+  [switch]$CheckOnly,
+  [switch]$Json,
   [switch]$VerifyOnly
 )
 
@@ -29,7 +32,15 @@ function Invoke-JuniusGitHubJson {
     [string]$Uri
   )
 
-  return Invoke-RestMethod -Uri $Uri -Headers $headers -Method Get
+  $response = Invoke-RestMethod -Uri $Uri -Headers $headers -Method Get
+  if ($response -is [System.Array]) {
+    foreach ($item in $response) {
+      Write-Output $item
+    }
+    return
+  }
+
+  Write-Output $response
 }
 
 function Get-JuniusRelease {
@@ -169,6 +180,74 @@ function Get-JuniusNodePath {
 }
 
 $release = Get-JuniusRelease
+
+if ($CheckOnly) {
+  if ([string]::IsNullOrWhiteSpace($CurrentVersion)) {
+    throw "-CurrentVersion is required with -CheckOnly."
+  }
+
+  $releaseTag = [string]$release.tag_name
+  $latestVersion = $releaseTag
+  if (
+    $latestVersion.StartsWith(
+      "v",
+      [System.StringComparison]::OrdinalIgnoreCase
+    )
+  ) {
+    $latestVersion = $latestVersion.Substring(1)
+  }
+
+  $currentCore = (
+    $CurrentVersion.Split("-")[0]
+  )
+  $latestCore = (
+    $latestVersion.Split("-")[0]
+  )
+
+  try {
+    $currentSemanticVersion = [Version]$currentCore
+    $latestSemanticVersion = [Version]$latestCore
+  }
+  catch {
+    throw (
+      "Unable to compare Junius versions: current=" +
+      $CurrentVersion +
+      " latest=" +
+      $latestVersion
+    )
+  }
+
+  $updateAvailable = (
+    $latestSemanticVersion -gt
+    $currentSemanticVersion
+  )
+  $check = [pscustomobject]@{
+    currentVersion = $CurrentVersion
+    latestVersion = $latestVersion
+    releaseTag = $releaseTag
+    updateAvailable = $updateAvailable
+  }
+
+  if ($Json) {
+    Write-Output (
+      $check |
+        ConvertTo-Json -Compress
+    )
+    return
+  }
+
+  Write-Host "Junius update check"
+  Write-Host ("Current: " + $CurrentVersion)
+  Write-Host ("Latest:  " + $latestVersion)
+  if ($updateAvailable) {
+    Write-Host "A Junius update is available."
+  }
+  else {
+    Write-Host "Junius is up to date."
+  }
+  return
+}
+
 $packageAsset = Get-JuniusAsset -Release $release -Name "junius-windows.tgz"
 $checksumAsset = Get-JuniusAsset -Release $release -Name "SHA256SUMS.txt"
 

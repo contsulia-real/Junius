@@ -584,6 +584,19 @@ test(
                       .toISOString(),
                   assets,
                 },
+                {
+                  tag_name:
+                    "v0.0.1-alpha-ChatGPT",
+                  draft: false,
+                  prerelease: true,
+                  published_at:
+                    new Date(
+                      Date.now() -
+                        86_400_000,
+                    )
+                      .toISOString(),
+                  assets,
+                },
               ]),
             );
             return;
@@ -653,6 +666,88 @@ test(
       assert.notEqual(
         address,
         null,
+      );
+
+      const updateCheck =
+        await runProcess(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            join(
+              process.cwd(),
+              "install.ps1",
+            ),
+            "-ApiBaseUrl",
+            "http://127.0.0.1:" +
+              address.port,
+            "-CheckOnly",
+            "-CurrentVersion",
+            "0.0.2-alpha-ChatGPT",
+            "-Json",
+          ],
+        );
+
+      assert.equal(
+        updateCheck.exitCode,
+        0,
+        updateCheck.stderr +
+          updateCheck.stdout,
+      );
+      assert.deepEqual(
+        JSON.parse(
+          updateCheck
+            .stdout
+            .trim(),
+        ),
+        {
+          currentVersion:
+            "0.0.2-alpha-ChatGPT",
+          latestVersion:
+            packageJson.version,
+          releaseTag: tag,
+          updateAvailable:
+            true,
+        },
+      );
+
+      const downgradeCheck =
+        await runProcess(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            join(
+              process.cwd(),
+              "install.ps1",
+            ),
+            "-ApiBaseUrl",
+            "http://127.0.0.1:" +
+              address.port,
+            "-CheckOnly",
+            "-CurrentVersion",
+            "0.0.999-alpha-ChatGPT",
+            "-Json",
+          ],
+        );
+
+      assert.equal(
+        downgradeCheck.exitCode,
+        0,
+        downgradeCheck.stderr +
+          downgradeCheck.stdout,
+      );
+      assert.equal(
+        JSON.parse(
+          downgradeCheck
+            .stdout
+            .trim(),
+        ).updateAvailable,
+        false,
       );
 
       const publicResult =

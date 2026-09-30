@@ -52,7 +52,9 @@ GitHub Releases 是 Junius 的公开分发渠道。Bootstrap 脚本会：
 
 安装完成后，该 Windows 用户登录时 Junius 会自动启动。启动项会记录安装时使用的精确 Node 可执行文件；Desktop helper 则使用基于用户现有 Python 创建的已安装 `.venv`。
 
-再次运行同一条 PowerShell 命令会从最新已发布 GitHub Release 执行原地更新：Junius 会先复制并验证新包，然后重启现有 Host，使新版本立即生效。如果安装器本身是通过正在运行的 Junius 工具调用启动的，它不会终止自己的执行树；这种情况下会先完成安装和验证，然后提示必须重启 Junius 才能激活新版本。
+Junius 现在提供正式更新功能。CLI 支持 `junius update --check` 比较当前包版本与最新已发布 GitHub Release，并通过 `junius update` 安装最新版本。正常安装后的产品路径则直接向 ChatGPT 提供正式版 MCP 工具 `check_junius_update` 与 `update_junius`。Dev MCP 实例不会暴露这些正式版更新工具。
+
+更新器复用安装流程已有的 GitHub Release bootstrap 与 SHA-256 校验。CLI 在 Junius 外部执行更新时，会停止并重启已安装 Host，使新版本立即生效；通过 MCP 自更新时不会杀掉自己的活动工具调用，而是完成安装与验证后返回 `restartRequired: true`，随后需要重启 Junius 才能激活新版本。原来的一行 PowerShell 安装命令仍然可以继续作为原地更新方式。
 
 Host 只使用一个回环 HTTP 监听器：
 
