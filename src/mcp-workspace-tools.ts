@@ -4,6 +4,7 @@ import type { WorkspaceRegistryService } from "./workspace-registry.js";
 import { registerWorkspaceFileTools } from "./mcp-workspace-file-tools.js";
 import { registerWorkspaceBatchTools } from "./mcp-workspace-batch-tools.js";
 import { registerWorkspaceRegistryTools } from "./mcp-workspace-registry-tools.js";
+import { registerWorkspacePatchTool } from "./mcp-workspace-patch-tool.js";
 
 export function registerWorkspaceTools(
   server: McpServer,
@@ -21,6 +22,10 @@ export function registerWorkspaceTools(
     files,
   );
   registerWorkspaceBatchTools(
+    server,
+    files,
+  );
+  registerWorkspacePatchTool(
     server,
     files,
   );

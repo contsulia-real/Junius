@@ -225,6 +225,7 @@ For visual changes, inspect the rendered result. Do not substitute type checks, 
 
 Reduce unnecessary MCP round trips when Junius already exposes a higher-level equivalent.
 
+- Use `workspace_patch` for coherent multi-file source edits when a unified diff is more compact and robust than repeating large exact `old_text` blocks. Keep `workspace_apply` for full-file writes and small exact-text replacements.
 - Use `run_commands` instead of repeated `run_command` calls for multiple short commands in the same Workspace. Use parallel mode when commands are independent and serial mode when order matters.
 - Use `git_snapshot` to collect branch/status, staged and unstaged summaries, and recent commits in one call instead of issuing those Git reads separately.
 - Use `git_prepare_commit` with explicit paths to stage and review the exact staged diff. Review the returned diff and tree token before committing.

@@ -123,7 +123,9 @@ export class WorkspaceFilesService {
     workspace: string,
     files: readonly WriteRequest[],
     auditAction:
-      "write" | "workspace_apply" =
+      | "write"
+      | "workspace_apply"
+      | "workspace_patch" =
       "write",
     agentsDigest?: string,
   ): Promise<readonly WriteResult[]> {

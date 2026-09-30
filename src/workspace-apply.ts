@@ -23,6 +23,10 @@ export async function runWorkspaceApply(
   writes: readonly WriteRequest[],
   verify: readonly WorkspaceReadBatchOperation[] = [],
   agentsDigest?: string,
+  auditAction:
+    | "workspace_apply"
+    | "workspace_patch" =
+    "workspace_apply",
 ): Promise<WorkspaceApplyResult> {
   const startedAt = performance.now();
 
@@ -30,7 +34,7 @@ export async function runWorkspaceApply(
   const writeResults = await files.write(
     workspace,
     writes,
-    "workspace_apply",
+    auditAction,
     agentsDigest,
   );
   const writeDurationMs = Math.round(

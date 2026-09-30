@@ -223,6 +223,7 @@ Core 契约要求：进行实质性软件工程工作前先加载 Engineering �
 
 Junius 保留底层执行原语，同时为常见工程流程提供减少 MCP 往返的高层等价能力：
 
+- `workspace_patch` 可一次事务性应用标准多文件 unified diff，继续遵守 Workspace 路径保护和 AGENTS.md 确认，并可在同一调用中验证结果。
 - `run_commands` 可在同一个 Workspace 中一次执行最多 16 条短命令，支持并行或串行，并继续复用 `run_command` 的无限制执行路径。
 - `git_snapshot` 一次返回 branch/status、已暂存与未暂存摘要以及最近提交。
 - `git_prepare_commit` 只暂存显式指定的路径，检查 staged diff，并返回完整 staged diff 和用于审核的 Git tree token。

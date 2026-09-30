@@ -222,6 +222,7 @@ The one-command installer does not require the user to have pnpm installed. npm 
 
 Junius keeps the low-level execution primitives, but common engineering round trips also have higher-level equivalents:
 
+- `workspace_patch` applies a standard multi-file unified diff transactionally, with the same Workspace path protections and AGENTS.md acknowledgement as other writes, and can verify the result in the same call.
 - `run_commands` runs up to 16 short commands in one Workspace, in parallel or serially, through the same unrestricted execution path as `run_command`.
 - `git_snapshot` returns branch/status, staged and unstaged summaries, and recent commits in one call.
 - `git_prepare_commit` stages only explicit paths, checks the staged diff, and returns the full staged diff plus a Git tree token for review.

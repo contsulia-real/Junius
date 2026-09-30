@@ -5,6 +5,10 @@ import {
 import { WorkspaceFileError } from "./workspace-file-error.js";
 import type { WorkspacePathResolver } from "./workspace-path-resolver.js";
 import { isProbablyBinary } from "./workspace-file-read.js";
+import {
+  applyLinePatch,
+  type WritePatchHunk,
+} from "./workspace-line-patch.js";
 
 export const MAX_WRITE_FILES = 16;
 const MAX_WRITE_BYTES_PER_FILE = 2 * 1024 * 1024;
@@ -20,6 +24,8 @@ export interface WriteRequest {
   readonly path: string;
   readonly content?: string;
   readonly edits?: readonly WriteEdit[];
+  readonly patches?:
+    readonly WritePatchHunk[];
 }
 
 export interface WriteResult {
@@ -41,34 +47,82 @@ async function validateWrite(
   resolver: WorkspacePathResolver,
   request: WriteRequest,
 ): Promise<PreparedWrite> {
-  const hasContent = request.content !== undefined;
-  const hasEdits = request.edits !== undefined;
+  const hasContent =
+    request.content !==
+    undefined;
+  const hasEdits =
+    request.edits !==
+    undefined;
+  const hasPatches =
+    request.patches !==
+    undefined;
+  const suppliedModes =
+    Number(hasContent) +
+    Number(hasEdits) +
+    Number(hasPatches);
 
-  if (hasContent === hasEdits) {
+  if (suppliedModes !== 1) {
     throw new WorkspaceFileError(
       "invalid_write",
-      `write requires exactly one of content or edits: ${request.path}`,
+      `write requires exactly one of content, edits, or patches: ${request.path}`,
     );
   }
 
-  if (request.edits !== undefined && request.edits.length === 0) {
+  if (
+    request.edits !==
+      undefined &&
+    request.edits.length ===
+      0
+  ) {
     throw new WorkspaceFileError(
       "invalid_write",
       `edits must not be empty: ${request.path}`,
     );
   }
 
-  const target = await resolver.writable(request.path);
+  if (
+    request.patches !==
+      undefined &&
+    request.patches.length ===
+      0
+  ) {
+    throw new WorkspaceFileError(
+      "invalid_write",
+      `patches must not be empty: ${request.path}`,
+    );
+  }
+
+  const target =
+    await resolver.writable(
+      request.path,
+    );
 
   if (!target.exists) {
-    if (request.content === undefined) {
+    if (
+      request.content ===
+        undefined &&
+      request.patches ===
+        undefined
+    ) {
       throw new WorkspaceFileError(
         "invalid_write",
-        `Creating a new file requires content: ${request.path}`,
+        `Creating a new file requires content or patches: ${request.path}`,
       );
     }
 
-    const content = Buffer.from(request.content, "utf8");
+    const nextText =
+      request.content ??
+      applyLinePatch(
+        "",
+        request.patches ??
+          [],
+        request.path,
+      );
+    const content =
+      Buffer.from(
+        nextText,
+        "utf8",
+      );
     if (content.length > MAX_WRITE_BYTES_PER_FILE) {
       throw new WorkspaceFileError(
         "write_too_large",
@@ -96,10 +150,29 @@ async function validateWrite(
 
   let nextText: string;
 
-  if (request.content !== undefined) {
-    nextText = request.content;
+  if (
+    request.content !==
+    undefined
+  ) {
+    nextText =
+      request.content;
+  } else if (
+    request.patches !==
+    undefined
+  ) {
+    nextText =
+      applyLinePatch(
+        previous.toString(
+          "utf8",
+        ),
+        request.patches,
+        request.path,
+      );
   } else {
-    nextText = previous.toString("utf8");
+    nextText =
+      previous.toString(
+        "utf8",
+      );
 
     for (const edit of request.edits ?? []) {
       if (edit.oldText.length === 0) {

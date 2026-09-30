@@ -578,6 +578,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       true,
     );
     for (const toolName of [
+      "workspace_patch",
       "run_commands",
       "git_snapshot",
       "git_prepare_commit",
