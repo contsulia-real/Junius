@@ -15,6 +15,7 @@ import { registerRunCommandsTool } from "./mcp-command-batch-tool.js";
 import { registerGitTools } from "./mcp-git-tools.js";
 import { registerUpdateTools } from "./mcp-update-tools.js";
 import { registerContractTool } from "./mcp-contract-tool.js";
+import { registerPromptTools } from "./mcp-prompt-tools.js";
 import {
   isJuniusDevelopmentInstance,
   resolveJuniusCoreContract,
@@ -40,8 +41,8 @@ export function createMcpServer(
       name: "Junius",
       title:
         developmentInstance
-          ? "Junius Dev — TEST ONLY"
-          : "Junius Local Computer",
+          ? "Junius (Source Test)"
+          : "Junius",
       version: JUNIUS_VERSION,
     },
     {
@@ -51,6 +52,7 @@ export function createMcpServer(
   );
 
   registerContractTool(server);
+  registerPromptTools(server);
   registerWorkspaceTools(server, workspaces, files);
   registerBrowserTool(
     server,

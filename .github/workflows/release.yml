@@ -58,6 +58,9 @@ jobs:
       - name: Build release assets
         run: npm run release:build
 
+      - name: Build release changelog
+        run: npm run release:notes
+
       - name: Create draft release
         shell: pwsh
         env:
@@ -69,7 +72,7 @@ jobs:
             "dist/install.ps1",
             "dist/release.json"
           )
-          gh release create "$env:GITHUB_REF_NAME" @assets --draft --generate-notes --verify-tag --title "$env:GITHUB_REF_NAME"
+          gh release create "$env:GITHUB_REF_NAME" @assets --draft --verify-tag --title "$env:GITHUB_REF_NAME" --notes-file "dist/release-notes.md"
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to create draft GitHub Release."
           }

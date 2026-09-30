@@ -2,15 +2,10 @@ import {
   createHash,
 } from "node:crypto";
 import {
-  existsSync,
-  readFileSync,
-} from "node:fs";
-import {
-  resolve,
-} from "node:path";
-import {
-  fileURLToPath,
-} from "node:url";
+  readDefaultJuniusPrompt,
+  readJuniusPrompt,
+  type JuniusPromptName,
+} from "./junius-prompt-store.js";
 
 export const JUNIUS_CONTRACT_MODES = [
   "engineering",
@@ -21,62 +16,33 @@ export const JUNIUS_CONTRACT_MODES = [
 export type JuniusContractMode =
   (typeof JUNIUS_CONTRACT_MODES)[number];
 
-function readContract(
-  filename: string,
-): string {
-  const releasePath =
-    fileURLToPath(
-      new URL(
-        `../prompts/${filename}`,
-        import.meta.url,
-      ),
-    );
-
-  if (existsSync(releasePath)) {
-    return readFileSync(
-      releasePath,
-      "utf8",
-    );
-  }
-
-  // Migration bridge for last-known-good bootstraps created
-  // before prompt files became part of validated release snapshots.
-  const projectRoot =
-    process.env
-      .JUNIUS_PROJECT_ROOT
-      ?.trim();
-
-  if (projectRoot !== undefined && projectRoot.length > 0) {
-    const livePath = resolve(
-      projectRoot,
-      "prompts",
-      filename,
-    );
-
-    if (existsSync(livePath)) {
-      return readFileSync(
-        livePath,
-        "utf8",
-      );
-    }
-  }
-
-  return readFileSync(
-    releasePath,
-    "utf8",
-  );
-}
-
 export const JUNIUS_CORE_CONTRACT =
-  readContract("core.md");
+  readDefaultJuniusPrompt(
+    "core",
+  ).text;
 
-const JUNIUS_DEVELOPMENT_INSTANCE_NOTICE = `# JUNIUS DEVELOPMENT INSTANCE — TEST ONLY
+export const JUNIUS_ENGINEERING_CONTRACT =
+  readDefaultJuniusPrompt(
+    "engineering",
+  ).text;
 
-This MCP server is the Junius development instance. It is not the normal production Junius connection.
+export const JUNIUS_DESKTOP_CONTRACT =
+  readDefaultJuniusPrompt(
+    "desktop",
+  ).text;
 
-Use this instance only when the current user request explicitly asks to test, exercise, validate, or debug the Junius development build. For ordinary computer-control work, including editing Junius source code, use the production Junius connection instead.
+export const JUNIUS_BROWSER_CONTRACT =
+  readDefaultJuniusPrompt(
+    "browser",
+  ).text;
 
-Do not use this development instance merely because a task concerns the Junius repository.
+const JUNIUS_SOURCE_TEST_INSTANCE_NOTICE = `# JUNIUS SOURCE TEST INSTANCE
+
+This connection is a source-tree test instance of Junius.
+
+Use it only when the current user request explicitly asks to test, exercise, validate, or debug the Junius source build. For ordinary Junius work, use the installed Junius connection.
+
+Do not select this source-test connection merely because a task concerns the Junius repository.
 `;
 
 export function isJuniusDevelopmentInstance(
@@ -94,43 +60,38 @@ export function resolveJuniusCoreContract(
     NodeJS.ProcessEnv =
     process.env,
 ): string {
+  const core =
+    readJuniusPrompt(
+      "core",
+      environment,
+    ).text;
+
   if (
     !isJuniusDevelopmentInstance(
       environment,
     )
   ) {
-    return JUNIUS_CORE_CONTRACT;
+    return core;
   }
 
   return (
-    JUNIUS_DEVELOPMENT_INSTANCE_NOTICE +
+    JUNIUS_SOURCE_TEST_INSTANCE_NOTICE +
     "\n" +
-    JUNIUS_CORE_CONTRACT
+    core
   );
 }
 
-export const JUNIUS_ENGINEERING_CONTRACT =
-  readContract("engineering.md");
-
-export const JUNIUS_DESKTOP_CONTRACT =
-  readContract("desktop.md");
-
-export const JUNIUS_BROWSER_CONTRACT =
-  readContract("browser.md");
-
-const CONTRACTS: Readonly<
-  Record<
-    JuniusContractMode,
-    string
-  >
-> = {
-  engineering:
-    JUNIUS_ENGINEERING_CONTRACT,
-  desktop:
-    JUNIUS_DESKTOP_CONTRACT,
-  browser:
-    JUNIUS_BROWSER_CONTRACT,
-};
+const CONTRACT_PROMPTS:
+  Readonly<
+    Record<
+      JuniusContractMode,
+      JuniusPromptName
+    >
+  > = {
+    engineering: "engineering",
+    desktop: "desktop",
+    browser: "browser",
+  };
 
 export interface JuniusLoadedContract {
   readonly mode:
@@ -142,6 +103,9 @@ export interface JuniusLoadedContract {
 export function loadJuniusContracts(
   modes:
     readonly JuniusContractMode[],
+  environment:
+    NodeJS.ProcessEnv =
+    process.env,
 ): readonly JuniusLoadedContract[] {
   const seen =
     new Set<
@@ -158,7 +122,13 @@ export function loadJuniusContracts(
     })
     .map((mode) => {
       const text =
-        CONTRACTS[mode];
+        readJuniusPrompt(
+          CONTRACT_PROMPTS[
+            mode
+          ],
+          environment,
+        ).text;
+
       return {
         mode,
         digest:

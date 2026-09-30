@@ -1,6 +1,7 @@
 import {
   copyApplication,
   installNodeDependencies,
+  migrateLegacyPromptOverrides,
   validateInstalledApp,
 } from "./install-application.mjs";
 import {
@@ -69,6 +70,20 @@ export async function installJunius() {
     "Installing to: " +
       paths.appRoot,
   );
+
+  const migratedPrompts =
+    await migrateLegacyPromptOverrides(
+      paths.appRoot,
+      paths.promptRoot,
+    );
+  if (
+    migratedPrompts.length > 0
+  ) {
+    console.log(
+      "Preserved legacy prompt customizations in: " +
+        paths.promptRoot,
+    );
+  }
 
   await copyApplication(
     packageRoot,

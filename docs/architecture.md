@@ -54,13 +54,13 @@ Installation performs:
       ↓
     wait for Host health
 
-The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user VBScript wrapper. No Windows service or administrator elevation is required.
+The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user PowerShell startup script. No Windows service or administrator elevation is required.
 
 The installed Browser adapter prefers the app-local @playwright/cli package before PATH. The Desktop adapter uses the app-local .venv, whose base interpreter comes from the user's existing Python installation.
 
 Repository development can still use pnpm, but an installed user does not need pnpm on PATH. npm is used only inside the verified release package to install the locked JavaScript dependency tree; Junius itself is not distributed through the npm registry.
 
-A tag matching `v<package.version>` triggers the Windows release workflow. The workflow validates the repository, builds the release assets, creates a draft GitHub Release, installs Junius back from those draft assets, verifies Host health, and only then publishes the Release.
+A tag matching `v<package.version>` triggers the Windows release workflow. The workflow validates the repository, builds the release assets, extracts only the matching `## <package.version>` body from `CHANGELOG.md` as the GitHub Release body, creates a draft Release, installs Junius back from those draft assets, verifies Host health, and only then publishes the Release. Missing or empty version changelog sections fail Release creation; GitHub auto-generated release notes are not used.
 
 ## Instruction injection model
 
@@ -78,7 +78,9 @@ Supported modes are:
     desktop
     browser
 
-The loader is read-only and deterministic. It returns the current contract text and a SHA-256 digest for each requested mode, deduplicating repeated modes while retaining first-requested order.
+The loader is read-only and deterministic. It returns the current effective contract text and a SHA-256 digest for each requested mode, deduplicating repeated modes while retaining first-requested order.
+
+Packaged defaults remain under the installed application `prompts/` directory and may change with a Junius update. Persistent user overrides live separately under `%LOCALAPPDATA%\Junius\prompts` and take precedence by prompt name, so updating `%LOCALAPPDATA%\Junius\app` does not overwrite customization. Before replacing an older installation's application files, the installer migrates any legacy `app\prompts` files whose persistent override does not yet exist; this preserves the previously documented editable-copy behavior without overwriting an already migrated override. The MCP tools `get_junius_prompts`, `set_junius_prompt`, and `reset_junius_prompt` manage that override layer. Specialized contracts are read on each `load_junius_contracts` call; Core is resolved when a new MCP server/session is initialized.
 
 Engineering may be loaded after minimal inspection needed to identify the task, but before substantive engineering work. Desktop must be loaded before the first `desktop` tool call in a task. Browser must be loaded before the first `playwright_cli` call.
 
@@ -92,13 +94,21 @@ The stable user-facing surface is MCP.
 
 There is no management Web UI.
 
-The public tools are grouped into six areas.
+The public tools are grouped into seven areas.
 
 ### Operating contracts
 
     load_junius_contracts(modes)
 
 Core is delivered by MCP initialize instructions. This read-only tool injects only the specialized Engineering, Desktop, and Browser contracts required by the current task. Its first text block contains mode/digest metadata; following text blocks contain the selected contracts as raw Markdown.
+
+### Prompt customization
+
+    get_junius_prompts(prompts?)
+    set_junius_prompt(prompt, content)
+    reset_junius_prompt(prompt)
+
+These tools expose the persistent user override layer without turning prompt customization into application-file editing. Setting an override never modifies the packaged default. Reset deletes the user override so the current packaged default becomes effective again.
 
 ### Workspace registration
 

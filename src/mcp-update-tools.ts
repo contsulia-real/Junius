@@ -19,7 +19,7 @@ export function registerUpdateTools(
       title:
         "Check Junius Update",
       description:
-        "Check the newest published Junius GitHub Release against the currently running production Junius version. This performs network access but does not install or modify anything.",
+        "Check the newest published Junius GitHub Release against the currently running installed Junius version. This performs network access but does not install or modify anything.",
       inputSchema:
         z.object({}),
       _meta: {
@@ -86,7 +86,7 @@ export function registerUpdateTools(
       title:
         "Update Junius",
       description:
-        "Update the installed production Junius to the newest published GitHub Release using the same verified release bootstrap as installation. When invoked through Junius itself, the update is installed and validated without terminating the active MCP call; restart Junius afterward to activate the new version.",
+        "Update the installed Junius copy to the newest published GitHub Release using the same verified release bootstrap as installation. When invoked through Junius itself, the update is installed and validated without terminating the active MCP call; restart Junius afterward to activate the new version.",
       inputSchema:
         z.object({}),
       _meta: {

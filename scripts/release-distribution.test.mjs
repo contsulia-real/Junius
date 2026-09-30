@@ -28,6 +28,9 @@ import {
   validateInstallLock,
   validatePackedFiles,
 } from "./build-release.mjs";
+import {
+  extractReleaseChangelog,
+} from "./release-notes.mjs";
 
 async function exists(path) {
   try {
@@ -37,6 +40,96 @@ async function exists(path) {
     return false;
   }
 }
+
+test(
+  "release notes contain only the matching changelog section body",
+  async () => {
+    assert.equal(
+      extractReleaseChangelog(
+        [
+          "# Changelog",
+          "",
+          "## Unreleased",
+          "",
+          "- Next",
+          "",
+          "## 0.0.5-alpha",
+          "",
+          "- First change",
+          "- Second change",
+          "",
+          "## 0.0.4-alpha-ChatGPT",
+          "",
+          "- Older",
+          "",
+        ].join("\n"),
+        "0.0.5-alpha",
+      ),
+      "- First change\n- Second change",
+    );
+
+    assert.throws(
+      () =>
+        extractReleaseChangelog(
+          "# Changelog\n\n## Unreleased\n\n- Next\n",
+          "0.0.5-alpha",
+        ),
+      /release_changelog_section_missing/u,
+    );
+
+    const workflow =
+      await readFile(
+        join(
+          process.cwd(),
+          ".github",
+          "workflows",
+          "release.yml",
+        ),
+        "utf8",
+      );
+    assert.match(
+      workflow,
+      /npm run release:notes/u,
+    );
+    assert.match(
+      workflow,
+      /--notes-file "dist\/release-notes\.md"/u,
+    );
+    assert.doesNotMatch(
+      workflow,
+      /--generate-notes/u,
+    );
+
+    const changelog =
+      await readFile(
+        join(
+          process.cwd(),
+          "CHANGELOG.md",
+        ),
+        "utf8",
+      );
+    assert.match(
+      changelog,
+      /^## Unreleased$/mu,
+    );
+
+    const packageJson =
+      JSON.parse(
+        await readFile(
+          join(
+            process.cwd(),
+            "package.json",
+          ),
+          "utf8",
+        ),
+      );
+    assert.doesNotMatch(
+      packageJson.version,
+      /chatgpt/iu,
+      "new Junius version identifiers must not contain the ChatGPT brand",
+    );
+  },
+);
 
 function runProcess(
   executable,
@@ -108,6 +201,7 @@ function runProcess(
 const requiredPackFiles = [
   "package.json",
   "AGENTS.md",
+  "CHANGELOG.md",
   "icon.svg",
   "install.ps1",
   "install-lock.json",

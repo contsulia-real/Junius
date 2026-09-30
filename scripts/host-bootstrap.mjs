@@ -132,14 +132,20 @@ async function main() {
         prepared.reason,
     );
 
-    if (
-      prepared.check
-        ?.stderr
+    for (
+      const output of [
+        prepared.check?.stdout,
+        prepared.check?.stderr,
+      ]
     ) {
-      console.error(
-        prepared.check
-          .stderr,
-      );
+      if (
+        output !== undefined &&
+        output.trim().length > 0
+      ) {
+        console.error(
+          output.trimEnd(),
+        );
+      }
     }
   }
 

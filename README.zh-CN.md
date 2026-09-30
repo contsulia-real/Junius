@@ -52,7 +52,7 @@ GitHub Releases 是 Junius 的公开分发渠道。Bootstrap 脚本会：
 
 安装完成后，该 Windows 用户登录时 Junius 会自动启动。当前用户的 HKCU Run 启动项会调用隐藏的 PowerShell 启动脚本，并记录安装时使用的精确 Node 可执行文件；Junius 不再依赖 VBScript/WScript 启动。Desktop helper 则使用基于用户现有 Python 创建的已安装 `.venv`。
 
-Junius 现在提供正式更新功能。CLI 支持 `junius update --check` 比较当前包版本与最新已发布 GitHub Release，并通过 `junius update` 安装最新版本。正常安装后的产品路径则直接向 ChatGPT 提供正式版 MCP 工具 `check_junius_update` 与 `update_junius`。Dev MCP 实例不会暴露这些正式版更新工具。
+Junius 提供内置更新功能。CLI 支持 `junius update --check` 比较当前包版本与最新已发布 GitHub Release，并通过 `junius update` 安装最新版本。已安装的 Junius 也会直接向 ChatGPT 提供 MCP 工具 `check_junius_update` 与 `update_junius`。源码测试连接不会暴露用于更新已安装副本的工具。
 
 更新器复用安装流程已有的 GitHub Release bootstrap 与 SHA-256 校验。CLI 在 Junius 外部执行更新时，会停止并重启已安装 Host，使新版本立即生效；通过 MCP 自更新时不会杀掉自己的活动工具调用，而是完成安装与验证后返回 `restartRequired: true`，随后需要重启 Junius 才能激活新版本。原来的一行 PowerShell 安装命令仍然可以继续作为原地更新方式。
 
@@ -198,9 +198,11 @@ Core 契约要求：进行实质性软件工程工作前先加载 Engineering �
 - `prompts/desktop.md` —— Desktop Computer Use 契约；
 - `prompts/browser.md` —— Browser Computer Use 契约。
 
-直接编辑这些 Markdown 文件即可自定义 Junius 提供给 ChatGPT 的指令。它们会被纳入源码指纹、last-known-good 快照、正式 Release 包和常规源码验证。正在运行的 Host 会监听 `prompts/*.md`；提示词发生变化后，会像其他 Worker 侧源码变更一样走完整验证后的 Worker 热重载流程。
+仓库里的 `prompts/*.md` 是随 Junius 版本管理的默认提示词。它们会被纳入源码指纹、last-known-good 快照、Release 包和常规源码验证；从源码开发 Junius 时，直接修改这些文件就是修改产品默认值，并继续走正常的验证后 Worker 重载路径。
 
-正常 Windows 安装后，可编辑文件位于 `%LOCALAPPDATA%\Junius\app\prompts`。Junius 原地更新会刷新 Release 中的 `prompts` 目录，因此长期自定义内容建议自行纳入版本控制，或在更新后重新应用。
+安装后的默认提示词位于 `%LOCALAPPDATA%\Junius\app\prompts`，更新时可以由新版 Release 替换。用户长期自定义则存放在应用目录之外的 `%LOCALAPPDATA%\Junius\prompts`；更新不会覆盖这个目录，并且同名用户提示词优先于已安装版本的默认提示词。从旧安装第一次升级时，安装器会在替换默认目录之前保守地把旧 `app\prompts` 文件复制进持久覆盖目录；如果某个持久覆盖已经存在，迁移绝不会覆盖它。
+
+ChatGPT 可以直接通过 `get_junius_prompts`、`set_junius_prompt` 和 `reset_junius_prompt` 读取、修改和重置这些持久覆盖。重置后会自动回到当前已安装 Junius 版本提供的默认提示词。Engineering/Desktop/Browser 提示词会在下一次 `load_junius_contracts` 时生效；Core 提示词会用于新初始化的 MCP 会话，因为已经初始化的会话会保留初始化时收到的 Core instructions。
 
 ## 从源码开发
 
@@ -209,15 +211,15 @@ Core 契约要求：进行实质性软件工程工作前先加载 Engineering �
     pnpm install
     pnpm dev
 
-`pnpm dev` 会启动 **Junius Dev**，固定监听 `127.0.0.1:18787`，与正常安装版 Junius 使用的 `127.0.0.1:8787` 明确分离。Dev MCP server 会将自己标识为 **Junius Dev — TEST ONLY**，并在 MCP instructions 中要求 ChatGPT：只有当前用户请求明确要求测试、运行、验证或调试开发版 Junius 时才能使用 Dev。普通本地计算机控制工作——包括修改 Junius 仓库源码——都应使用正常安装版连接。
+`pnpm dev` 会在 `127.0.0.1:18787` 启动一个仅供 Junius 源码开发者测试当前源码的实例。这不是另一个 Junius 产品版本，普通安装用户也不需要在“开发版”和“正式版”之间做选择；通过 Release 安装的就是 **Junius**，使用 `127.0.0.1:8787`。源码测试连接会标识为 **Junius (Source Test)**，只用于当前请求明确要求测试、运行、验证或调试源码构建的场景。普通 Junius 工作——包括只修改仓库而不测试源码实例——仍使用已安装的 Junius。
 
-`pnpm start` 保留普通 launcher 行为和默认 `8787` 端口；它不是开发实例入口。
+`pnpm start` 保留普通 launcher 行为和默认 `8787` 端口；`pnpm dev` 只是源码测试入口。
 
 构建 Release 资产：
 
     npm run release:build
 
-这会生成 `dist/junius-windows.tgz`、`dist/SHA256SUMS.txt`、`dist/install.ps1` 和 `dist/release.json`。
+这会生成 `dist/junius-windows.tgz`、`dist/SHA256SUMS.txt`、`dist/install.ps1` 和 `dist/release.json`。Release 说明以 `CHANGELOG.md` 为唯一内容来源：打 tag 前必须存在精确的 `## <package.version>` 小节，GitHub Release 正文只写该小节的正文。
 
 一行安装器不要求用户系统里安装 pnpm。npm 仅作为经过验证的 Junius 应用包内部的依赖安装器使用；npm registry 不是 Junius 的公开分发渠道。
 
@@ -458,7 +460,7 @@ Workspace 修改属于共享持久化配置。
 
 ## 最后已知良好版本启动
 
-`pnpm dev` 和 `pnpm start` 都会进入 `scripts/host-launcher.mjs`，但身份不同。`pnpm dev` 会传入 `--dev`，把 Dev 实例固定到 `18787` 并标记为 development/test-only MCP；`pnpm start` 则保留普通 `8787` 身份。
+`pnpm dev` 和 `pnpm start` 都会进入 `scripts/host-launcher.mjs`。`--dev` 路径只是给贡献者测试源码用的 `18787` 源码测试路径；普通已安装身份始终只是 `8787` 上的 Junius。两条路径分开是为了测试源码改动时不替换已安装副本，而不是定义两个面向用户的版本。
 
 Launcher 优先使用最后一个已验证的 bootstrap 副本。Bootstrap 会为源码/运行时控制输入生成指纹，并且只有完整验证通过后才推进 last-known-good Release。
 

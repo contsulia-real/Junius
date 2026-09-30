@@ -64,6 +64,13 @@ export async function resolveNpmCli(
   return undefined;
 }
 
+const PROMPT_FILES = [
+  "core.md",
+  "engineering.md",
+  "desktop.md",
+  "browser.md",
+];
+
 const COPY_DIRECTORIES = [
   "bin",
   "prompts",
@@ -84,6 +91,62 @@ const COPY_FILES = [
   "requirements-desktop.txt",
   "tsconfig.json",
 ];
+
+export async function migrateLegacyPromptOverrides(
+  appRoot,
+  promptRoot,
+) {
+  const legacyPromptRoot =
+    join(
+      appRoot,
+      "prompts",
+    );
+
+  if (
+    !await exists(
+      legacyPromptRoot,
+    )
+  ) {
+    return [];
+  }
+
+  await mkdir(
+    promptRoot,
+    { recursive: true },
+  );
+
+  const migrated = [];
+
+  for (
+    const file of
+    PROMPT_FILES
+  ) {
+    const source = join(
+      legacyPromptRoot,
+      file,
+    );
+    const target = join(
+      promptRoot,
+      file,
+    );
+
+    if (
+      !await isFile(source) ||
+      await exists(target)
+    ) {
+      continue;
+    }
+
+    await cp(
+      source,
+      target,
+      { force: false },
+    );
+    migrated.push(file);
+  }
+
+  return migrated;
+}
 
 export async function copyApplication(
   packageRoot,

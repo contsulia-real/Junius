@@ -35,6 +35,7 @@ export function windowsInstallPaths(
   return {
     root,
     appRoot: join(root, "app"),
+    promptRoot: join(root, "prompts"),
     startupScript: join(
       root,
       "start-junius.ps1",

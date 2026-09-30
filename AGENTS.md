@@ -6,13 +6,21 @@ Scope: this entire repository.
 
 - The project name is **Junius**.
 - Junius supports **Windows only**. Linux, macOS, and every other operating system are unsupported product targets and must be rejected by Junius entrypoints rather than accommodated with fallback behavior.
-- The normal installed Junius instance owns port **8787** and is the default tool for ordinary work, including editing the Junius repository itself. `pnpm dev` is the explicitly test-only development instance, pinned to port **18787**; it should be used only when the current user request explicitly asks to test, exercise, validate, or debug the development build.
+- Junius is one product. Normal users install a Release and should be presented simply with **Junius**, not asked to choose between "development" and "production" editions. The installed Junius instance owns port **8787** and is the default tool for ordinary work, including editing the Junius repository itself. Source-tree development may use the test-only `pnpm dev` launcher on port **18787**; that source-test instance is an internal contributor mechanism and should be used only when the current user request explicitly asks to test, exercise, validate, or debug the source build.
 - Junius is a personal/local MCP product for ChatGPT Plus and higher. Free and Go are not supported target tiers; do not add degraded or reduced-permission compatibility paths solely for those tiers unless the user explicitly changes the product scope.
 - Junius is not intended for the public ChatGPT/Codex plugin directory. The supported connection model is a user-owned local Junius MCP server + OpenAI Secure MCP Tunnel + personal MCP/plugin connection created by the user. GitHub Releases remain the public software distribution channel.
 - Junius is an execution service, not a policy engine. Do not introduce command allowlists, capability policy, or speculative safety layers unless the user explicitly changes that architecture.
 - Do not invent material product or architecture decisions. Surface unresolved choices that change product behavior, public interfaces, persistence, compatibility, or architecture.
 - Reuse existing execution paths, stores, helpers, and sources of truth before creating new ones. Do not maintain parallel implementations of the same behavior.
 - Do not add compatibility layers without a concrete compatibility target.
+
+## Release notes
+
+- Starting with the next new Release after this rule was introduced, every Release must be documented in `CHANGELOG.md`.
+- Before tagging a Release, move the relevant entries out of `## Unreleased` into an exact `## <package.version>` section. Release creation must fail when that section is missing or empty.
+- Starting with `0.0.5-alpha`, Junius package versions and Git tags must not contain the `ChatGPT` brand or a `-ChatGPT` suffix. Historical tags/releases keep their original names.
+- The GitHub Release body must contain **only** the changelog body for that exact package version. Do not use GitHub auto-generated notes, commit lists, contributor lists, installation instructions, duplicated asset lists, or unrelated prose in the Release body.
+- Do not rewrite historical Releases merely to make them conform to this rule.
 
 ## No god-files
 

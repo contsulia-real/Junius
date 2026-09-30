@@ -280,7 +280,7 @@ export async function updateJunius(
     "development"
   ) {
     throw new Error(
-      "Junius Dev cannot update the production installation. Use the normal Junius connection or run the installed CLI.",
+      "The source-test Junius connection cannot update the installed Junius copy. Use the installed Junius connection or run the installed CLI.",
     );
   }
 

@@ -24,6 +24,12 @@ import {
   loadJuniusContracts,
   resolveJuniusCoreContract,
 } from "./junius-contracts.js";
+import {
+  readJuniusPrompt,
+  resetJuniusPrompt,
+  resolveJuniusPromptRoot,
+  setJuniusPrompt,
+} from "./junius-prompt-store.js";
 
 function copyReleaseContractModule(
   releaseSrc: string,
@@ -42,6 +48,16 @@ function copyReleaseContractModule(
       import.meta.url,
     ),
     releaseModule,
+  );
+  copyFileSync(
+    new URL(
+      "./junius-prompt-store.ts",
+      import.meta.url,
+    ),
+    join(
+      releaseSrc,
+      "junius-prompt-store.ts",
+    ),
   );
   copyFileSync(
     new URL(
@@ -135,7 +151,7 @@ test(
     }
 
     const source = readFileSync(
-      new URL("./junius-contracts.ts", import.meta.url),
+      new URL("./junius-prompt-store.ts", import.meta.url),
       "utf8",
     );
     assert.match(source, /readFileSync/u);
@@ -168,53 +184,180 @@ test(
 );
 
 test(
-  "development instance instructions are TEST ONLY while production stays unchanged",
+  "source-test instructions stay internal while installed Junius uses the normal contract",
   () => {
-    const productionEnvironment = {};
-    const developmentEnvironment = {
-      JUNIUS_INSTANCE_ROLE:
-        "development",
-    };
-
-    assert.equal(
-      isJuniusDevelopmentInstance(
-        productionEnvironment,
+    const root = mkdtempSync(
+      join(
+        tmpdir(),
+        "junius-contract-source-test-",
       ),
-      false,
-    );
-    assert.equal(
-      resolveJuniusCoreContract(
-        productionEnvironment,
-      ),
-      JUNIUS_CORE_CONTRACT,
     );
 
-    assert.equal(
-      isJuniusDevelopmentInstance(
-        developmentEnvironment,
-      ),
-      true,
-    );
+    try {
+      const installedEnvironment = {
+        LOCALAPPDATA: root,
+      };
+      const sourceTestEnvironment = {
+        LOCALAPPDATA: root,
+        JUNIUS_INSTANCE_ROLE:
+          "development",
+      };
 
-    const developmentContract =
-      resolveJuniusCoreContract(
-        developmentEnvironment,
+      assert.equal(
+        isJuniusDevelopmentInstance(
+          installedEnvironment,
+        ),
+        false,
+      );
+      assert.equal(
+        resolveJuniusCoreContract(
+          installedEnvironment,
+        ),
+        JUNIUS_CORE_CONTRACT,
       );
 
-    assert.match(
-      developmentContract,
-      /JUNIUS DEVELOPMENT INSTANCE — TEST ONLY/u,
-    );
-    assert.match(
-      developmentContract,
-      /including editing Junius source code, use the production Junius connection instead/u,
-    );
-    assert.equal(
-      developmentContract.endsWith(
-        JUNIUS_CORE_CONTRACT,
+      assert.equal(
+        isJuniusDevelopmentInstance(
+          sourceTestEnvironment,
+        ),
+        true,
+      );
+
+      const sourceTestContract =
+        resolveJuniusCoreContract(
+          sourceTestEnvironment,
+        );
+
+      assert.match(
+        sourceTestContract,
+        /JUNIUS SOURCE TEST INSTANCE/u,
+      );
+      assert.match(
+        sourceTestContract,
+        /For ordinary Junius work, use the installed Junius connection/u,
+      );
+      assert.equal(
+        sourceTestContract.endsWith(
+          JUNIUS_CORE_CONTRACT,
+        ),
+        true,
+      );
+    } finally {
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  },
+);
+
+test(
+  "persistent user prompt overrides take precedence and reset to packaged defaults",
+  () => {
+    const root = mkdtempSync(
+      join(
+        tmpdir(),
+        "junius-prompt-override-",
       ),
-      true,
     );
+    const environment = {
+      LOCALAPPDATA: root,
+    };
+
+    try {
+      assert.equal(
+        resolveJuniusPromptRoot(
+          environment,
+        ),
+        join(
+          root,
+          "Junius",
+          "prompts",
+        ),
+      );
+
+      const custom =
+        "# custom engineering\n";
+      const stored =
+        setJuniusPrompt(
+          "engineering",
+          custom,
+          environment,
+        );
+      assert.equal(
+        stored.source,
+        "custom",
+      );
+      assert.equal(
+        stored.path.includes(
+          `${join("Junius", "app")}\${join("", "prompts")}`,
+        ),
+        false,
+      );
+      assert.equal(
+        readJuniusPrompt(
+          "engineering",
+          environment,
+        ).text,
+        custom,
+      );
+      assert.equal(
+        loadJuniusContracts(
+          ["engineering"],
+          environment,
+        )[0]?.text,
+        custom,
+      );
+
+      const fallback =
+        resetJuniusPrompt(
+          "engineering",
+          environment,
+        );
+      assert.equal(
+        fallback.source,
+        "default",
+      );
+      assert.equal(
+        fallback.text,
+        JUNIUS_ENGINEERING_CONTRACT,
+      );
+
+      const customCore =
+        "# custom core\n";
+      setJuniusPrompt(
+        "core",
+        customCore,
+        environment,
+      );
+      assert.equal(
+        resolveJuniusCoreContract(
+          environment,
+        ),
+        customCore,
+      );
+      resetJuniusPrompt(
+        "core",
+        environment,
+      );
+      assert.equal(
+        resolveJuniusCoreContract(
+          environment,
+        ),
+        JUNIUS_CORE_CONTRACT,
+      );
+    } finally {
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
   },
 );
 

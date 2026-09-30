@@ -229,7 +229,7 @@ test(
 );
 
 test(
-  "development Junius cannot run the production updater",
+  "source-test Junius cannot update the installed copy",
   async () => {
     await assert.rejects(
       updateJunius({
@@ -251,7 +251,7 @@ test(
             );
           },
       }),
-      /Junius Dev/u,
+      /source-test Junius connection/u,
     );
   },
 );

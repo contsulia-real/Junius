@@ -52,7 +52,7 @@ No administrator elevation is required for the normal per-user installation path
 
 After installation, Junius starts automatically when that Windows user signs in. The per-user HKCU Run entry launches a hidden PowerShell startup script that records the exact Node executable used for installation; Junius no longer depends on VBScript/WScript for startup. The Desktop helper uses the installed .venv created from the user's existing Python.
 
-Junius has a first-class updater. The CLI supports `junius update --check` to compare the current package version with the newest published GitHub Release and `junius update` to install it. The normal installed product path is available directly to ChatGPT through the production MCP tools `check_junius_update` and `update_junius`. The Dev MCP instance does not expose these production-update tools.
+Junius has a first-class updater. The CLI supports `junius update --check` to compare the current package version with the newest published GitHub Release and `junius update` to install it. Installed Junius exposes the same capability directly to ChatGPT through the MCP tools `check_junius_update` and `update_junius`. The source-tree test connection does not expose installed-copy update tools.
 
 The updater reuses the same GitHub Release bootstrap and SHA-256 verification as installation. A CLI update running outside Junius stops and restarts the installed Host so the new version becomes active immediately. An MCP self-update never kills its own active tool call; it installs and validates the new version, returns `restartRequired: true`, and requires Junius to be restarted afterward. Re-running the original PowerShell install command remains a valid in-place update path.
 
@@ -197,9 +197,11 @@ The operating contracts are not hardcoded in TypeScript. Junius loads them as UT
 - `prompts/desktop.md` — Desktop Computer Use contract;
 - `prompts/browser.md` — Browser Computer Use contract.
 
-Edit these Markdown files to customize the instructions Junius supplies to ChatGPT. The files are included in source fingerprints, last-known-good snapshots, installed release packages, and normal source validation. A running Host watches `prompts/*.md`; a prompt edit follows the same validated Worker hot-reload path as other Worker-side source changes.
+The repository `prompts/*.md` files are the versioned defaults. They are included in source fingerprints, last-known-good snapshots, installed Release packages, and normal source validation. When developing Junius from source, editing those files changes the defaults and follows the normal validated Worker reload path.
 
-For a normal Windows installation, the editable copies live under `%LOCALAPPDATA%\Junius\app\prompts`. In-place Junius updates refresh the packaged `prompts` directory, so keep any long-lived custom prompt changes under version control or reapply them after updating.
+Installed Junius keeps those packaged defaults under `%LOCALAPPDATA%\Junius\app\prompts`, where an update may replace them. Long-lived user customization instead lives in `%LOCALAPPDATA%\Junius\prompts`. That directory is outside the application root, is not replaced by updates, and takes precedence over the matching packaged default. On the first update from an older installation, existing legacy `app\prompts` files are conservatively copied into the persistent override directory before the packaged defaults are replaced; existing persistent overrides are never overwritten by this migration.
+
+ChatGPT can manage the persistent overrides directly through `get_junius_prompts`, `set_junius_prompt`, and `reset_junius_prompt`. Resetting an override returns that prompt to the default supplied by the currently installed Junius version. Specialized Engineering/Desktop/Browser changes are used by the next `load_junius_contracts` call; Core changes are supplied to newly initialized MCP sessions because an already initialized session retains the Core instructions it received at initialization.
 
 ## Development from source
 
@@ -208,15 +210,15 @@ Repository development uses pnpm 12.6.0:
     pnpm install
     pnpm dev
 
-`pnpm dev` starts the **Junius Dev** instance on `127.0.0.1:18787`. It is deliberately separate from the normal installed Junius instance on `127.0.0.1:8787`. The Dev MCP server identifies itself as **Junius Dev — TEST ONLY** and its MCP instructions tell ChatGPT to use it only when the current user request explicitly asks to test, exercise, validate, or debug the development build. Ordinary computer-control work — including editing the Junius repository — should use the normal installed Junius connection.
+`pnpm dev` starts a source-tree test instance on `127.0.0.1:18787` for contributors working on Junius itself. This is not a separate Junius edition, and normal installed users do not choose between "development" and "production" versions. Installed Releases are simply **Junius** on `127.0.0.1:8787`. The source-test connection identifies itself as **Junius (Source Test)** and is only for requests that explicitly test, exercise, validate, or debug the source build. Ordinary Junius work — including editing the repository without testing the source instance — should use installed Junius.
 
-`pnpm start` retains the normal launcher behavior and default port `8787`; it is not the development-instance entrypoint.
+`pnpm start` retains the normal launcher behavior and default port `8787`; `pnpm dev` is only the source-test launcher.
 
 Release assets are built with:
 
     npm run release:build
 
-That produces `dist/junius-windows.tgz`, `dist/SHA256SUMS.txt`, `dist/install.ps1`, and `dist/release.json`.
+That produces `dist/junius-windows.tgz`, `dist/SHA256SUMS.txt`, `dist/install.ps1`, and `dist/release.json`. Release notes follow `CHANGELOG.md`: before tagging, the new version must have an exact `## <package.version>` section, and the GitHub Release body contains only that section's body.
 
 The one-command installer does not require the user to have pnpm installed. npm remains an internal dependency installer inside the verified Junius application package; npm is not the public Junius distribution channel.
 
@@ -457,7 +459,7 @@ A successful create_workspace or delete_workspace response is buffered by the Ho
 
 ## Last-known-good startup
 
-`pnpm dev` and `pnpm start` both enter `scripts/host-launcher.mjs`, but with different identities. `pnpm dev` passes `--dev`, which pins the Dev instance to port `18787` and marks its MCP identity as development/test-only. `pnpm start` keeps the normal `8787` identity.
+`pnpm dev` and `pnpm start` both enter `scripts/host-launcher.mjs`. The `--dev` path is a contributor-only source-test path pinned to `18787`; the normal installed identity remains simply Junius on `8787`. This separation exists to test source changes without replacing the installed copy, not to define two user-facing editions.
 
 The launcher prefers the last validated bootstrap copy. The bootstrap fingerprints source/runtime control inputs and uses full validation before advancing the last-known-good release.
 

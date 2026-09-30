@@ -70,7 +70,12 @@ async function runBootstrap(
     fakeNpm,
     `
 const result = process.env.JUNIUS_BOOTSTRAP_TEST_CHECK_RESULT;
-process.exit(result === "pass" ? 0 : 1);
+if (result !== "pass") {
+  process.stdout.write("validation stdout detail\\n");
+  process.stderr.write("validation stderr detail\\n");
+  process.exit(1);
+}
+process.exit(0);
 `,
     "utf8",
   );
@@ -347,6 +352,14 @@ test("manual bootstrap promotes a validated release and falls back to last-known
     assert.match(
       second.stderr,
       /candidate rejected: source_check_failed/u,
+    );
+    assert.match(
+      second.stderr,
+      /validation stdout detail/u,
+    );
+    assert.match(
+      second.stderr,
+      /validation stderr detail/u,
     );
     assert.match(
       second.stderr,

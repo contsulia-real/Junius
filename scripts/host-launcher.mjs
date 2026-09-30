@@ -75,7 +75,7 @@ async function main() {
 
   if (developmentMode) {
     console.error(
-      "[launcher] Junius Dev is TEST ONLY on http://127.0.0.1:18787.",
+      "[launcher] Junius source-test instance on http://127.0.0.1:18787.",
     );
   }
 

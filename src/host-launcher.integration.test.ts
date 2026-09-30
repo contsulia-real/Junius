@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-test("dev launcher pins port 18787 and marks the instance TEST ONLY", async () => {
+test("source-test launcher pins port 18787 and marks the source-test instance", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-dev-launcher-"),
   );
@@ -110,7 +110,7 @@ await writeFile(
     );
     assert.match(
       stderr,
-      /Junius Dev is TEST ONLY/u,
+      /Junius source-test instance/u,
     );
 
     assert.deepEqual(

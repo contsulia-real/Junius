@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import {
+  createHash,
+} from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -453,6 +456,10 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       env: {
         ...process.env,
         JUNIUS_MCP_PORT: String(mcpPort),
+        LOCALAPPDATA: join(
+          root,
+          "local-app-data",
+        ),
         JUNIUS_WORKSPACE_ID: "host-test",
         JUNIUS_WORKSPACE_ROOT: root,
         JUNIUS_WORKSPACE_STATE_PATH: join(
@@ -585,6 +592,9 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       "git_commit",
       "check_junius_update",
       "update_junius",
+      "get_junius_prompts",
+      "set_junius_prompt",
+      "reset_junius_prompt",
     ]) {
       assert.equal(
         tools.some(
@@ -596,6 +606,79 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         `missing MCP tool: ${toolName}`,
       );
     }
+
+    const customEngineering =
+      "# custom engineering from MCP\n";
+    const setPrompt =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "set_junius_prompt",
+        {
+          prompt:
+            "engineering",
+          content:
+            customEngineering,
+        },
+      );
+    assert.equal(
+      setPrompt.payload
+        .source,
+      "custom",
+    );
+
+    const getPrompts =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "get_junius_prompts",
+        {
+          prompts: [
+            "engineering",
+          ],
+        },
+      );
+    const promptRows =
+      getPrompts.payload
+        .prompts as
+        | {
+            prompt?: unknown;
+            source?: unknown;
+            content?: unknown;
+          }[]
+        | undefined;
+    assert.deepEqual(
+      promptRows,
+      [
+        {
+          prompt:
+            "engineering",
+          source:
+            "custom",
+          path:
+            join(
+              root,
+              "local-app-data",
+              "Junius",
+              "prompts",
+              "engineering.md",
+            ),
+          digest:
+            createHash(
+              "sha256",
+            )
+              .update(
+                customEngineering,
+                "utf8",
+              )
+              .digest(
+                "hex",
+              ),
+          content:
+            customEngineering,
+        },
+      ],
+    );
 
     const loadedContracts =
       await callMcpTool(
@@ -655,14 +738,19 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
           "browser.md",
         ].map(
           (file) =>
-            readFile(
-              join(
-                process.cwd(),
-                "prompts",
-                file,
-              ),
-              "utf8",
-            ),
+            file ===
+            "engineering.md"
+              ? Promise.resolve(
+                  customEngineering,
+                )
+              : readFile(
+                  join(
+                    process.cwd(),
+                    "prompts",
+                    file,
+                  ),
+                  "utf8",
+                ),
         ),
       );
     assert.deepEqual(
@@ -670,6 +758,16 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         .textContents
         .slice(1),
       expectedSpecializedContracts,
+    );
+
+    await callMcpTool(
+      mcpOrigin,
+      mcpSessionId,
+      "reset_junius_prompt",
+      {
+        prompt:
+          "engineering",
+      },
     );
 
     const browserTool =

@@ -5,6 +5,7 @@ import {
 import {
   mkdir,
   mkdtemp,
+  readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -14,6 +15,7 @@ import test from "node:test";
 import {
   copyApplication,
   installNodeDependencies,
+  migrateLegacyPromptOverrides,
   validateInstalledApp,
 } from "./install-application.mjs";
 import {
@@ -102,6 +104,10 @@ test(
       "C:\\Users\\Demo\\AppData\\Local\\Junius\\app",
     );
     assert.equal(
+      paths.promptRoot,
+      "C:\\Users\\Demo\\AppData\\Local\\Junius\\prompts",
+    );
+    assert.equal(
       paths.startupScript,
       "C:\\Users\\Demo\\AppData\\Local\\Junius\\start-junius.ps1",
     );
@@ -113,6 +119,135 @@ test(
       paths.venvRoot,
       "C:\\Users\\Demo\\AppData\\Local\\Junius\\app\\.venv",
     );
+  },
+);
+
+test(
+  "installer migrates legacy app prompts before replacing packaged defaults",
+  async () => {
+    const root =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "junius-prompt-migration-",
+        ),
+      );
+    const packageRoot =
+      join(root, "package");
+    const appRoot =
+      join(root, "app");
+    const promptRoot =
+      join(root, "prompts");
+
+    try {
+      await mkdir(
+        join(
+          packageRoot,
+          "prompts",
+        ),
+        { recursive: true },
+      );
+      await mkdir(
+        join(
+          appRoot,
+          "prompts",
+        ),
+        { recursive: true },
+      );
+      await mkdir(
+        promptRoot,
+        { recursive: true },
+      );
+
+      await writeFile(
+        join(
+          packageRoot,
+          "prompts",
+          "engineering.md",
+        ),
+        "# new default\n",
+        "utf8",
+      );
+      await writeFile(
+        join(
+          appRoot,
+          "prompts",
+          "engineering.md",
+        ),
+        "# legacy custom\n",
+        "utf8",
+      );
+      await writeFile(
+        join(
+          appRoot,
+          "prompts",
+          "core.md",
+        ),
+        "# legacy core\n",
+        "utf8",
+      );
+      await writeFile(
+        join(
+          promptRoot,
+          "core.md",
+        ),
+        "# existing override\n",
+        "utf8",
+      );
+
+      assert.deepEqual(
+        await migrateLegacyPromptOverrides(
+          appRoot,
+          promptRoot,
+        ),
+        ["engineering.md"],
+      );
+
+      await copyApplication(
+        packageRoot,
+        appRoot,
+      );
+
+      assert.equal(
+        await readFile(
+          join(
+            appRoot,
+            "prompts",
+            "engineering.md",
+          ),
+          "utf8",
+        ),
+        "# new default\n",
+      );
+      assert.equal(
+        await readFile(
+          join(
+            promptRoot,
+            "engineering.md",
+          ),
+          "utf8",
+        ),
+        "# legacy custom\n",
+      );
+      assert.equal(
+        await readFile(
+          join(
+            promptRoot,
+            "core.md",
+          ),
+          "utf8",
+        ),
+        "# existing override\n",
+      );
+    } finally {
+      await rm(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
   },
 );
 
@@ -215,13 +350,6 @@ test(
         packageRoot,
         appRoot,
       );
-
-      const {
-        readFile,
-      } =
-        await import(
-          "node:fs/promises"
-        );
 
       assert.equal(
         await readFile(
