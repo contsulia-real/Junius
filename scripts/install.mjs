@@ -132,11 +132,9 @@ export async function installJunius() {
   }
 
   const started =
-    await startInstalledJunius({
-      ...startup,
-      startupScript:
-        paths.startupScript,
-    });
+    await startInstalledJunius(
+      startup,
+    );
 
   console.log("");
   console.log(

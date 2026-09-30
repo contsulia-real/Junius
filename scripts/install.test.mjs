@@ -27,6 +27,7 @@ import {
   supportedPythonVersion,
 } from "./install-python.mjs";
 import {
+  startInstalledJunius,
   stopInstalledJunius,
 } from "./install-windows-host.mjs";
 import {
@@ -747,6 +748,148 @@ test(
       assert.equal(
         stoppedPid,
         expectedPid,
+      );
+    } finally {
+      if (
+        server.listening
+      ) {
+        await new Promise(
+          (resolvePromise) =>
+            server.close(
+              resolvePromise,
+            ),
+        );
+      }
+    }
+  },
+);
+
+test(
+  "installer immediate start launches Node directly and waits for Host health",
+  async () => {
+    const server =
+      createServer(
+        (_request, response) => {
+          response.writeHead(
+            200,
+            {
+              "content-type":
+                "application/json",
+            },
+          );
+          response.end(
+            JSON.stringify({
+              ok: true,
+              pid: 4343,
+              activeWorkerId:
+                "direct-start-worker",
+              releaseId:
+                "direct-start-release",
+            }),
+          );
+        },
+      );
+
+    await new Promise(
+      (resolvePromise) => {
+        server.listen(
+          0,
+          "127.0.0.1",
+          resolvePromise,
+        );
+      },
+    );
+
+    const address =
+      server.address();
+    assert.equal(
+      typeof address,
+      "object",
+    );
+    assert.notEqual(
+      address,
+      null,
+    );
+
+    await new Promise(
+      (resolvePromise) =>
+        server.close(
+          resolvePromise,
+        ),
+    );
+
+    const calls = [];
+    let unrefCalled = false;
+
+    try {
+      const result =
+        await startInstalledJunius(
+          {
+            nodeExecutable:
+              "C:\\Program Files\\nodejs\\node.exe",
+            launcherPath:
+              "C:\\Users\\Demo\\AppData\\Local\\Junius\\app\\scripts\\host-launcher.mjs",
+            appRoot:
+              "C:\\Users\\Demo\\AppData\\Local\\Junius\\app",
+          },
+          {
+            port:
+              address.port,
+            timeoutMs: 2_000,
+            spawnProcess: (
+              executable,
+              args,
+              options,
+            ) => {
+              calls.push({
+                executable,
+                args,
+                options,
+              });
+              server.listen(
+                address.port,
+                "127.0.0.1",
+              );
+              return {
+                once() {},
+                unref() {
+                  unrefCalled =
+                    true;
+                },
+              };
+            },
+          },
+        );
+
+      assert.deepEqual(
+        result,
+        {
+          alreadyRunning:
+            false,
+        },
+      );
+      assert.equal(
+        unrefCalled,
+        true,
+      );
+      assert.deepEqual(
+        calls,
+        [
+          {
+            executable:
+              "C:\\Program Files\\nodejs\\node.exe",
+            args: [
+              "C:\\Users\\Demo\\AppData\\Local\\Junius\\app\\scripts\\host-launcher.mjs",
+            ],
+            options: {
+              cwd:
+                "C:\\Users\\Demo\\AppData\\Local\\Junius\\app",
+              detached: true,
+              windowsHide: true,
+              stdio: "ignore",
+            },
+          },
+        ],
       );
     } finally {
       if (

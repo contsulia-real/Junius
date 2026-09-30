@@ -9,5 +9,6 @@
 - Source-test validation failures now expose the captured test output instead of only a generic wrapper error.
 - GitHub Release notes are now sourced only from the matching version section in this changelog.
 - Release verification now resolves the newly created draft by its exact tag instead of scanning the release list.
+- Installation now starts the freshly installed Host directly with the selected Node executable; the PowerShell wrapper is reserved for Windows logon startup.
 - Installed releases are presented simply as Junius; source-test terminology is limited to source development.
 - Junius version identifiers no longer include a ChatGPT suffix.

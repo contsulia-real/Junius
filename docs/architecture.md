@@ -54,7 +54,7 @@ Installation performs:
       ↓
     wait for Host health
 
-The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user PowerShell startup script. No Windows service or administrator elevation is required.
+The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user PowerShell startup script. The installer itself starts the freshly installed Host directly with that same Node executable and launcher path, rather than routing the immediate health-checked start back through the logon wrapper. No Windows service or administrator elevation is required.
 
 The installed Browser adapter prefers the app-local @playwright/cli package before PATH. The Desktop adapter uses the app-local .venv, whose base interpreter comes from the user's existing Python installation.
 

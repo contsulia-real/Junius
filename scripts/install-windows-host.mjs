@@ -83,8 +83,10 @@ export async function writeWindowsStartup(
   );
 
   return {
-    powershell,
+    nodeExecutable,
     launcherPath,
+    appRoot:
+      paths.appRoot,
   };
 }
 
@@ -234,33 +236,47 @@ export async function stopInstalledJunius(
 
 export async function startInstalledJunius(
   startup,
-  timeoutMs =
-    120_000,
+  options = {},
 ) {
+  const port =
+    options.port ?? 8787;
+  const timeoutMs =
+    options.timeoutMs ??
+    120_000;
+  const spawnProcess =
+    options.spawnProcess ??
+    spawn;
+
   if (
-    await hostHealthy()
+    await hostHealthy(
+      port,
+    )
   ) {
     return {
       alreadyRunning: true,
     };
   }
 
-  const child = spawn(
-    startup.powershell,
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-WindowStyle",
-      "Hidden",
-      "-File",
-      startup.startupScript,
-    ],
-    {
-      detached: true,
-      windowsHide: true,
-      stdio: "ignore",
+  const child =
+    spawnProcess(
+      startup.nodeExecutable,
+      [
+        startup.launcherPath,
+      ],
+      {
+        cwd:
+          startup.appRoot,
+        detached: true,
+        windowsHide: true,
+        stdio: "ignore",
+      },
+    );
+  let launchError;
+
+  child.once?.(
+    "error",
+    (error) => {
+      launchError = error;
     },
   );
   child.unref();
@@ -273,7 +289,18 @@ export async function startInstalledJunius(
     deadline
   ) {
     if (
-      await hostHealthy()
+      launchError !== undefined
+    ) {
+      throw new Error(
+        "Junius Host launch failed: " +
+          String(launchError),
+      );
+    }
+
+    if (
+      await hostHealthy(
+        port,
+      )
     ) {
       return {
         alreadyRunning: false,
