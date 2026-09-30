@@ -31,6 +31,8 @@ async function fixture(
       "const fs = require('node:fs');",
       `const args = process.argv.slice(2);`,
       `fs.appendFileSync(${JSON.stringify("__LOG_PATH__")}.replace('__LOG_PATH__', process.env.JUNIUS_TEST_PLAYWRIGHT_LOG), JSON.stringify(args) + '\\n');`,
+      "const delayMs = Number(process.env.JUNIUS_TEST_PLAYWRIGHT_DELAY_MS || '0');",
+      "if (delayMs > 0 && args.at(-1) === 'snapshot') { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs); }",
       "if (process.env.JUNIUS_TEST_PLAYWRIGHT_FAIL_COMMAND === args.at(-1)) { process.stderr.write('forced playwright failure'); process.exit(1); }",
       "process.stdout.write(JSON.stringify(args));",
       "",
@@ -149,6 +151,65 @@ async function waitFor(
   }
   assert.fail("condition_not_met_before_timeout");
 }
+
+test("playwright-cli Escape interrupt terminates the active command", async () => {
+  let controller:
+    AbortController | undefined;
+  const interrupt = {
+    arm() {
+      controller =
+        new AbortController();
+      return {
+        signal:
+          controller.signal,
+        release() {},
+      };
+    },
+  };
+  const f = await fixture(
+    { interrupt },
+    {
+      JUNIUS_TEST_PLAYWRIGHT_DELAY_MS:
+        "10000",
+    },
+  );
+
+  try {
+    const startedAt = Date.now();
+    const pending = f.service.run(
+      "browser",
+      "snapshot",
+      [],
+      true,
+    );
+
+    await waitFor(
+      () =>
+        controller !==
+        undefined,
+    );
+    controller!.abort(
+      new Error(
+        "user_interrupted",
+      ),
+    );
+
+    await assert.rejects(
+      pending,
+      (error: unknown) =>
+        error instanceof
+          PlaywrightCliError &&
+        error.code ===
+          "user_interrupted",
+    );
+    assert.ok(
+      Date.now() - startedAt <
+        3_000,
+    );
+  } finally {
+    await f.dispose();
+  }
+});
 
 test("playwright-cli strips inherited Node preload environment", async () => {
   const f = await fixture(

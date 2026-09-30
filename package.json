@@ -14,6 +14,7 @@
     "python/desktop_clipboard.py",
     "python/desktop_input.py",
     "python/desktop_indicator.py",
+    "python/user_interrupt.py",
     "prompts",
     "scripts",
     "src",

@@ -381,6 +381,8 @@ Browser startup is lazy. Normal Worker startup and ordinary project validation d
 
 Named Browser sessions are Worker-affined across hot promotion. Idle sessions are bounded and closed independently.
 
+While a Browser command is actively running, a physical `Esc` key press interrupts that command and returns `user_interrupted`. Junius-injected Escape input is ignored by the interrupt monitor so an automated Escape action cannot cancel itself.
+
 By default, Junius-managed Browser data lasts only for the current Browser operation. Each session uses its own managed directory; on `close`, Junius invokes Playwright `delete-data` for that session and deletes the managed session directory, including automatically generated snapshots, screenshots, console output, and related Browser artifacts. Files the user explicitly requested to save outside that managed directory are not treated as disposable Browser data.
 
 Set `JUNIUS_BROWSER_RETAIN_DATA=1` to keep Junius-managed Browser data after `close`. When this is enabled, automatic cleanup is disabled for that retained data and the user is responsible for reviewing and deleting it later. Browser audit records the command identity and argument count, but not the arbitrary argument vector.
@@ -396,6 +398,8 @@ Desktop perception is deliberately screenshot-only. Junius does not use Windows 
 action_batch executes up to 128 mixed Desktop actions in one helper round trip. Batch actions can combine focus, mouse movement/click/down/up/wheel, drag, wait, keyboard actions/macros, clipboard access, and text input. Explicit wait and drag durations are bounded, and held keys/buttons are released on batch failure.
 
 For act → observe loops, action_batch supports screenshot_after. When enabled, the post-action screenshot is returned in the same MCP response; screenshot_handle can target one top-level window instead of the full screen.
+
+A physical `Esc` key press interrupts an active Desktop operation. Waits and drags poll the interrupt promptly, batches still release held keys/buttons through their cleanup path, and injected Escape input from Junius is ignored so automation can intentionally press Escape without cancelling itself.
 
 Desktop tasks have an explicit control lifecycle:
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import ctypes
 import time
 from ctypes import wintypes
-from typing import Any
+from typing import Any, Callable
 
 from desktop_clipboard import (
     clipboard_read,
@@ -61,7 +61,17 @@ def point(
     return left + x, top + y
 
 
-def type_unicode(text: str) -> None:
+InterruptCheck = Callable[[], None]
+
+
+def no_interrupt() -> None:
+    return
+
+
+def type_unicode(
+    text: str,
+    interrupt_check: InterruptCheck = no_interrupt,
+) -> None:
     if not text:
         return
 
@@ -79,6 +89,7 @@ def type_unicode(text: str) -> None:
     ]
 
     for unit in units:
+        interrupt_check()
         for flags in (
             KEYEVENTF_UNICODE,
             KEYEVENTF_UNICODE
@@ -113,11 +124,13 @@ def type_unicode(text: str) -> None:
 
 def key_macro(
     steps: list[dict[str, Any]],
+    interrupt_check: InterruptCheck = no_interrupt,
 ) -> dict[str, Any]:
     held_keys: list[str] = []
 
     try:
         for step in steps:
+            interrupt_check()
             action = str(step["action"])
             key = str(step["key"])
 
@@ -203,13 +216,24 @@ def focus_window(
 
 def wait_action(
     duration_ms: int,
+    interrupt_check: InterruptCheck = no_interrupt,
 ) -> dict[str, Any]:
-    time.sleep(duration_ms / 1000.0)
+    deadline = time.perf_counter() + (
+        duration_ms / 1000.0
+    )
+    while True:
+        interrupt_check()
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.02, remaining))
+    interrupt_check()
     return {"durationMs": duration_ms}
 
 
 def drag_action(
     request: dict[str, Any],
+    interrupt_check: InterruptCheck = no_interrupt,
 ) -> dict[str, Any]:
     start_x, start_y = point(request)
     destination: dict[str, Any] = {
@@ -234,19 +258,52 @@ def drag_action(
             0,
         )
     )
+    interrupt_check()
     pyautogui.moveTo(
         start_x,
         start_y,
     )
-    pyautogui.dragTo(
-        end_x,
-        end_y,
-        duration=(
-            duration_ms
-            / 1000.0
-        ),
-        button=button,
-    )
+    pyautogui.mouseDown(button=button)
+    try:
+        if duration_ms <= 0:
+            interrupt_check()
+            user32.SetCursorPos(
+                end_x,
+                end_y,
+            )
+        else:
+            started_at = time.perf_counter()
+            duration_seconds = (
+                duration_ms / 1000.0
+            )
+            while True:
+                interrupt_check()
+                progress = min(
+                    1.0,
+                    (
+                        time.perf_counter()
+                        - started_at
+                    )
+                    / duration_seconds,
+                )
+                user32.SetCursorPos(
+                    round(
+                        start_x
+                        + (end_x - start_x)
+                        * progress
+                    ),
+                    round(
+                        start_y
+                        + (end_y - start_y)
+                        * progress
+                    ),
+                )
+                if progress >= 1.0:
+                    break
+                time.sleep(0.02)
+    finally:
+        pyautogui.mouseUp(button=button)
+    interrupt_check()
     return {
         "from": {
             "x": start_x,
@@ -265,6 +322,7 @@ def action_batch(
     actions: list[dict[str, Any]],
     screenshot_after: bool,
     screenshot_handle: int | None,
+    interrupt_check: InterruptCheck = no_interrupt,
 ) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     held_keys: list[str] = []
@@ -272,6 +330,7 @@ def action_batch(
 
     try:
         for action in actions:
+            interrupt_check()
             command = str(
                 action["action"]
             )
@@ -282,11 +341,13 @@ def action_batch(
                         action[
                             "duration_ms"
                         ]
-                    )
+                    ),
+                    interrupt_check,
                 )
             elif command == "drag":
                 result = drag_action(
-                    action
+                    action,
+                    interrupt_check,
                 )
             elif command == "key_down":
                 key = str(
@@ -368,6 +429,7 @@ def action_batch(
                 result = input_action(
                     command,
                     action,
+                    interrupt_check,
                 )
 
             results.append(
@@ -394,6 +456,7 @@ def action_batch(
             except Exception:
                 pass
 
+    interrupt_check()
     response: dict[str, Any] = {
         "actions": results,
         "actionCount": len(
@@ -412,8 +475,10 @@ def action_batch(
 def input_action(
     command: str,
     request: dict[str, Any],
+    interrupt_check: InterruptCheck = no_interrupt,
 ) -> dict[str, Any]:
     try:
+        interrupt_check()
         if command == "mouse_move":
             x, y = point(request)
             pyautogui.moveTo(x, y)
@@ -483,7 +548,8 @@ def input_action(
 
         if command == "drag":
             return drag_action(
-                request
+                request,
+                interrupt_check,
             )
 
         if command == "wait":
@@ -492,7 +558,8 @@ def input_action(
                     request[
                         "duration_ms"
                     ]
-                )
+                ),
+                interrupt_check,
             )
 
         if command == "key_press":
@@ -517,7 +584,10 @@ def input_action(
                     "invalid_macro_steps",
                     "Keyboard macro steps must be a list.",
                 )
-            return key_macro(steps)
+            return key_macro(
+                steps,
+                interrupt_check,
+            )
 
         if command == "clipboard_read":
             return clipboard_read()
@@ -528,7 +598,10 @@ def input_action(
 
         if command == "type":
             text = str(request["text"])
-            type_unicode(text)
+            type_unicode(
+                text,
+                interrupt_check,
+            )
             return {
                 "characters": len(text)
             }

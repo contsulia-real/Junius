@@ -382,6 +382,8 @@ Browser 改为惰性启动。正常 Worker 启动和普通项目校验不会预�
 
 命名 Browser session 在 Worker 热切换过程中保持 Worker 亲和。空闲 session 数量受限，并会独立关闭。
 
+当 Browser 命令正在执行时，用户物理按下 `Esc` 会立即中断该命令，并返回 `user_interrupted`。Junius 自己注入的 Escape 键不会被当成用户打断，因此自动化可以正常发送 Escape 而不会自我取消。
+
 默认情况下，Junius 管理的 Browser 数据只保留到本次 Browser 操作结束。每个 session 使用独立的管理目录；执行 `close` 时，Junius 会对该 session 调用 Playwright `delete-data`，并删除该 session 的管理目录，其中包括自动生成的 snapshot、截图、console 输出及相关 Browser 产物。用户明确要求保存到该管理目录之外的文件不视为可丢弃的 Browser 数据。
 
 设置 `JUNIUS_BROWSER_RETAIN_DATA=1` 可以让 Junius 管理的 Browser 数据在 `close` 后继续保留。开启后，Junius 不再自动清理这些保留数据，后续检查和删除责任由用户承担。Browser 审计会记录命令标识和参数数量，但不会记录任意参数向量本身。
@@ -397,6 +399,8 @@ Desktop 感知刻意只基于截图。Junius 不使用 Windows UI Automation，�
 `action_batch` 可以在一次 helper 往返中执行最多 128 个混合 Desktop 操作。批量操作可以组合聚焦、鼠标移动/点击/按下/抬起/滚轮、拖动、等待、键盘操作/宏、剪贴板访问和文本输入。显式 wait 与 drag 的持续时间均有限制；如果批量执行失败，已按下的按键/鼠标按钮会在清理路径中释放。
 
 对于“操作 → 观察”循环，`action_batch` 支持 `screenshot_after`。启用后，操作后的截图会在同一个 MCP 响应中返回；`screenshot_handle` 可以指定只截取某个顶层窗口，而不是整个屏幕。
+
+用户物理按下 `Esc` 可以中断正在执行的 Desktop 操作。wait 和 drag 会及时检查打断状态，batch 仍会通过清理路径释放已按下的按键/鼠标按钮；Junius 自己注入的 Escape 键会被忽略，因此自动化可以有意按下 Escape 而不会把自己中止。
 
 Desktop 任务有显式控制生命周期：
 

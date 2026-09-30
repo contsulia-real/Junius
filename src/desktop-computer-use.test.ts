@@ -33,6 +33,17 @@ async function fixture(
     `
 function responseFor(request) {
   if (
+    process.env.JUNIUS_TEST_DESKTOP_INTERRUPT_COMMAND ===
+    request.command
+  ) {
+    return {
+      ok: false,
+      code: "user_interrupted",
+      message: "Desktop operation interrupted by user pressing Escape."
+    };
+  }
+
+  if (
     process.env.JUNIUS_TEST_DESKTOP_FAIL_COMMAND ===
     request.command
   ) {
@@ -197,6 +208,35 @@ async function beginAuthorizedControl(
       true,
   });
 }
+
+test("desktop surfaces Escape interruption as user_interrupted", async () => {
+  const f = await fixture({
+    environment: {
+      JUNIUS_TEST_DESKTOP_INTERRUPT_COMMAND:
+        "wait",
+    },
+  });
+
+  try {
+    await beginAuthorizedControl(
+      f.service,
+    );
+    await assert.rejects(
+      f.service.run({
+        session: "desktop",
+        command: "wait",
+        durationMs: 5_000,
+      }),
+      (error: unknown) =>
+        error instanceof
+          DesktopComputerUseError &&
+        error.code ===
+          "user_interrupted",
+    );
+  } finally {
+    await f.dispose();
+  }
+});
 
 test("desktop helper strips inherited Python preload environment", async () => {
   const f = await fixture({

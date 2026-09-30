@@ -234,6 +234,7 @@ const requiredPackFiles = [
   "python/desktop_windows.py",
   "python/desktop_clipboard.py",
   "python/desktop_input.py",
+  "python/user_interrupt.py",
   "prompts/core.md",
   "prompts/engineering.md",
   "prompts/desktop.md",

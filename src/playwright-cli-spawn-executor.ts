@@ -19,6 +19,7 @@ export interface PlaywrightCliSpawnExecutionOptions {
   readonly session: string;
   readonly command: PlaywrightCliCommand;
   readonly startedAt: number;
+  readonly signal?: AbortSignal;
 }
 
 export function runPlaywrightCliSpawn(
@@ -32,6 +33,7 @@ export function runPlaywrightCliSpawn(
       let settled = false;
       let timedOut = false;
       let outputLimit = false;
+      let interrupted = false;
 
       const child = spawn(
         options.launcher.executable,
@@ -48,6 +50,13 @@ export function runPlaywrightCliSpawn(
         },
       );
 
+      const cleanupAbort = () => {
+        options.signal?.removeEventListener(
+          "abort",
+          onAbort,
+        );
+      };
+
       const finishError = (
         code: PlaywrightCliErrorCode,
         message: string,
@@ -55,6 +64,7 @@ export function runPlaywrightCliSpawn(
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        cleanupAbort();
         reject(new PlaywrightCliError(code, message));
       };
 
@@ -83,6 +93,25 @@ export function runPlaywrightCliSpawn(
         target.push(buffer);
       };
 
+      const onAbort = () => {
+        if (settled || interrupted) return;
+        interrupted = true;
+        void terminateProcessTree(
+          child,
+          options.environment,
+        );
+      };
+
+      if (options.signal?.aborted) {
+        onAbort();
+      } else {
+        options.signal?.addEventListener(
+          "abort",
+          onAbort,
+          { once: true },
+        );
+      }
+
       child.stdout.on(
         "data",
         (chunk: Buffer | string) => {
@@ -102,6 +131,14 @@ export function runPlaywrightCliSpawn(
 
       child.once("close", (exitCode) => {
         if (settled) return;
+
+        if (interrupted) {
+          finishError(
+            "user_interrupted",
+            "Browser operation interrupted by user pressing Escape.",
+          );
+          return;
+        }
 
         if (outputLimit) {
           finishError(
@@ -136,6 +173,7 @@ export function runPlaywrightCliSpawn(
 
         settled = true;
         clearTimeout(timer);
+        cleanupAbort();
         resolvePromise({
           session: options.session,
           command: options.command,

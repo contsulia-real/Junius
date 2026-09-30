@@ -402,6 +402,8 @@ Browser launcher discovery prefers the app-local @playwright/cli installation be
 
 Browser audit persists the command name and argument count, but not the arbitrary Browser CLI argument vector.
 
+Active Browser commands share a Windows physical-Escape interrupt source. The interrupt helper uses a low-level keyboard hook and ignores injected keyboard events. On Escape, spawn-mode CLI children are terminated directly; broker-mode requests terminate the broker process and return `user_interrupted` without permanently disabling broker restart.
+
 ## Desktop architecture
 
 Desktop perception is screenshot-based.
@@ -422,6 +424,8 @@ The persistent Python helper handles:
 - direct text input.
 
 action_batch keeps the whole sequence inside one helper request. Explicit wait plus drag durations are bounded, and keys/buttons held by the batch are released in a finally path. screenshot_after turns the same call into an act → observe round trip.
+
+The Desktop helper uses the same physical-Escape detection primitive as Browser interruption. Wait, drag, text input, key macros, and action batches cooperatively check for interruption so cleanup runs normally; injected Escape events are ignored.
 
 There is intentionally no accessibility-tree, UI Automation, or semantic-control dependency in Desktop perception. The visual model remains screenshot-only.
 

@@ -109,6 +109,98 @@ process.stdin.on("data", (chunk) => {
   assert.equal(client.running, false);
 });
 
+test("Playwright CLI broker aborts an active request without disabling future broker startup", async () => {
+  const root = await mkdtemp(
+    join(
+      tmpdir(),
+      "junius-browser-broker-interrupt-",
+    ),
+  );
+  const brokerPath = join(
+    root,
+    "fake-broker.js",
+  );
+  const cliEntryPath = join(
+    root,
+    "fake-cli.js",
+  );
+
+  await writeFile(
+    cliEntryPath,
+    "",
+    "utf8",
+  );
+  await writeFile(
+    brokerPath,
+    `
+process.stdout.write(JSON.stringify({
+  id: 0,
+  ok: true,
+  exitCode: 0,
+  stdout: "",
+  stderr: ""
+}) + "\\n");
+process.stdin.resume();
+`,
+    "utf8",
+  );
+
+  const client =
+    new PlaywrightCliBrokerClient({
+      cliEntryPath,
+      brokerPath,
+      environment:
+        process.env,
+      nodeExecutable:
+        process.execPath,
+    });
+
+  try {
+    await client.prewarm();
+    const controller =
+      new AbortController();
+    const pending = client.run(
+      [
+        "-s=test",
+        "snapshot",
+      ],
+      root,
+      controller.signal,
+    );
+    setTimeout(
+      () =>
+        controller.abort(),
+      50,
+    );
+
+    await assert.rejects(
+      pending,
+      (error: unknown) =>
+        error instanceof Error &&
+        "code" in error &&
+        error.code ===
+          "broker_interrupted",
+    );
+    assert.equal(
+      client.available,
+      true,
+    );
+    assert.equal(
+      client.running,
+      false,
+    );
+  } finally {
+    await client.close();
+    await rm(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+});
+
 test("Playwright CLI broker recovers after a runtime crash", async () => {
   const root = await mkdtemp(
     join(tmpdir(), "junius-browser-broker-recover-"),

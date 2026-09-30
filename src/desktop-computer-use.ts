@@ -264,6 +264,17 @@ export class DesktopComputerUseService {
     if (!response.ok) {
       if (
         response.code ===
+          "user_interrupted"
+      ) {
+        throw new DesktopComputerUseError(
+          "user_interrupted",
+          response.message ??
+            "Desktop operation interrupted by user pressing Escape.",
+        );
+      }
+
+      if (
+        response.code ===
           "control_not_started"
       ) {
         this.#authorizedSessions

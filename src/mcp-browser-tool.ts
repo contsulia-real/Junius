@@ -19,7 +19,7 @@ export function registerBrowserTool(
     {
       title: "Use Local Playwright CLI",
       description:
-        "Drive the local browser through the installed Playwright CLI with unrestricted command and argument passthrough. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the browser. This includes read-only inspection. The first Browser call for a session must assert explicit_user_authorization=true; once accepted, subsequent calls for that active session must omit it even if an individual Browser command fails. close revokes authorization. Previous authorization does not carry forward.",
+        "Drive the local browser through the installed Playwright CLI with unrestricted command and argument passthrough. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the browser. This includes read-only inspection. The first Browser call for a session must assert explicit_user_authorization=true; once accepted, subsequent calls for that active session must omit it even if an individual Browser command fails. A physical Escape key press interrupts the active Browser operation and returns user_interrupted; treat that as direct user intent to stop and do not retry or continue Browser automation unless the user explicitly asks to resume. close revokes authorization. Previous authorization does not carry forward.",
       inputSchema: z.object({
         explicit_user_authorization: z
           .literal(true)

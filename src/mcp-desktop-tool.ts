@@ -218,7 +218,7 @@ export function registerDesktopTool(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the local computer. This includes read-only access such as windows, screenshot, and clipboard_read. Authorization is established only by a successful control_begin with explicit_user_authorization=true for that session; subsequent calls rely on that active session and must not repeat the assertion. control_end revokes it. Previous authorization does not carry forward.",
+        "Drive the local Windows desktop through screenshot-based Junius computer use. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the local computer. This includes read-only access such as windows, screenshot, and clipboard_read. Authorization is established only by a successful control_begin with explicit_user_authorization=true for that session; subsequent calls rely on that active session and must not repeat the assertion. A physical Escape key press interrupts the active Desktop operation and returns user_interrupted; treat that as direct user intent to stop and do not retry or continue Desktop automation unless the user explicitly asks to resume. control_end revokes it. Previous authorization does not carry forward.",
       inputSchema: z.object({
         explicit_user_authorization: z
           .literal(true)

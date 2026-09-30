@@ -86,6 +86,7 @@ export type DesktopComputerUseErrorCode =
   | "arguments_not_allowed"
   | "authorization_required"
   | "authorization_not_allowed"
+  | "user_interrupted"
   | "control_not_started"
   | "spawn_failed"
   | "process_timeout"

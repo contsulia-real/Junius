@@ -26,6 +26,10 @@ import {
   type PlaywrightCliExecution,
   type PlaywrightCliServiceOptions,
 } from "./playwright-cli-types.js";
+import type {
+  UserInterruptLease,
+  UserInterruptSource,
+} from "./user-interrupt.js";
 
 const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const DEFAULT_SESSION_IDLE_MS = 10 * 60_000;
@@ -53,6 +57,8 @@ export class PlaywrightCliService {
   readonly #broker: PlaywrightCliBrokerClient | undefined;
   readonly #sessions: PlaywrightSessionPool;
   readonly #retainData: boolean;
+  readonly #interrupt:
+    UserInterruptSource | undefined;
   readonly #authorizedSessions =
     new Set<string>();
   #brokerError: string | undefined;
@@ -88,6 +94,8 @@ export class PlaywrightCliService {
       environment
         .JUNIUS_BROWSER_RETAIN_DATA ===
         "1";
+    this.#interrupt =
+      options.interrupt;
     this.#sessions = new PlaywrightSessionPool({
       idleMs: sessionIdleMs,
       maxSessions,
@@ -235,8 +243,14 @@ export class PlaywrightCliService {
       this.#statePath,
       session,
     );
+    let interruptLease:
+      UserInterruptLease | undefined;
 
     try {
+      interruptLease =
+        command === "close"
+          ? undefined
+          : await this.#interrupt?.arm();
       await mkdir(sessionPath, { recursive: true });
 
       if (command === "close") {
@@ -250,6 +264,7 @@ export class PlaywrightCliService {
             command,
             args,
             sessionPath,
+            undefined,
           );
         } catch (error) {
           closeError = error;
@@ -287,10 +302,12 @@ export class PlaywrightCliService {
         command,
         args,
         sessionPath,
+        interruptLease?.signal,
       );
 
       return execution;
     } finally {
+      interruptLease?.release();
       if (command === "close") {
         this.#sessions.restoreAfterClose(
           session,
@@ -310,6 +327,7 @@ export class PlaywrightCliService {
     command: PlaywrightCliCommand,
     args: readonly string[],
     cwd: string,
+    signal?: AbortSignal,
   ): Promise<PlaywrightCliExecution> {
     const launcher = this.#launcher!;
     const startedAt = performance.now();
@@ -324,6 +342,7 @@ export class PlaywrightCliService {
         const response = await this.#broker.run(
           cliArgs,
           cwd,
+          signal,
         );
 
         if (response.exitCode !== 0) {
@@ -352,6 +371,16 @@ export class PlaywrightCliService {
         if (!(error instanceof PlaywrightCliBrokerError)) {
           throw error;
         }
+        if (
+          error.code ===
+            "broker_interrupted" ||
+          signal?.aborted === true
+        ) {
+          throw new PlaywrightCliError(
+            "user_interrupted",
+            "Browser operation interrupted by user pressing Escape.",
+          );
+        }
         this.#brokerError = `${error.code}: ${error.message}`;
       }
     }
@@ -364,6 +393,9 @@ export class PlaywrightCliService {
       session,
       command,
       startedAt,
+      ...(signal === undefined
+        ? {}
+        : { signal }),
     });
   }
 

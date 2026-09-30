@@ -22,6 +22,12 @@ Junius injects only -s=<session>. The requested Playwright CLI command and argum
 
 Do not artificially restrict yourself to a small set of navigation or click commands when the installed CLI provides a more suitable capability.
 
+## User interrupt
+
+A physical Escape key press interrupts the currently active Browser operation. Junius-injected Escape key events do not count as user interruption.
+
+If `playwright_cli` returns `user_interrupted`, treat that as direct user intent to stop. Do not retry the failed command or continue Browser automation unless the user explicitly asks to resume.
+
 ## Session continuity
 
 Use one stable named Browser session for related work when continuity matters.

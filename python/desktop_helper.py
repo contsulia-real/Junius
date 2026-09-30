@@ -8,6 +8,7 @@ from desktop_helper_common import DesktopHelperError
 from desktop_indicator import DesktopActivityIndicator
 from desktop_input import action_batch, input_action
 from desktop_windows import list_windows, screenshot
+from user_interrupt import EscapeInterruptMonitor
 
 for _stream in (sys.stdin, sys.stdout, sys.stderr):
     _reconfigure = getattr(_stream, "reconfigure", None)
@@ -15,6 +16,16 @@ for _stream in (sys.stdin, sys.stdout, sys.stderr):
         _reconfigure(encoding="utf-8")
 
 ACTIVITY_INDICATOR = DesktopActivityIndicator()
+USER_INTERRUPT = EscapeInterruptMonitor()
+USER_INTERRUPT.start()
+
+
+def check_user_interrupt() -> None:
+    if USER_INTERRUPT.interrupted():
+        raise DesktopHelperError(
+            "user_interrupted",
+            "Desktop operation interrupted by user pressing Escape.",
+        )
 
 def execute(
     request: dict[str, Any],
@@ -88,16 +99,23 @@ def execute(
             ),
         )
 
+    USER_INTERRUPT.clear()
+    check_user_interrupt()
+
     if command == "windows":
-        return list_windows()
+        result = list_windows()
+        check_user_interrupt()
+        return result
 
     if command == "screenshot":
         handle = request.get("handle")
-        return screenshot(
+        result = screenshot(
             None
             if handle is None
             else int(handle)
         )
+        check_user_interrupt()
+        return result
 
     if command == "action_batch":
         actions = request.get(
@@ -135,6 +153,7 @@ def execute(
                     screenshot_handle
                 )
             ),
+            check_user_interrupt,
         )
 
     if command in {
@@ -157,6 +176,7 @@ def execute(
         return input_action(
             str(command),
             request,
+            check_user_interrupt,
         )
 
     raise DesktopHelperError(

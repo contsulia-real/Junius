@@ -40,6 +40,12 @@ If control_begin succeeded, always call control_end before finishing, including 
 
 Do not leave an active Desktop control scope behind.
 
+## User interrupt
+
+A physical Escape key press interrupts the currently active Desktop operation. Junius-injected Escape key events do not count as user interruption.
+
+If the Desktop tool returns `user_interrupted`, treat that as direct user intent to stop. Do not retry the failed operation or continue Desktop automation unless the user explicitly asks to resume.
+
 ## Establish the visible state first
 
 Before acting, inspect the current Desktop state.

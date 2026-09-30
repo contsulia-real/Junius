@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Physical Escape now interrupts active Desktop and Playwright computer-use operations without treating Junius-injected Escape key events as user cancellation.
+
 ## 0.0.5-alpha
 
 - Persistent user prompt overrides now live outside the installed application directory and survive Junius updates; legacy `app\prompts` files are preserved into the override layer before the first replacing update.
