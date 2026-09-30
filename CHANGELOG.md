@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.6-alpha
+
 - Physical Escape now interrupts active Desktop and Playwright computer-use operations without treating Junius-injected Escape key events as user cancellation.
 
 ## 0.0.5-alpha
