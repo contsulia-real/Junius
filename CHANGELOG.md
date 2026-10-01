@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.8-alpha
+
 - Workspace editing now uses working-tree-style write/patch/delete/move/copy/mkdir tools; unified patches support delete and rename without a fixed file-count limit, while workspace_mutate provides explicit all-or-nothing batches when required.
 
 ## 0.0.7-alpha
