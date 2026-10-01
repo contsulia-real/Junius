@@ -8,7 +8,6 @@ export type WorkspaceFileErrorCode =
   | "binary_file"
   | "invalid_write"
   | "edit_not_found"
-  | "edit_not_unique"
   | "write_too_large"
   | "write_failed"
   | "rg_not_available"

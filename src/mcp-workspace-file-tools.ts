@@ -1,22 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { WorkspaceFilesService } from "./workspace-files.js";
-import {
-  fileToolError,
-  stableIdSchema,
-  workspacePathSchema,
-} from "./mcp-tool-shared.js";
+import { fileToolError, stableIdSchema, workspacePathSchema } from "./mcp-tool-shared.js";
 
 function agentInstructionsField(
-  value: Awaited<
-    ReturnType<
-      WorkspaceFilesService["agentInstructionsForPaths"]
-    >
-  >,
+  value: Awaited<ReturnType<WorkspaceFilesService["agentInstructionsForPaths"]>>,
 ) {
-  return value.instructions.length === 0
-    ? {}
-    : { agentInstructions: value };
+  return value.instructions.length === 0 ? {} : { agentInstructions: value };
 }
 
 export function registerWorkspaceFileTools(
@@ -34,9 +24,7 @@ export function registerWorkspaceFileTools(
         path: workspacePathSchema.default("."),
         depth: z.number().int().min(1).max(4).default(1),
       }),
-      _meta: {
-        securitySchemes: [{ type: "noauth" }],
-      },
+      _meta: { securitySchemes: [{ type: "noauth" }] },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -46,37 +34,21 @@ export function registerWorkspaceFileTools(
     },
     async ({ workspace, path, depth }) => {
       try {
-        const [
-          entries,
-          agentInstructions,
-        ] = await Promise.all([
-          files.ls(
-            workspace,
-            path,
-            depth,
-          ),
-          files.agentInstructionsForScan(
-            workspace,
-            path,
-            depth,
-          ),
+        const [entries, agentInstructions] = await Promise.all([
+          files.ls(workspace, path, depth),
+          files.agentInstructionsForScan(workspace, path, depth),
         ]);
-
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                ok: true,
-                workspace,
-                path,
-                entries,
-                ...agentInstructionsField(
-                  agentInstructions,
-                ),
-              }),
-            },
-          ],
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: true,
+              workspace,
+              path,
+              entries,
+              ...agentInstructionsField(agentInstructions),
+            }),
+          }],
         };
       } catch (error) {
         return fileToolError(error);
@@ -92,20 +64,13 @@ export function registerWorkspaceFileTools(
         "Read one or more UTF-8 text files from a registered Junius Workspace. Applicable AGENTS.md instructions are returned with the read result and must govern agent behavior for files in their scope.",
       inputSchema: z.object({
         workspace: stableIdSchema,
-        files: z
-          .array(
-            z.object({
-              path: workspacePathSchema,
-              start_line: z.number().int().min(1).optional(),
-              end_line: z.number().int().min(1).optional(),
-            }),
-          )
-          .min(1)
-          .max(16),
+        files: z.array(z.object({
+          path: workspacePathSchema,
+          start_line: z.number().int().min(1).optional(),
+          end_line: z.number().int().min(1).optional(),
+        })).min(1).max(16),
       }),
-      _meta: {
-        securitySchemes: [{ type: "noauth" }],
-      },
+      _meta: { securitySchemes: [{ type: "noauth" }] },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -115,167 +80,25 @@ export function registerWorkspaceFileTools(
     },
     async ({ workspace, files: requests }) => {
       try {
-        const readRequests =
-          requests.map((request) => ({
-            path: request.path,
-            ...(request.start_line === undefined
-              ? {}
-              : { startLine: request.start_line }),
-            ...(request.end_line === undefined
-              ? {}
-              : { endLine: request.end_line }),
-          }));
-
-        const [
-          results,
-          agentInstructions,
-        ] = await Promise.all([
-          files.read(
-            workspace,
-            readRequests,
-          ),
-          files.agentInstructionsForPaths(
-            workspace,
-            readRequests.map(
-              (request) =>
-                request.path,
-            ),
-          ),
+        const readRequests = requests.map((request) => ({
+          path: request.path,
+          ...(request.start_line === undefined ? {} : { startLine: request.start_line }),
+          ...(request.end_line === undefined ? {} : { endLine: request.end_line }),
+        }));
+        const [results, agentInstructions] = await Promise.all([
+          files.read(workspace, readRequests),
+          files.agentInstructionsForPaths(workspace, readRequests.map((request) => request.path)),
         ]);
-
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                ok: true,
-                workspace,
-                files: results,
-                ...agentInstructionsField(
-                  agentInstructions,
-                ),
-              }),
-            },
-          ],
-        };
-      } catch (error) {
-        return fileToolError(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    "write",
-    {
-      title: "Write Workspace Files",
-      description:
-        "Create, replace, or exact-text edit UTF-8 files inside a registered Junius Workspace. For software engineering work, load the engineering contract with load_junius_contracts before implementation unless it is already loaded. Applicable AGENTS.md instructions are a mandatory preflight: when they exist, a mutation without the current agents_digest is rejected with the full instruction set and digest; follow those instructions and retry with that digest. Exact-text edits fail if old_text is missing or ambiguous unless replace_all is explicitly enabled. All writes are validated before any file is changed.",
-      inputSchema: z.object({
-        workspace: stableIdSchema,
-        files: z
-          .array(
-            z
-              .object({
-                path: workspacePathSchema,
-                content: z.string().max(2 * 1024 * 1024).optional(),
-                edits: z
-                  .array(
-                    z.object({
-                      old_text: z.string().min(1),
-                      new_text: z.string(),
-                      replace_all: z.boolean().default(false),
-                    }),
-                  )
-                  .min(1)
-                  .max(128)
-                  .optional(),
-              })
-              .superRefine((file, context) => {
-                if (
-                  (file.content === undefined) ===
-                  (file.edits === undefined)
-                ) {
-                  context.addIssue({
-                    code: "custom",
-                    message:
-                      "Exactly one of content or edits must be supplied.",
-                  });
-                }
-              }),
-          )
-          .min(1)
-          .max(16),
-        agents_digest: z
-          .string()
-          .regex(/^[a-f0-9]{64}$/u)
-          .optional()
-          .describe(
-            "Digest returned by an AGENTS.md preflight. Required when applicable AGENTS.md instructions exist.",
-          ),
-      }),
-      _meta: {
-        securitySchemes: [{ type: "noauth" }],
-      },
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false,
-      },
-    },
-    async ({
-      workspace,
-      files: requests,
-      agents_digest,
-    }) => {
-      try {
-        const writeRequests =
-          requests.map((request) => ({
-            path: request.path,
-            ...(request.content === undefined
-              ? {}
-              : { content: request.content }),
-            ...(request.edits === undefined
-              ? {}
-              : {
-                  edits: request.edits.map((edit) => ({
-                    oldText: edit.old_text,
-                    newText: edit.new_text,
-                    replaceAll: edit.replace_all,
-                  })),
-                }),
-          }));
-
-        const results = await files.write(
-          workspace,
-          writeRequests,
-          "write",
-          agents_digest,
-        );
-
-        const agentInstructions =
-          await files.agentInstructionsForPaths(
-            workspace,
-            writeRequests.map(
-              (request) =>
-                request.path,
-            ),
-          );
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                ok: true,
-                workspace,
-                files: results,
-                ...agentInstructionsField(
-                  agentInstructions,
-                ),
-              }),
-            },
-          ],
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: true,
+              workspace,
+              files: results,
+              ...agentInstructionsField(agentInstructions),
+            }),
+          }],
         };
       } catch (error) {
         return fileToolError(error);
@@ -299,9 +122,7 @@ export function registerWorkspaceFileTools(
         hidden: z.boolean().default(false),
         max_results: z.number().int().min(1).max(500).default(100),
       }),
-      _meta: {
-        securitySchemes: [{ type: "noauth" }],
-      },
+      _meta: { securitySchemes: [{ type: "noauth" }] },
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -309,21 +130,9 @@ export function registerWorkspaceFileTools(
         openWorldHint: false,
       },
     },
-    async ({
-      workspace,
-      query,
-      path,
-      globs,
-      case_sensitive,
-      fixed_strings,
-      hidden,
-      max_results,
-    }) => {
+    async ({ workspace, query, path, globs, case_sensitive, fixed_strings, hidden, max_results }) => {
       try {
-        const [
-          matches,
-          agentInstructions,
-        ] = await Promise.all([
+        const [matches, agentInstructions] = await Promise.all([
           files.rg(workspace, {
             query,
             path,
@@ -333,27 +142,19 @@ export function registerWorkspaceFileTools(
             hidden,
             maxResults: max_results,
           }),
-          files.agentInstructionsForScan(
-            workspace,
-            path,
-          ),
+          files.agentInstructionsForScan(workspace, path),
         ]);
-
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                ok: true,
-                workspace,
-                query,
-                matches,
-                ...agentInstructionsField(
-                  agentInstructions,
-                ),
-              }),
-            },
-          ],
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: true,
+              workspace,
+              query,
+              matches,
+              ...agentInstructionsField(agentInstructions),
+            }),
+          }],
         };
       } catch (error) {
         return fileToolError(error);

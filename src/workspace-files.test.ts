@@ -105,25 +105,47 @@ test("Workspace file service lists, reads, overwrites, and creates Workspace-rel
     assert.equal(read?.startLine, 2);
     assert.equal(read?.endLine, 3);
 
-    const [overwritten] = await f.service.write("demo", [
-      {
-        path: "README.md",
-        content: "# Changed\n",
-      },
-    ]);
-    assert.equal(overwritten?.created, false);
+    const [overwritten] = await f.service.mutate(
+      "demo",
+      [
+        {
+          kind: "write",
+          path: "README.md",
+          content: "# Changed\n",
+        },
+      ],
+      "write_file",
+    );
+    assert.equal(overwritten?.kind, "write");
+    assert.equal(
+      overwritten?.kind === "write"
+        ? overwritten.created
+        : undefined,
+      false,
+    );
     assert.equal(
       await readFile(join(f.root, "README.md"), "utf8"),
       "# Changed\n",
     );
 
-    const [created] = await f.service.write("demo", [
-      {
-        path: "generated/nested.txt",
-        content: "ok\n",
-      },
-    ]);
-    assert.equal(created?.created, true);
+    const [created] = await f.service.mutate(
+      "demo",
+      [
+        {
+          kind: "write",
+          path: "generated/nested.txt",
+          content: "ok\n",
+        },
+      ],
+      "write_file",
+    );
+    assert.equal(created?.kind, "write");
+    assert.equal(
+      created?.kind === "write"
+        ? created.created
+        : undefined,
+      true,
+    );
     assert.equal(
       await readFile(
         join(f.root, "generated", "nested.txt"),
@@ -136,28 +158,28 @@ test("Workspace file service lists, reads, overwrites, and creates Workspace-rel
   }
 });
 
-test("write validates all files before changing any of them", async () => {
+test("explicit Workspace transaction rolls back an earlier write when a later operation fails", async () => {
   const f = await fixture();
   try {
     await assert.rejects(
-      f.service.write("demo", [
-        {
-          path: "README.md",
-          content: "# Must not be written\n",
-        },
-        {
-          path: "src/a.ts",
-          edits: [
-            {
-              oldText: "missing text",
-              newText: "bad",
-            },
-          ],
-        },
-      ]),
+      f.service.mutate(
+        "demo",
+        [
+          {
+            kind: "write",
+            path: "README.md",
+            content: "# Must not remain\n",
+          },
+          {
+            kind: "delete",
+            path: "missing.txt",
+          },
+        ],
+        "workspace_mutate",
+      ),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
-        error.code === "edit_not_found",
+        error.code === "path_not_found",
     );
 
     assert.equal(
@@ -180,9 +202,17 @@ test("Workspace file tools reject path traversal", async () => {
     );
 
     await assert.rejects(
-      f.service.write("demo", [
-        { path: "../outside.txt", content: "no" },
-      ]),
+      f.service.mutate(
+        "demo",
+        [
+          {
+            kind: "write",
+            path: "../outside.txt",
+            content: "no",
+          },
+        ],
+        "write_file",
+      ),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
         error.code === "invalid_path",
@@ -220,12 +250,17 @@ test("Workspace file tools reject links that escape the Workspace", async () => 
     );
 
     await assert.rejects(
-      f.service.write("demo", [
-        {
-          path: "escape/new.txt",
-          content: "no\n",
-        },
-      ]),
+      f.service.mutate(
+        "demo",
+        [
+          {
+            kind: "write",
+            path: "escape/new.txt",
+            content: "no\n",
+          },
+        ],
+        "write_file",
+      ),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
         error.code === "path_outside_workspace",
@@ -259,12 +294,17 @@ test("Workspace writes reject symbolic or junction parent aliases inside the Wor
     );
 
     await assert.rejects(
-      f.service.write("demo", [
-        {
-          path: "alias/new.txt",
-          content: "no\n",
-        },
-      ]),
+      f.service.mutate(
+        "demo",
+        [
+          {
+            kind: "write",
+            path: "alias/new.txt",
+            content: "no\n",
+          },
+        ],
+        "write_file",
+      ),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
         error.code === "invalid_path",
@@ -314,12 +354,17 @@ test("Workspace file tools reserve the root .junius control directory", async ()
       );
 
       await assert.rejects(
-        f.service.write("demo", [
-          {
-            path: path.replace("secret.txt", "new.txt"),
-            content: "no\n",
-          },
-        ]),
+        f.service.mutate(
+          "demo",
+          [
+            {
+              kind: "write",
+              path: path.replace("secret.txt", "new.txt"),
+              content: "no\n",
+            },
+          ],
+          "write_file",
+        ),
         (error: unknown) =>
           error instanceof WorkspaceFileError &&
           error.code === "invalid_path",
@@ -381,12 +426,17 @@ test("Workspace file tools reject aliases into the .junius control directory", a
     );
 
     await assert.rejects(
-      f.service.write("demo", [
-        {
-          path: "control-alias/runtime/new.txt",
-          content: "no\n",
-        },
-      ]),
+      f.service.mutate(
+        "demo",
+        [
+          {
+            kind: "write",
+            path: "control-alias/runtime/new.txt",
+            content: "no\n",
+          },
+        ],
+        "write_file",
+      ),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
         error.code === "invalid_path",
@@ -437,12 +487,17 @@ test("Workspace file tools protect configured internal state paths", async () =>
     );
 
     await assert.rejects(
-      service.write("demo", [
-        {
-          path: "runtime-state/new.txt",
-          content: "no\n",
-        },
-      ]),
+      service.mutate(
+        "demo",
+        [
+          {
+            kind: "write",
+            path: "runtime-state/new.txt",
+            content: "no\n",
+          },
+        ],
+        "write_file",
+      ),
       (error: unknown) =>
         error instanceof WorkspaceFileError &&
         error.code === "invalid_path",
@@ -684,54 +739,4 @@ test("Workspace file tools reject unregistered Workspaces", async () => {
       error instanceof WorkspaceFileError &&
       error.code === "workspace_not_registered",
   );
-});
-
-
-test("write applies unique exact-text edits and rejects ambiguous matches", async () => {
-  const f = await fixture();
-  try {
-    const [written] = await f.service.write("demo", [
-      {
-        path: "src/a.ts",
-        edits: [
-          {
-            oldText: "two\n",
-            newText: "changed\n",
-          },
-        ],
-      },
-    ]);
-    assert.equal(written?.created, false);
-    assert.equal(
-      await readFile(
-        join(f.root, "src", "a.ts"),
-        "utf8",
-      ),
-      "one\nchanged\nthree\n",
-    );
-
-    await writeFile(
-      join(f.root, "dup.txt"),
-      "same\nsame\n",
-      "utf8",
-    );
-    await assert.rejects(
-      f.service.write("demo", [
-        {
-          path: "dup.txt",
-          edits: [
-            {
-              oldText: "same",
-              newText: "changed",
-            },
-          ],
-        },
-      ]),
-      (error: unknown) =>
-        error instanceof WorkspaceFileError &&
-        error.code === "edit_not_unique",
-    );
-  } finally {
-    await f.dispose();
-  }
 });

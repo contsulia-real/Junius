@@ -140,10 +140,16 @@ Junius 自己的支持基线从 ChatGPT Plus 开始。实际用于 Junius 的账
 
     ls(workspace, ...)
     read(workspace, ...)
-    write(workspace, ...)
-    workspace_apply(workspace, files, verify)
     rg(workspace, ...)
     workspace_batch(workspace, operations)
+
+    write_file(workspace, path, content)
+    apply_patch(workspace, patch, verify)
+    delete_file(workspace, path)
+    move_file(workspace, source, destination)
+    copy_file(workspace, source, destination)
+    mkdir(workspace, path)
+    workspace_mutate(workspace, operations, verify)
 
     run_command(workspace, executable, args)
 
@@ -227,7 +233,8 @@ ChatGPT 可以直接通过 `get_junius_prompts`、`set_junius_prompt` 和 `reset
 
 Junius 保留底层执行原语，同时为常见工程流程提供减少 MCP 往返的高层等价能力：
 
-- `workspace_patch` 可一次事务性应用标准多文件 unified diff，继续遵守 Workspace 路径保护和 AGENTS.md 确认，并可在同一调用中验证结果。
+- `apply_patch` 将标准 unified diff 作为一次显式原子操作应用，支持创建、修改、删除、rename/move、多文件、多 hunk、CRLF 保持以及 no-newline marker；限制按 patch payload 大小，而不是固定文件数量。
+- `workspace_mutate` 只用于确实需要一起成功或一起失败的 write/delete/move/copy/mkdir 批处理。普通工程编辑使用独立 mutation 工具，每一步成功修改都会立即保留在工作树中。
 - `run_commands` 可在同一个 Workspace 中一次执行最多 16 条短命令，支持并行或串行，并继续复用 `run_command` 的无限制执行路径。
 - `git_snapshot` 一次返回 branch/status、已暂存与未暂存摘要以及最近提交。
 - `git_prepare_commit` 只暂存显式指定的路径，检查 staged diff，并返回完整 staged diff 和用于审核的 Git tree token。
@@ -342,9 +349,10 @@ Job 保留：
 
 - 拒绝绝对路径和 `..` 穿越；
 - 读取不会沿链接逃出 Workspace；
-- 写入拒绝符号链接/junction 父目录别名；
-- 事务式多文件写入先 stage，再 commit；提交失败时尝试反向回滚；
-- commit 前后重新验证写入父目录，以缩小路径替换竞态窗口；
+- mutation 拒绝符号链接/junction 父目录别名，并继续遵守同一个 Workspace containment 边界；
+- 普通 write/delete/move/copy/mkdir 调用会立即、独立地修改工作树，后续操作失败不会撤销此前已经成功的调用；
+- `apply_patch` 和 `workspace_mutate` 在确有需要时提供显式 all-or-nothing mutation scope，并在失败时反向回滚；
+- commit 前后重新验证 mutation 父目录和目标，以缩小路径替换竞态窗口；
 - 根目录 `.junius` 控制目录被保留；
 - `.git` 元数据不能通过通用 Workspace 文件工具访问；
 - 如果 Junius 运行时/状态路径和 Browser profile 路径位于 Workspace 内，它们也会受到保护；
@@ -358,7 +366,7 @@ Workspace 检查对 AGENTS.md 采用类似 Codex 的目录作用域规则：
 - 更深层的 AGENTS.md 在指令链中排在更后面，因此在更窄的作用域中具有更具体的约束；
 - `ls`、`read`、`rg` 和 `workspace_batch` 会自动返回适用的 AGENTS.md 内容、每份文件的作用域以及 SHA-256 digest；
 - 递归扫描还会发现扫描子树中的嵌套 AGENTS.md；
-- `write` 和 `workspace_apply` 会执行强制 AGENTS.md 预检。如果存在适用指令，而调用方没有提供当前 `agents_digest`，Junius 会在修改文件前拒绝写入，并返回完整适用指令链和 digest；
+- 所有内置 mutation 工具（`write_file`、`apply_patch`、`delete_file`、`move_file`、`copy_file`、`mkdir`、`workspace_mutate`）都会执行强制 AGENTS.md 预检。如果存在适用指令，而调用方没有提供当前 `agents_digest`，Junius 会在修改文件前拒绝操作，并返回完整适用指令链和 digest；
 - 如果适用的 AGENTS.md 被修改，旧 digest 将不再能授权内置文件修改；
 - 过大的 AGENTS.md 指令集合会明确失败，而不是被静默省略。
 

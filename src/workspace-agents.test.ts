@@ -278,16 +278,18 @@ test(
         string | undefined;
 
       await assert.rejects(
-        f.service.write(
+        f.service.mutate(
           "demo",
           [
             {
+              kind: "write",
               path:
                 "src/deep/a.ts",
               content:
                 "blocked\n",
             },
           ],
+          "write_file",
         ),
         (error: unknown) => {
           if (
@@ -345,17 +347,18 @@ test(
         /^[a-f0-9]{64}$/u,
       );
 
-      await f.service.write(
+      await f.service.mutate(
         "demo",
         [
           {
+            kind: "write",
             path:
               "src/deep/a.ts",
             content:
               "allowed\n",
           },
         ],
-        "write",
+        "write_file",
         requiredDigest,
       );
 
@@ -384,17 +387,18 @@ test(
       );
 
       await assert.rejects(
-        f.service.write(
+        f.service.mutate(
           "demo",
           [
             {
+              kind: "write",
               path:
                 "src/deep/a.ts",
               content:
                 "stale digest\n",
             },
           ],
-          "write",
+          "write_file",
           requiredDigest,
         ),
         (error: unknown) =>

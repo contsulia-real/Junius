@@ -180,10 +180,12 @@ Rules:
 - deeper-scoped AGENTS.md files are more specific;
 - system, developer, and direct user instructions remain higher priority.
 
-If write or workspace_apply returns agents_ack_required:
+If a built-in Workspace mutation tool returns agents_ack_required:
 1. read the complete returned instruction chain;
 2. apply those instructions to the affected work;
 3. retry using the returned current agents_digest.
+
+This applies to write_file, apply_patch, delete_file, move_file, copy_file, mkdir, and workspace_mutate.
 
 If the digest is stale, review the newly returned instructions before retrying.
 
@@ -214,15 +216,18 @@ Use the narrowest reliable surface available for the task.
 Prefer:
 - Workspace tools for Workspace text-file inspection and mutation;
 - workspace_batch for multiple independent read-only inspections;
-- workspace_apply for related multi-file writes plus immediate read-only verification;
+- apply_patch for ordinary source edits described by a unified diff;
+- write_file for creating or intentionally replacing one whole UTF-8 text file;
+- delete_file, move_file, copy_file, and mkdir for direct working-tree operations;
+- workspace_mutate only when several operations materially require all-or-nothing behavior;
 - run_command for bounded foreground processes;
 - start_job for commands that may outlive foreground execution.
 
 When a specialized Junius contract is loaded for a capability, follow it when using that capability.
 
-workspace_apply commits its writes before its verification operations run. Verification failure does NOT imply automatic rollback. If verification fails, inspect the committed state and correct it explicitly.
+Workspace editing follows a normal mutable working-tree model. Each successful individual mutation is immediately visible to later reads, Git diff/status, tests, and later edits. A later failed mutation does not roll back earlier successful calls.
 
-For exact-text Workspace edits, do not use broad replacement when the target is ambiguous. Exact edits should fail rather than silently modifying an unintended occurrence unless replacement of all matches is explicitly intended.
+apply_patch and workspace_mutate are explicit atomic operations for the mutations inside that one call. Their optional verification runs after the mutation commits. Verification failure does NOT imply automatic rollback; inspect the resulting working tree and correct it explicitly.
 
 ## Process and Job execution
 

@@ -108,10 +108,10 @@ test(
         );
 
       const result =
-        await f.service.write(
+        await f.service.mutate(
           "demo",
           writes,
-          "workspace_patch",
+          "apply_patch",
         );
 
       assert.equal(
@@ -164,10 +164,10 @@ test(
           ].join("\n"),
         );
 
-      await f.service.write(
+      await f.service.mutate(
         "demo",
         writes,
-        "workspace_patch",
+        "apply_patch",
       );
 
       assert.equal(
@@ -217,10 +217,10 @@ test(
           ].join("\n"),
         );
 
-      await f.service.write(
+      await f.service.mutate(
         "demo",
         writes,
-        "workspace_patch",
+        "apply_patch",
       );
 
       assert.equal(
@@ -265,10 +265,10 @@ test(
         );
 
       await assert.rejects(
-        f.service.write(
+        f.service.mutate(
           "demo",
           writes,
-          "workspace_patch",
+          "apply_patch",
         ),
         (
           error: unknown,
@@ -307,10 +307,13 @@ test(
 );
 
 test(
-  "workspace unified patch rejects file deletion instead of silently changing semantics",
-  () => {
-    assert.throws(
-      () =>
+  "workspace unified patch deletes a file",
+  async () => {
+    const f =
+      await fixture();
+
+    try {
+      const mutations =
         parseUnifiedPatch(
           [
             "--- a/README.md",
@@ -319,17 +322,287 @@ test(
             "-# Demo",
             "",
           ].join("\n"),
+        );
+
+      await f.service.mutate(
+        "demo",
+        mutations,
+        "apply_patch",
+      );
+
+      await assert.rejects(
+        readFile(
+          join(
+            f.root,
+            "README.md",
+          ),
+          "utf8",
         ),
-      (
-        error: unknown,
-      ) =>
-        error instanceof
-          WorkspaceFileError &&
-        error.code ===
-          "invalid_write" &&
-        /deletion/u.test(
-          error.message,
+        (
+          error: unknown,
+        ) =>
+          typeof error ===
+            "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code ===
+            "ENOENT",
+      );
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "workspace unified patch applies a pure Git rename",
+  async () => {
+    const f =
+      await fixture();
+
+    try {
+      const mutations =
+        parseUnifiedPatch(
+          [
+            "diff --git a/src/a.ts b/src/renamed.ts",
+            "similarity index 100%",
+            "rename from src/a.ts",
+            "rename to src/renamed.ts",
+            "",
+          ].join("\n"),
+        );
+
+      await f.service.mutate(
+        "demo",
+        mutations,
+        "apply_patch",
+      );
+
+      assert.equal(
+        await readFile(
+          join(
+            f.root,
+            "src",
+            "renamed.ts",
+          ),
+          "utf8",
         ),
-    );
+        "alpha\nbeta\ngamma\ndelta\n",
+      );
+      await assert.rejects(
+        readFile(
+          join(
+            f.root,
+            "src",
+            "a.ts",
+          ),
+          "utf8",
+        ),
+      );
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "workspace unified patch can rename and edit in one atomic patch",
+  async () => {
+    const f =
+      await fixture();
+
+    try {
+      const mutations =
+        parseUnifiedPatch(
+          [
+            "diff --git a/src/a.ts b/src/renamed.ts",
+            "similarity index 80%",
+            "rename from src/a.ts",
+            "rename to src/renamed.ts",
+            "--- a/src/a.ts",
+            "+++ b/src/renamed.ts",
+            "@@ -1,2 +1,2 @@",
+            " alpha",
+            "-beta",
+            "+changed",
+            "",
+          ].join("\n"),
+        );
+
+      await f.service.mutate(
+        "demo",
+        mutations,
+        "apply_patch",
+      );
+
+      assert.equal(
+        await readFile(
+          join(
+            f.root,
+            "src",
+            "renamed.ts",
+          ),
+          "utf8",
+        ),
+        "alpha\nchanged\ngamma\ndelta\n",
+      );
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "unified patch line positions can edit one repeated occurrence without exact-text ambiguity",
+  async () => {
+    const f =
+      await fixture();
+
+    try {
+      await writeFile(
+        join(
+          f.root,
+          "src",
+          "a.ts",
+        ),
+        "duplicate\nkeep\nduplicate\n",
+        "utf8",
+      );
+
+      const mutations =
+        parseUnifiedPatch(
+          [
+            "--- a/src/a.ts",
+            "+++ b/src/a.ts",
+            "@@ -3,1 +3,1 @@",
+            "-duplicate",
+            "+changed",
+            "",
+          ].join("\n"),
+        );
+
+      await f.service.mutate(
+        "demo",
+        mutations,
+        "apply_patch",
+      );
+
+      assert.equal(
+        await readFile(
+          join(
+            f.root,
+            "src",
+            "a.ts",
+          ),
+          "utf8",
+        ),
+        "duplicate\nkeep\nchanged\n",
+      );
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "unified patch accepts Git-quoted UTF-8 paths",
+  async () => {
+    const f =
+      await fixture();
+
+    try {
+      const path =
+        "src/quoted é.ts";
+      await writeFile(
+        join(f.root, path),
+        "before\n",
+        "utf8",
+      );
+
+      const mutations =
+        parseUnifiedPatch(
+          [
+            '--- "a/src/quoted \\303\\251.ts"',
+            '+++ "b/src/quoted \\303\\251.ts"',
+            "@@ -1,1 +1,1 @@",
+            "-before",
+            "+after",
+            "",
+          ].join("\n"),
+        );
+
+      await f.service.mutate(
+        "demo",
+        mutations,
+        "apply_patch",
+      );
+
+      assert.equal(
+        await readFile(
+          join(f.root, path),
+          "utf8",
+        ),
+        "after\n",
+      );
+    } finally {
+      await f.dispose();
+    }
+  },
+);
+
+test(
+  "unified patch is bounded by payload rather than a sixteen-file limit",
+  async () => {
+    const f =
+      await fixture();
+
+    try {
+      const lines: string[] =
+        [];
+      for (
+        let index = 0;
+        index < 20;
+        index += 1
+      ) {
+        lines.push(
+          "--- /dev/null",
+          "+++ b/generated/file-" +
+            index +
+            ".txt",
+          "@@ -0,0 +1,1 @@",
+          "+value-" + index,
+        );
+      }
+      lines.push("");
+
+      const mutations =
+        parseUnifiedPatch(
+          lines.join("\n"),
+        );
+      assert.equal(
+        mutations.length,
+        20,
+      );
+
+      await f.service.mutate(
+        "demo",
+        mutations,
+        "apply_patch",
+      );
+
+      assert.equal(
+        await readFile(
+          join(
+            f.root,
+            "generated",
+            "file-19.txt",
+          ),
+          "utf8",
+        ),
+        "value-19\n",
+      );
+    } finally {
+      await f.dispose();
+    }
   },
 );

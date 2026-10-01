@@ -585,7 +585,13 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       true,
     );
     for (const toolName of [
-      "workspace_patch",
+      "write_file",
+      "apply_patch",
+      "delete_file",
+      "move_file",
+      "copy_file",
+      "mkdir",
+      "workspace_mutate",
       "run_commands",
       "git_snapshot",
       "git_prepare_commit",
@@ -604,6 +610,22 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         ),
         true,
         `missing MCP tool: ${toolName}`,
+      );
+    }
+
+    for (const removedTool of [
+      "write",
+      "workspace_apply",
+      "workspace_patch",
+    ]) {
+      assert.equal(
+        tools.some(
+          (tool) =>
+            tool.name ===
+            removedTool,
+        ),
+        false,
+        `stale MCP tool still exposed: ${removedTool}`,
       );
     }
 
@@ -978,16 +1000,12 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       await callMcpTool(
         mcpOrigin,
         mcpSessionId,
-        "write",
+        "write_file",
         {
           workspace: "second",
-          files: [
-            {
-              path: "probe.txt",
-              content:
-                "blocked\n",
-            },
-          ],
+          path: "probe.txt",
+          content:
+            "blocked\n",
         },
         true,
       );
@@ -1056,19 +1074,15 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       await callMcpTool(
         mcpOrigin,
         mcpSessionId,
-        "write",
+        "write_file",
         {
           workspace: "second",
           agents_digest:
             agentsDetails
               ?.agentsDigest,
-          files: [
-            {
-              path: "probe.txt",
-              content:
-                "allowed\n",
-            },
-          ],
+          path: "probe.txt",
+          content:
+            "allowed\n",
         },
       );
     assert.equal(
@@ -1085,6 +1099,258 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         "utf8",
       ),
       "allowed\n",
+    );
+
+
+    const patched = await callMcpTool(
+      mcpOrigin,
+      mcpSessionId,
+      "apply_patch",
+      {
+        workspace: "second",
+        agents_digest:
+          agentsDetails
+            ?.agentsDigest,
+        patch: [
+          "--- a/probe.txt",
+          "+++ b/probe.txt",
+          "@@ -1,1 +1,1 @@",
+          "-allowed",
+          "+patched",
+          "",
+        ].join("\n"),
+      },
+    );
+    assert.equal(
+      patched.payload.ok,
+      true,
+    );
+    assert.equal(
+      await readFile(
+        join(
+          secondWorkspaceRoot,
+          "probe.txt",
+        ),
+        "utf8",
+      ),
+      "patched\n",
+    );
+
+    const madeDirectory =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "mkdir",
+        {
+          workspace: "second",
+          agents_digest:
+            agentsDetails
+              ?.agentsDigest,
+          path: "nested",
+        },
+      );
+    assert.equal(
+      madeDirectory.payload.ok,
+      true,
+    );
+
+    const copied = await callMcpTool(
+      mcpOrigin,
+      mcpSessionId,
+      "copy_file",
+      {
+        workspace: "second",
+        agents_digest:
+          agentsDetails
+            ?.agentsDigest,
+        source: "probe.txt",
+        destination:
+          "nested/copied.txt",
+      },
+    );
+    assert.equal(
+      copied.payload.ok,
+      true,
+    );
+
+    const moved = await callMcpTool(
+      mcpOrigin,
+      mcpSessionId,
+      "move_file",
+      {
+        workspace: "second",
+        agents_digest:
+          agentsDetails
+            ?.agentsDigest,
+        source:
+          "nested/copied.txt",
+        destination:
+          "nested/moved.txt",
+      },
+    );
+    assert.equal(
+      moved.payload.ok,
+      true,
+    );
+    assert.equal(
+      await readFile(
+        join(
+          secondWorkspaceRoot,
+          "nested",
+          "moved.txt",
+        ),
+        "utf8",
+      ),
+      "patched\n",
+    );
+
+    const removedCopy =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "delete_file",
+        {
+          workspace: "second",
+          agents_digest:
+            agentsDetails
+              ?.agentsDigest,
+          path:
+            "nested/moved.txt",
+        },
+      );
+    assert.equal(
+      removedCopy.payload.ok,
+      true,
+    );
+
+    const transaction =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "workspace_mutate",
+        {
+          workspace: "second",
+          agents_digest:
+            agentsDetails
+              ?.agentsDigest,
+          operations: [
+            {
+              op: "write",
+              path: "tx-a.txt",
+              content: "a\n",
+            },
+            {
+              op: "write",
+              path: "tx-b.txt",
+              content: "b\n",
+            },
+          ],
+          verify: [
+            {
+              op: "read",
+              files: [
+                {
+                  path: "tx-a.txt",
+                },
+                {
+                  path: "tx-b.txt",
+                },
+              ],
+            },
+          ],
+        },
+      );
+    assert.equal(
+      transaction.payload.ok,
+      true,
+    );
+
+    const failedTransaction =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "workspace_mutate",
+        {
+          workspace: "second",
+          agents_digest:
+            agentsDetails
+              ?.agentsDigest,
+          operations: [
+            {
+              op: "write",
+              path:
+                "must-rollback.txt",
+              content:
+                "temporary\n",
+            },
+            {
+              op: "delete",
+              path:
+                "still-missing.txt",
+            },
+          ],
+        },
+        true,
+      );
+    assert.equal(
+      failedTransaction.isError,
+      true,
+    );
+    assert.equal(
+      failedTransaction
+        .payload.code,
+      "path_not_found",
+    );
+    await assert.rejects(
+      readFile(
+        join(
+          secondWorkspaceRoot,
+          "must-rollback.txt",
+        ),
+        "utf8",
+      ),
+      (
+        error: unknown,
+      ) =>
+        typeof error ===
+          "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code ===
+          "ENOENT",
+    );
+
+    const laterFailure =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "delete_file",
+        {
+          workspace: "second",
+          agents_digest:
+            agentsDetails
+              ?.agentsDigest,
+          path: "missing.txt",
+        },
+        true,
+      );
+    assert.equal(
+      laterFailure.isError,
+      true,
+    );
+    assert.equal(
+      laterFailure.payload.code,
+      "path_not_found",
+    );
+    assert.equal(
+      await readFile(
+        join(
+          secondWorkspaceRoot,
+          "tx-a.txt",
+        ),
+        "utf8",
+      ),
+      "a\n",
     );
 
     const command = await callMcpTool(

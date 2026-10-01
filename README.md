@@ -139,10 +139,16 @@ Junius's own supported baseline starts at ChatGPT Plus. In practice, the account
 
     ls(workspace, ...)
     read(workspace, ...)
-    write(workspace, ...)
-    workspace_apply(workspace, files, verify)
     rg(workspace, ...)
     workspace_batch(workspace, operations)
+
+    write_file(workspace, path, content)
+    apply_patch(workspace, patch, verify)
+    delete_file(workspace, path)
+    move_file(workspace, source, destination)
+    copy_file(workspace, source, destination)
+    mkdir(workspace, path)
+    workspace_mutate(workspace, operations, verify)
 
     run_command(workspace, executable, args)
 
@@ -226,7 +232,8 @@ The one-command installer does not require the user to have pnpm installed. npm 
 
 Junius keeps the low-level execution primitives, but common engineering round trips also have higher-level equivalents:
 
-- `workspace_patch` applies a standard multi-file unified diff transactionally, with the same Workspace path protections and AGENTS.md acknowledgement as other writes, and can verify the result in the same call.
+- `apply_patch` applies a standard unified diff as one explicit atomic operation. It supports create, update, delete, rename/move, multiple files and hunks, CRLF preservation, and no-newline markers. Its limit is the patch payload size rather than a fixed file count.
+- `workspace_mutate` is the explicit all-or-nothing batch for write/delete/move/copy/mkdir operations that genuinely must succeed together. Ordinary engineering edits use the individual mutation tools and remain visible in the working tree between calls.
 - `run_commands` runs up to 16 short commands in one Workspace, in parallel or serially, through the same unrestricted execution path as `run_command`.
 - `git_snapshot` returns branch/status, staged and unstaged summaries, and recent commits in one call.
 - `git_prepare_commit` stages only explicit paths, checks the staged diff, and returns the full staged diff plus a Git tree token for review.
@@ -341,9 +348,10 @@ Important properties include:
 
 - absolute paths and .. traversal are rejected;
 - reads do not follow links outside the Workspace;
-- writes reject symbolic-link/junction parent aliases;
-- transactional multi-file writes stage, commit, and attempt reverse rollback on commit failure;
-- write parents are revalidated around commit to narrow path-replacement races;
+- mutations reject symbolic-link/junction parent aliases and keep the same Workspace containment boundary;
+- ordinary write/delete/move/copy/mkdir calls mutate the working tree immediately and independently, so later failures do not undo earlier successful calls;
+- apply_patch and workspace_mutate provide explicit all-or-nothing mutation scope when required, with reverse rollback on failure;
+- mutation parents and targets are revalidated around commit to narrow path-replacement races;
 - the .junius control directory is reserved;
 - .git metadata is reserved from generic Workspace file tools;
 - configured Junius runtime/state and Browser profile paths are protected if they fall inside a Workspace;
@@ -357,7 +365,7 @@ Workspace inspection follows Codex-style directory scoping for AGENTS.md:
 - more deeply nested AGENTS.md files appear later in the instruction chain and take precedence for files in their narrower scope;
 - ls, read, rg, and workspace_batch automatically return applicable AGENTS.md content together with each file's scope and a SHA-256 digest;
 - recursive scans also discover nested AGENTS.md files inside the scanned subtree;
-- write and workspace_apply perform a mandatory AGENTS.md preflight. If applicable instructions exist and the caller has not supplied the current agents_digest, Junius rejects the mutation before changing files and returns the complete applicable instruction chain plus the digest;
+- every built-in mutation tool (write_file, apply_patch, delete_file, move_file, copy_file, mkdir, workspace_mutate) performs a mandatory AGENTS.md preflight. If applicable instructions exist and the caller has not supplied the current agents_digest, Junius rejects the mutation before changing files and returns the complete applicable instruction chain plus the digest;
 - if an applicable AGENTS.md changes, the old digest no longer authorizes the built-in file mutation;
 - oversized AGENTS.md instruction sets fail explicitly rather than being silently omitted.
 

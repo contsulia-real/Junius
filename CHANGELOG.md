@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Workspace editing now uses working-tree-style write/patch/delete/move/copy/mkdir tools; unified patches support delete and rename without a fixed file-count limit, while workspace_mutate provides explicit all-or-nothing batches when required.
+
 ## 0.0.7-alpha
 
 - Release validation now runs the Escape interrupt helper self-test with the Python interpreter provided by the CI environment when a project-local virtual environment is not present.

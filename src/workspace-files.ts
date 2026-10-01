@@ -15,12 +15,6 @@ import {
   type ReadResult,
 } from "./workspace-file-read.js";
 import {
-  MAX_WRITE_FILES,
-  transactionalWrite,
-  type WriteRequest,
-  type WriteResult,
-} from "./workspace-file-write.js";
-import {
   runRg,
   type RgMatch,
 } from "./workspace-rg.js";
@@ -30,6 +24,12 @@ import {
   assertAgentsDigest,
   type WorkspaceAgentInstructions,
 } from "./workspace-agents.js";
+import {
+  mutateWorkspace,
+  mutationPaths,
+  type WorkspaceMutation,
+  type WorkspaceMutationResult,
+} from "./workspace-mutation.js";
 
 export {
   WorkspaceFileError,
@@ -42,10 +42,9 @@ export {
   type ReadResult,
 } from "./workspace-file-read.js";
 export {
-  type WriteEdit,
-  type WriteRequest,
-  type WriteResult,
-} from "./workspace-file-write.js";
+  type WorkspaceMutation,
+  type WorkspaceMutationResult,
+} from "./workspace-mutation.js";
 
 export class WorkspaceFilesService {
   constructor(
@@ -119,36 +118,28 @@ export class WorkspaceFilesService {
     return Promise.all(files.map((file) => readTextFile(resolver, file)));
   }
 
-  async write(
+  async mutate(
     workspace: string,
-    files: readonly WriteRequest[],
+    mutations:
+      readonly WorkspaceMutation[],
     auditAction:
-      | "write"
-      | "workspace_apply"
-      | "workspace_patch" =
-      "write",
+      | "write_file"
+      | "apply_patch"
+      | "delete_file"
+      | "move_file"
+      | "copy_file"
+      | "mkdir"
+      | "workspace_mutate",
     agentsDigest?: string,
-  ): Promise<readonly WriteResult[]> {
-    const startedAt = performance.now();
+  ): Promise<
+    readonly WorkspaceMutationResult[]
+  > {
+    const startedAt =
+      performance.now();
     const requestedPaths =
-      files.map((file) => file.path);
-
-    if (files.length < 1 || files.length > MAX_WRITE_FILES) {
-      this.audit?.record({
-        category: "workspace",
-        action: auditAction,
-        status: "failed",
-        workspace,
-        summary: "invalid_path",
-        metadata: {
-          paths: requestedPaths,
-        },
-      });
-      throw new WorkspaceFileError(
-        "invalid_path",
-        `write accepts 1-${MAX_WRITE_FILES} files per call.`,
+      mutationPaths(
+        mutations,
       );
-    }
 
     try {
       const resolver =
@@ -168,9 +159,9 @@ export class WorkspaceFilesService {
       );
 
       const results =
-        await transactionalWrite(
+        await mutateWorkspace(
           resolver,
-          files,
+          mutations,
         );
 
       this.audit?.record({
@@ -179,29 +170,18 @@ export class WorkspaceFilesService {
         status: "succeeded",
         workspace,
         summary:
-          `${results.length} file(s) changed.`,
+          results.length +
+          " mutation(s) applied.",
         durationMs:
           performance.now() -
           startedAt,
         metadata: {
-          paths: results.map(
-            (result) =>
-              result.path +
-              (result.created
-                ? " [created]"
-                : " [edited]"),
-          ),
-          created:
-            results.filter(
+          paths:
+            requestedPaths,
+          operations:
+            results.map(
               (result) =>
-                result.created,
-            ).length,
-          bytes:
-            results.reduce(
-              (total, result) =>
-                total +
-                result.bytes,
-              0,
+                result.kind,
             ),
         },
       });
@@ -221,7 +201,8 @@ export class WorkspaceFilesService {
           performance.now() -
           startedAt,
         metadata: {
-          paths: requestedPaths,
+          paths:
+            requestedPaths,
         },
       });
       throw error;

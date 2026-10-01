@@ -1,8 +1,7 @@
-import type { WorkspaceFilesService, WorkspaceMutationResult } from "./workspace-files.js";
+import type { WorkspaceFilesService, WorkspaceMutation, WorkspaceMutationResult } from "./workspace-files.js";
 import { runWorkspaceReadBatch, type WorkspaceReadBatchOperation, type WorkspaceReadBatchResult } from "./workspace-batch.js";
-import { parseUnifiedPatch } from "./workspace-unified-patch.js";
 
-export interface WorkspacePatchResult {
+export interface WorkspaceMutateResult {
   readonly workspace: string;
   readonly mutations: readonly WorkspaceMutationResult[];
   readonly mutationDurationMs: number;
@@ -10,19 +9,19 @@ export interface WorkspacePatchResult {
   readonly durationMs: number;
 }
 
-export async function runWorkspacePatch(
+export async function runWorkspaceMutate(
   files: WorkspaceFilesService,
   workspace: string,
-  patch: string,
+  mutations: readonly WorkspaceMutation[],
   verify: readonly WorkspaceReadBatchOperation[] = [],
   agentsDigest?: string,
-): Promise<WorkspacePatchResult> {
+): Promise<WorkspaceMutateResult> {
   const startedAt = performance.now();
   const mutationStartedAt = performance.now();
-  const mutations = await files.mutate(
+  const results = await files.mutate(
     workspace,
-    parseUnifiedPatch(patch),
-    "apply_patch",
+    mutations,
+    "workspace_mutate",
     agentsDigest,
   );
   const mutationDurationMs = Math.round(performance.now() - mutationStartedAt);
@@ -31,7 +30,7 @@ export async function runWorkspacePatch(
     : await runWorkspaceReadBatch(files, workspace, verify);
   return {
     workspace,
-    mutations,
+    mutations: results,
     mutationDurationMs,
     ...(verification === undefined ? {} : { verification }),
     durationMs: Math.round(performance.now() - startedAt),

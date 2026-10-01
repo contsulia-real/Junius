@@ -136,16 +136,24 @@ delete_workspace unregisters the Workspace but never deletes the directory or an
 
     ls
     read
-    write
     rg
-    workspace_apply
     workspace_batch
+
+    write_file
+    apply_patch
+    delete_file
+    move_file
+    copy_file
+    mkdir
+    workspace_mutate
 
 All paths are Workspace-relative.
 
 These tools implement their own path checks and do not delegate user paths to a shell.
 
-Workspace inspection also loads directory-scoped AGENTS.md instructions. A file applies to its containing directory and descendants; deeper AGENTS.md files are ordered later and therefore represent the more specific instruction scope. Read-only scans return the applicable instruction chain and digest. Built-in write and workspace_apply calls require the current digest when instructions apply, so mutations cannot occur before the caller has received the current scoped instruction set.
+Workspace inspection also loads directory-scoped AGENTS.md instructions. A file applies to its containing directory and descendants; deeper AGENTS.md files are ordered later and therefore represent the more specific instruction scope. Read-only scans return the applicable instruction chain and digest. Every built-in Workspace mutation requires the current digest when instructions apply, so mutations cannot occur before the caller has received the current scoped instruction set.
+
+The default mutation model is a normal mutable working tree: write_file, delete_file, move_file, copy_file, and mkdir commit one operation at a time, and later failures do not rewind earlier successful calls. apply_patch is one explicit atomic unified-diff operation, while workspace_mutate is the optional all-or-nothing batch for operations that genuinely require shared rollback. Both reuse the same Workspace containment, protected-path, AGENTS.md, target-revalidation, and rollback machinery.
 
 ### Direct process execution
 

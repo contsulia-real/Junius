@@ -195,7 +195,9 @@ When AGENTS.md applies, it remains binding regardless of which Junius execution 
 
 Never use process execution to bypass AGENTS.md behavior.
 
-Remember that workspace_apply verification runs after its writes commit. If verification fails, inspect and correct the committed state explicitly.
+Treat the Workspace as a normal mutable working tree. Prefer incremental edits that remain visible between calls so you can inspect diffs, run tests, and revise the next change. Do not bundle unrelated or merely sequential edits into a transaction.
+
+apply_patch and workspace_mutate commit their mutation before optional verification runs. Verification failure does not automatically roll back a successful mutation; inspect and correct the working tree explicitly.
 
 ## Validate at the levels that matter
 
@@ -225,7 +227,9 @@ For visual changes, inspect the rendered result. Do not substitute type checks, 
 
 Reduce unnecessary MCP round trips when Junius already exposes a higher-level equivalent.
 
-- Use `workspace_patch` for coherent multi-file source edits when a unified diff is more compact and robust than repeating large exact `old_text` blocks. Keep `workspace_apply` for full-file writes and small exact-text replacements.
+- Use `apply_patch` as the normal source-editing primitive. It supports create, update, delete, and rename/move in standard unified diffs without relying on unique exact-text replacement.
+- Use `write_file`, `delete_file`, `move_file`, `copy_file`, and `mkdir` for direct working-tree operations. Each successful call stands on its own and should remain available to subsequent inspection and testing.
+- Use `workspace_mutate` only when several operations genuinely require one all-or-nothing transaction; do not use it merely to reduce round trips.
 - Use `run_commands` instead of repeated `run_command` calls for multiple short commands in the same Workspace. Use parallel mode when commands are independent and serial mode when order matters.
 - Use `git_snapshot` to collect branch/status, staged and unstaged summaries, and recent commits in one call instead of issuing those Git reads separately.
 - Use `git_prepare_commit` with explicit paths to stage and review the exact staged diff. Review the returned diff and tree token before committing.
