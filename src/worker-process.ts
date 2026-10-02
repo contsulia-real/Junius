@@ -161,6 +161,20 @@ async function waitForExit(
   });
 }
 
+function defaultWorkerExecArgv(
+  workerEntryPath: string,
+): readonly string[] {
+  const lower =
+    workerEntryPath.toLowerCase();
+
+  return (
+    lower.endsWith(".ts") ||
+    lower.endsWith(".tsx")
+  )
+    ? ["--import", "tsx"]
+    : [];
+}
+
 export async function spawnManagedWorker(
   options: SpawnWorkerOptions,
 ): Promise<ManagedWorker> {
@@ -183,7 +197,10 @@ export async function spawnManagedWorker(
       JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
     },
     execArgv: [
-      ...(options.execArgv ?? ["--import", "tsx"]),
+      ...(options.execArgv ??
+        defaultWorkerExecArgv(
+          options.workerEntryPath,
+        )),
     ],
     silent: true,
   });

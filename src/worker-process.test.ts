@@ -70,12 +70,16 @@ process.on("message", (message) => {
       publicMcpOrigin: "http://127.0.0.1:48787",
       
       startupTimeoutMs: 2_000,
-      execArgv: [],
     });
 
     try {
       assert.equal(worker.exited(), false);
       assert.equal(worker.pid > 0, true);
+      assert.equal(
+        worker.child.spawnargs.includes("tsx"),
+        false,
+        "plain JavaScript workers must not load tsx/esbuild",
+      );
     } finally {
       await worker.close();
     }

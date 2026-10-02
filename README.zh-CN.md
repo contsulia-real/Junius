@@ -52,9 +52,11 @@ GitHub Releases 是 Junius 的公开分发渠道。Bootstrap 脚本会：
 
 安装完成后，该 Windows 用户登录时 Junius 会自动启动。当前用户的 HKCU Run 启动项会调用隐藏的 PowerShell 启动脚本，并记录安装时使用的精确 Node 可执行文件；Junius 不再依赖 VBScript/WScript 启动。Desktop helper 则使用基于用户现有 Python 创建的已安装 `.venv`。
 
-Junius 提供内置更新功能。CLI 支持 `junius update --check` 比较当前包版本与最新已发布 GitHub Release，并通过 `junius update` 安装最新版本。已安装的 Junius 也会直接向 ChatGPT 提供 MCP 工具 `check_junius_update` 与 `update_junius`。源码测试连接不会暴露用于更新已安装副本的工具。
+Junius 提供内置更新功能。CLI 支持 `junius update --check` 比较当前包版本与最新已发布 GitHub Release，通过 `junius update` 安装最新版本，并可用 `junius restart` 重启已安装 Host、等待新 Host 恢复健康。已安装的 Junius 也会直接向 ChatGPT 提供 MCP 工具 `check_junius_update` 与 `update_junius`。源码测试连接不会暴露用于更新已安装副本的工具。
 
-更新器复用安装流程已有的 GitHub Release bootstrap 与 SHA-256 校验。CLI 在 Junius 外部执行更新时，会停止并重启已安装 Host，使新版本立即生效；通过 MCP 自更新时不会杀掉自己的活动工具调用，而是完成安装与验证后返回 `restartRequired: true`，随后需要重启 Junius 才能激活新版本。原来的一行 PowerShell 安装命令仍然可以继续作为原地更新方式。
+更新器复用安装流程已有的 GitHub Release bootstrap 与 SHA-256 校验。CLI 在 Junius 外部执行更新时，会停止并重启已安装 Host，使新版本立即生效；通过 MCP 自更新时不会杀掉自己的活动工具调用，而是完成安装与验证后返回 `restartRequired: true`，随后可在该活动 MCP 调用之外执行 `junius restart` 激活新版本。原来的一行 PowerShell 安装命令仍然可以继续作为原地更新方式。
+
+发布的 Release 现在包含预编译 JavaScript 运行时。已安装 Junius 的 Host 与 Agent Worker 直接由 Node 运行这些入口，不再通过 `tsx` 解释 TypeScript，因此常驻 Host/Worker 进程树不会再保留 `esbuild.exe` service 进程；源码开发仍可在需要实时执行 TypeScript 时使用 `tsx`。
 
 Host 只使用一个回环 HTTP 监听器：
 

@@ -9,19 +9,26 @@ let activeHost;
 function spawnHost(
   release,
 ) {
+  const args =
+    release.compiled === true
+      ? [release.hostPath]
+      : [
+          "--import",
+          "tsx",
+          release.hostPath,
+        ];
+
   return spawn(
     process.execPath,
-    [
-      "--import",
-      "tsx",
-      release.hostPath,
-    ],
+    args,
     {
       cwd: projectRoot,
       env: {
         ...process.env,
         JUNIUS_PROJECT_ROOT:
           projectRoot,
+        JUNIUS_WORKER_ENTRY_PATH:
+          release.workerPath,
         JUNIUS_RELEASE_ID:
           release.releaseId,
         JUNIUS_RELEASE_ROOT:

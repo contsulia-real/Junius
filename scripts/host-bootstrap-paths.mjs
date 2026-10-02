@@ -60,6 +60,15 @@ export const SOURCE_CONTROL_FILES = [
   "install-lock.json",
   "install.ps1",
   "tsconfig.json",
+  "tsconfig.runtime.json",
+  join(
+    "scripts",
+    "build-runtime.mjs",
+  ),
+  join(
+    "scripts",
+    "restart.mjs",
+  ),
   ...STABLE_BOOTSTRAP_FILES.map(
     (file) => join("scripts", file),
   ),

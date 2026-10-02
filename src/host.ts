@@ -86,6 +86,16 @@ let hostRestartRequired = false;
 let reloadTimer: NodeJS.Timeout | undefined;
 let closing = false;
 
+const configuredWorkerEntryPath =
+  process.env
+    .JUNIUS_WORKER_ENTRY_PATH
+    ?.trim();
+const releaseWorkerEntryPath =
+  configuredWorkerEntryPath &&
+  configuredWorkerEntryPath.length > 0
+    ? resolve(configuredWorkerEntryPath)
+    : undefined;
+
 const supervisor = new WorkerSupervisor({
   cwd,
   publicMcpOrigin,
@@ -93,10 +103,17 @@ const supervisor = new WorkerSupervisor({
     process.env.JUNIUS_WORKER_ROLLBACK_MS,
     60_000,
   ),
-  initialWorkerEntryPath: fileURLToPath(
-    new URL("./worker-entry.ts", import.meta.url),
-  ),
-  workerEntryPath: resolve(cwd, "src", "worker-entry.ts"),
+  initialWorkerEntryPath:
+    releaseWorkerEntryPath ??
+    fileURLToPath(
+      new URL(
+        "./worker-entry.ts",
+        import.meta.url,
+      ),
+    ),
+  workerEntryPath:
+    releaseWorkerEntryPath ??
+    resolve(cwd, "src", "worker-entry.ts"),
   canPromote: () => !hostRestartRequired,
   onWorkerExit: (workerId) => {
     jobHistory.recoverInterruptedSync(

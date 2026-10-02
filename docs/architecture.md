@@ -56,6 +56,10 @@ Installation performs:
 
 The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user PowerShell startup script. The installer itself starts the freshly installed Host directly with that same Node executable and launcher path, rather than routing the immediate health-checked start back through the logon wrapper. No Windows service or administrator elevation is required.
 
+Release construction emits a `runtime/` tree of plain JavaScript plus the non-JavaScript runtime assets required by the Host and Agent Worker. The validated bootstrap snapshots and starts `runtime/src/host.js` and `runtime/src/worker-entry.js` when that compiled runtime is present; source-tree development falls back to the TypeScript entries. As a result, installed Release Host/Worker processes do not load `tsx` or keep its `esbuild.exe` services resident, while contributor source-test execution keeps the existing live-TypeScript path.
+
+The installed CLI also exposes `junius restart`. It reuses the installed Host stop/start helpers, stops the existing Host process tree when present, launches the installed Host launcher, and waits for the replacement Host health check before returning.
+
 The installed Browser adapter prefers the app-local @playwright/cli package before PATH. The Desktop adapter uses the app-local .venv, whose base interpreter comes from the user's existing Python installation.
 
 Repository development can still use pnpm, but an installed user does not need pnpm on PATH. npm is used only inside the verified release package to install the locked JavaScript dependency tree; Junius itself is not distributed through the npm registry.

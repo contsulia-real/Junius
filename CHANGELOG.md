@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Published Releases now carry a precompiled JavaScript Host/Worker runtime so installed Junius no longer keeps tsx/esbuild services resident.
+- Added `junius restart` to restart the installed Host and wait for the replacement Host to become healthy.
+
 ## 0.0.9-alpha
 
 - Added standard global and Workspace Agent Skill discovery, on-demand reading, local/archive/HTTP(S)/GitHub installation, whole-skill replacement, and explicit-scope removal with Workspace-over-global precedence.

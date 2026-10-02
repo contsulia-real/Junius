@@ -7,6 +7,9 @@ import {
   updateJunius,
 } from "../scripts/update.mjs";
 import {
+  restartJunius,
+} from "../scripts/restart.mjs";
+import {
   assertWindowsPlatform,
 } from "../scripts/windows-only.mjs";
 
@@ -21,6 +24,7 @@ function usage() {
       "  junius install",
       "  junius update",
       "  junius update --check",
+      "  junius restart",
       "",
       "One-command install:",
       "  irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex",
@@ -143,6 +147,42 @@ if (
       .catch((error) => {
         console.error(
           "Junius update failed: " +
+            (
+              error instanceof
+              Error
+                ? error.message
+                : String(error)
+            ),
+        );
+        process.exitCode = 1;
+      });
+  }
+} else if (
+  command === "restart"
+) {
+  if (
+    process.argv[3] !==
+    undefined
+  ) {
+    console.error(
+      "Usage: junius restart",
+    );
+    process.exitCode = 1;
+  } else {
+    console.log(
+      "Restarting Junius...",
+    );
+    restartJunius()
+      .then((result) => {
+        console.log(
+          "Junius is healthy on PID " +
+            result.pid +
+            ".",
+        );
+      })
+      .catch((error) => {
+        console.error(
+          "Junius restart failed: " +
             (
               error instanceof
               Error

@@ -77,6 +77,7 @@ const COPY_DIRECTORIES = [
   "python",
   "scripts",
   "src",
+  "runtime",
 ];
 
 const COPY_FILES = [
@@ -90,6 +91,7 @@ const COPY_FILES = [
   "install-lock.json",
   "requirements-desktop.txt",
   "tsconfig.json",
+  "tsconfig.runtime.json",
 ];
 
 export async function migrateLegacyPromptOverrides(

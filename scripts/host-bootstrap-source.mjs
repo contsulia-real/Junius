@@ -95,6 +95,7 @@ export async function fingerprintSource(
       "src",
       "python",
       "prompts",
+      "runtime",
     ]
   ) {
     if (
@@ -175,6 +176,7 @@ export async function copySnapshot(
       "src",
       "python",
       "prompts",
+      "runtime",
     ]
   ) {
     const sourceRoot =

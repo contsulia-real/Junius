@@ -31,6 +31,74 @@ import {
   fingerprintSource,
 } from "./host-bootstrap-source.mjs";
 
+async function releaseRuntime(
+  releaseRoot,
+) {
+  const compiledHostPath =
+    join(
+      releaseRoot,
+      "runtime",
+      "src",
+      "host.js",
+    );
+  const compiledWorkerPath =
+    join(
+      releaseRoot,
+      "runtime",
+      "src",
+      "worker-entry.js",
+    );
+
+  if (
+    await exists(
+      compiledHostPath,
+    ) &&
+    await exists(
+      compiledWorkerPath,
+    )
+  ) {
+    return {
+      hostPath:
+        compiledHostPath,
+      workerPath:
+        compiledWorkerPath,
+      compiled: true,
+    };
+  }
+
+  const sourceHostPath =
+    join(
+      releaseRoot,
+      "src",
+      "host.ts",
+    );
+  const sourceWorkerPath =
+    join(
+      releaseRoot,
+      "src",
+      "worker-entry.ts",
+    );
+
+  if (
+    await exists(
+      sourceHostPath,
+    ) &&
+    await exists(
+      sourceWorkerPath,
+    )
+  ) {
+    return {
+      hostPath:
+        sourceHostPath,
+      workerPath:
+        sourceWorkerPath,
+      compiled: false,
+    };
+  }
+
+  return undefined;
+}
+
 export async function readCurrentRelease() {
   try {
     const parsed =
@@ -58,17 +126,13 @@ export async function readCurrentRelease() {
         releasesRoot,
         parsed.releaseId,
       );
-    const hostPath =
-      join(
+    const runtime =
+      await releaseRuntime(
         releaseRoot,
-        "src",
-        "host.ts",
       );
 
     if (
-      !await exists(
-        hostPath,
-      )
+      runtime === undefined
     ) {
       return undefined;
     }
@@ -85,7 +149,7 @@ export async function readCurrentRelease() {
           ? parsed.createdAt
           : undefined,
       releaseRoot,
-      hostPath,
+      ...runtime,
     };
   } catch {
     return undefined;
@@ -466,6 +530,18 @@ export async function prepareValidatedRelease(
         releaseRoot,
       );
 
+      const runtime =
+        await releaseRuntime(
+          releaseRoot,
+        );
+      if (
+        runtime === undefined
+      ) {
+        throw new Error(
+          "validated_release_runtime_missing",
+        );
+      }
+
       return {
         ok: true,
         release: {
@@ -474,12 +550,7 @@ export async function prepareValidatedRelease(
             fingerprintBefore,
           createdAt,
           releaseRoot,
-          hostPath:
-            join(
-              releaseRoot,
-              "src",
-              "host.ts",
-            ),
+          ...runtime,
         },
         check,
       };

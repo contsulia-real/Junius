@@ -21,8 +21,15 @@ export {
 } from "./playwright-cli-broker-protocol.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const BROKER_SOURCE_EXTENSION =
+  import.meta.url.endsWith(".js")
+    ? ".js"
+    : ".ts";
 const DEFAULT_BROKER_PATH = fileURLToPath(
-  new URL("./playwright-cli-broker.ts", import.meta.url),
+  new URL(
+    `./playwright-cli-broker${BROKER_SOURCE_EXTENSION}`,
+    import.meta.url,
+  ),
 );
 
 interface Pending {

@@ -20,6 +20,9 @@ import {
 import {
   fileURLToPath,
 } from "node:url";
+import {
+  buildRuntime,
+} from "./build-runtime.mjs";
 
 const SCRIPT_PATH =
   fileURLToPath(
@@ -224,6 +227,15 @@ export function validatePackedFiles(
       "scripts/host-bootstrap-check.mjs",
       "scripts/host-bootstrap-releases.mjs",
       "scripts/host-bootstrap-host.mjs",
+      "scripts/build-runtime.mjs",
+      "scripts/restart.mjs",
+      "runtime/src/host.js",
+      "runtime/src/worker-entry.js",
+      "runtime/src/job-bootstrap.mjs",
+      "runtime/src/windows-job-guardian.ps1",
+      "runtime/scripts/update.mjs",
+      "runtime/scripts/windows-only.mjs",
+      "runtime/package.json",
       "src/mcp-server.ts",
       "python/desktop_helper.py",
       "python/desktop_helper_common.py",
@@ -403,6 +415,17 @@ export async function buildRelease(
     installLock,
   );
 
+  const runtimeRoot =
+    join(
+      PROJECT_ROOT,
+      "runtime",
+    );
+  await buildRuntime({
+    outputRoot:
+      runtimeRoot,
+  });
+
+  try {
   await rm(
     distRoot,
     {
@@ -549,6 +572,15 @@ export async function buildRelease(
       ],
     }),
   );
+  } finally {
+    await rm(
+      runtimeRoot,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
 }
 
 const invokedPath =

@@ -52,9 +52,11 @@ No administrator elevation is required for the normal per-user installation path
 
 After installation, Junius starts automatically when that Windows user signs in. The per-user HKCU Run entry launches a hidden PowerShell startup script that records the exact Node executable used for installation; Junius no longer depends on VBScript/WScript for startup. The Desktop helper uses the installed .venv created from the user's existing Python.
 
-Junius has a first-class updater. The CLI supports `junius update --check` to compare the current package version with the newest published GitHub Release and `junius update` to install it. Installed Junius exposes the same capability directly to ChatGPT through the MCP tools `check_junius_update` and `update_junius`. The source-tree test connection does not expose installed-copy update tools.
+Junius has a first-class updater. The CLI supports `junius update --check` to compare the current package version with the newest published GitHub Release, `junius update` to install it, and `junius restart` to restart the installed Host and wait for the replacement Host to become healthy. Installed Junius exposes update checking and installation directly to ChatGPT through the MCP tools `check_junius_update` and `update_junius`. The source-tree test connection does not expose installed-copy update tools.
 
-The updater reuses the same GitHub Release bootstrap and SHA-256 verification as installation. A CLI update running outside Junius stops and restarts the installed Host so the new version becomes active immediately. An MCP self-update never kills its own active tool call; it installs and validates the new version, returns `restartRequired: true`, and requires Junius to be restarted afterward. Re-running the original PowerShell install command remains a valid in-place update path.
+The updater reuses the same GitHub Release bootstrap and SHA-256 verification as installation. A CLI update running outside Junius stops and restarts the installed Host so the new version becomes active immediately. An MCP self-update never kills its own active tool call; it installs and validates the new version, returns `restartRequired: true`, and can then be activated with `junius restart` from outside that active MCP call. Re-running the original PowerShell install command remains a valid in-place update path.
+
+Published Releases include a precompiled JavaScript runtime for the Host and Agent Worker. Installed Junius runs those entries directly with Node instead of loading TypeScript through `tsx`, so the steady Host/Worker tree does not keep `esbuild.exe` service processes alive. Source-tree development still uses `tsx` where live TypeScript execution is useful.
 
 The Host uses one loopback HTTP listener:
 

@@ -130,7 +130,9 @@ export class WorkerSupervisor {
       options.workerEntryPath ??
       fileURLToPath(
         new URL(
-          "./worker-entry.ts",
+          import.meta.url.endsWith(".js")
+            ? "./worker-entry.js"
+            : "./worker-entry.ts",
           import.meta.url,
         ),
       );
