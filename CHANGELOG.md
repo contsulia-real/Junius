@@ -5,6 +5,7 @@
 ## 0.0.9-alpha
 
 - Added standard global and Workspace Agent Skill discovery, on-demand reading, local/archive/HTTP(S)/GitHub installation, whole-skill replacement, and explicit-scope removal with Workspace-over-global precedence.
+- Skill file reads canonicalize junctioned Windows paths before containment checks, preserving escape protection while supporting canonicalized CI and Workspace roots.
 
 ## 0.0.8-alpha
 

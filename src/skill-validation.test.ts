@@ -3,6 +3,7 @@ import {
   mkdtemp,
   mkdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,6 +14,7 @@ import {
 } from "./skill-errors.js";
 import {
   assertSkillTreeSafe,
+  readSkillTextFile,
 } from "./skill-files.js";
 import {
   parseSkillManifest,
@@ -193,6 +195,61 @@ test("one installed Agent Skill tree cannot contain a nested second SKILL.md", a
       (error: unknown) =>
         error instanceof SkillError &&
         error.code === "invalid_skill",
+    );
+  } finally {
+    await rm(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+});
+
+
+test("skill reads canonicalize a junctioned skill root before containment checks", async () => {
+  const root = await mkdtemp(
+    join(
+      tmpdir(),
+      "junius-skill-junction-",
+    ),
+  );
+
+  try {
+    const realParent =
+      join(root, "real");
+    const realSkill =
+      join(realParent, "junction-skill");
+    const aliasParent =
+      join(root, "alias");
+
+    await mkdir(
+      realSkill,
+      { recursive: true },
+    );
+    await writeFile(
+      join(realSkill, "SKILL.md"),
+      skillText(
+        "junction-skill",
+        "Read through a junctioned parent.",
+      ),
+      "utf8",
+    );
+    await symlink(
+      realParent,
+      aliasParent,
+      "junction",
+    );
+
+    const content =
+      await readSkillTextFile(
+        join(aliasParent, "junction-skill"),
+        "SKILL.md",
+      );
+    assert.match(
+      content,
+      /junction-skill/u,
     );
   } finally {
     await rm(

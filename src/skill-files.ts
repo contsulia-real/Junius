@@ -517,18 +517,6 @@ export async function readSkillTextFile(
       requested,
     );
 
-  if (
-    !pathInside(
-      canonicalRoot,
-      target,
-    )
-  ) {
-    throw new SkillError(
-      "path_outside_skill",
-      requested,
-    );
-  }
-
   let canonicalTarget:
     string;
   try {
