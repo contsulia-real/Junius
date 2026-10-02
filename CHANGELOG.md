@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+
+## 0.0.9-alpha
+
 - Added standard global and Workspace Agent Skill discovery, on-demand reading, local/archive/HTTP(S)/GitHub installation, whole-skill replacement, and explicit-scope removal with Workspace-over-global precedence.
 
 ## 0.0.8-alpha
