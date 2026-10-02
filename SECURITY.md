@@ -45,6 +45,14 @@ When scoped AGENTS.md files apply, built-in mutations also require a digest ackn
 
 Those checks apply only to the built-in file tools. They are not a sandbox for processes launched through command or Job execution.
 
+### Local Agent Skills
+
+`list_skills` and `read_skill` discover standard Agent Skills from `%USERPROFILE%\.agents\skills` and registered Workspace `.agents\skills` directories. Workspace skills override same-name global skills for effective resolution but do not modify the global copy.
+
+`install_skill` can write outside a Workspace when the user explicitly selects global scope. It may also fetch HTTP(S) or GitHub sources, so it is an open-world network operation. Downloaded archives are size-bounded, checked for traversal paths before extraction, validated as skill trees, staged, and then moved into the selected skill root. Installing a skill does not execute scripts contained by the skill.
+
+Workspace-scoped skill installation and removal require the applicable AGENTS.md digest before mutation. Global skill operations use the dedicated `%USERPROFILE%\.agents\skills` boundary rather than weakening Workspace file containment.
+
 ### Network surfaces
 
 The Host uses one HTTP listener bound to loopback. It serves the MCP endpoint and local /__junius/* diagnostics on the same port.
