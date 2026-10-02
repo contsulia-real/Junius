@@ -185,17 +185,23 @@ export async function spawnManagedWorker(
   let stderr = "";
   let exited = false;
 
+  const workerEnvironment: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...options.environment,
+    JUNIUS_WORKER_ID: id,
+    JUNIUS_WORKER_TOKEN: internalToken,
+    JUNIUS_HOST_PID: String(process.pid),
+    JUNIUS_PROJECT_ROOT: options.cwd,
+    JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
+  };
+  const developmentMode =
+    workerEnvironment
+      .JUNIUS_INSTANCE_ROLE ===
+    "development";
+
   const child = fork(options.workerEntryPath, [], {
     cwd: options.cwd,
-    env: {
-      ...process.env,
-      ...options.environment,
-      JUNIUS_WORKER_ID: id,
-      JUNIUS_WORKER_TOKEN: internalToken,
-      JUNIUS_HOST_PID: String(process.pid),
-      JUNIUS_PROJECT_ROOT: options.cwd,
-      JUNIUS_PUBLIC_MCP_ORIGIN: options.publicMcpOrigin,
-    },
+    env: workerEnvironment,
     execArgv: [
       ...(options.execArgv ??
         defaultWorkerExecArgv(
@@ -203,6 +209,8 @@ export async function spawnManagedWorker(
         )),
     ],
     silent: true,
+    windowsHide:
+      !developmentMode,
   });
 
   child.stdout?.on("data", (chunk: Buffer | string) => {

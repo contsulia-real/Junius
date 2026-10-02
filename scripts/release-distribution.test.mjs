@@ -815,9 +815,37 @@ test(
       compiledStartup.stderr +
         compiledStartup.stdout,
     );
-    assert.match(
-      compiledStartup.stderr,
-      /promoted validated release/u,
+    const compiledRuntimeRoot =
+      join(
+        tempRoot,
+        "compiled-runtime-state",
+      );
+    const compiledCurrent =
+      JSON.parse(
+        await readFile(
+          join(
+            compiledRuntimeRoot,
+            "current.json",
+          ),
+          "utf8",
+        ),
+      );
+    assert.equal(
+      typeof compiledCurrent.releaseId,
+      "string",
+    );
+    assert.equal(
+      await exists(
+        join(
+          compiledRuntimeRoot,
+          "releases",
+          compiledCurrent.releaseId,
+          "runtime",
+          "src",
+          "host.js",
+        ),
+      ),
+      true,
     );
 
     const packageData =

@@ -164,6 +164,41 @@ export async function copyApplication(
     { recursive: true },
   );
 
+  const compiledRelease =
+    await isFile(
+      join(
+        packageRoot,
+        "runtime",
+        "src",
+        "host.js",
+      ),
+    );
+  const legacySourceInstall =
+    await isFile(
+      join(
+        appRoot,
+        "src",
+        "host.ts",
+      ),
+    );
+
+  if (
+    compiledRelease &&
+    legacySourceInstall
+  ) {
+    await rm(
+      join(
+        appRoot,
+        ".junius",
+        "runtime",
+      ),
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+
   for (
     const stalePath of
     STALE_SOURCE_PATHS

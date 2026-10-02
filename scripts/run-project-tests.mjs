@@ -23,6 +23,39 @@ const PROJECT_ROOT =
     "..",
   );
 
+const INHERITED_JUNIUS_INSTANCE_VARIABLES =
+  new Set(
+    [
+      "JUNIUS_HOST_PID",
+      "JUNIUS_INSTANCE_ROLE",
+      "JUNIUS_MCP_PORT",
+      "JUNIUS_PROJECT_ROOT",
+      "JUNIUS_PUBLIC_MCP_ORIGIN",
+      "JUNIUS_RELEASE_ID",
+      "JUNIUS_RELEASE_ROOT",
+      "JUNIUS_RUNTIME_ROOT",
+      "JUNIUS_WORKER_ENTRY_PATH",
+      "JUNIUS_WORKER_ID",
+      "JUNIUS_WORKER_TOKEN",
+    ],
+  );
+
+function projectTestEnvironment(
+  environment,
+) {
+  return Object.fromEntries(
+    Object.entries(
+      environment,
+    ).filter(
+      ([name]) =>
+        !INHERITED_JUNIUS_INSTANCE_VARIABLES
+          .has(
+            name.toUpperCase(),
+          ),
+    ),
+  );
+}
+
 async function collectTests(
   directory,
 ) {
@@ -85,7 +118,9 @@ function run(
           cwd:
             PROJECT_ROOT,
           env:
-            process.env,
+            projectTestEnvironment(
+              process.env,
+            ),
           shell: false,
           windowsHide: true,
           stdio:

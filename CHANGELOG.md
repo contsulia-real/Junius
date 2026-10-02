@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.0.11-alpha
+
+- Installed Junius now keeps the launcher, bootstrap, Host, and Worker process chain consoleless in normal operation while preserving foreground output for the source-test instance.
+- Compiled-release upgrades now invalidate incompatible legacy source-runtime bootstrap state while preserving compatible compiled last-known-good runtime state.
+
 ## 0.0.10-alpha
 
 - GitHub Releases now package the compiled JavaScript application directly: installed Junius no longer ships TypeScript sources, source tests, tsx/TypeScript development dependencies, or source-build configuration, and Host/Worker no longer keep esbuild services resident.

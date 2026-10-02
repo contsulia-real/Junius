@@ -47,13 +47,15 @@ const childEnvironment = {
   ...process.env,
   JUNIUS_PROJECT_ROOT:
     projectRoot,
+  JUNIUS_INSTANCE_ROLE:
+    developmentMode
+      ? "development"
+      : "installed",
   ...(
     developmentMode
       ? {
           JUNIUS_MCP_PORT:
             "18787",
-          JUNIUS_INSTANCE_ROLE:
-            "development",
         }
       : {}
   ),
@@ -97,8 +99,12 @@ async function main() {
       cwd: projectRoot,
       env:
         childEnvironment,
-      stdio: "inherit",
-      windowsHide: false,
+      stdio:
+        developmentMode
+          ? "inherit"
+          : "ignore",
+      windowsHide:
+        !developmentMode,
     },
   );
 

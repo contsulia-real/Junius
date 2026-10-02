@@ -253,6 +253,178 @@ test(
 );
 
 test(
+  "compiled release upgrade invalidates legacy source bootstrap runtime",
+  async () => {
+    const root =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "junius-compiled-upgrade-",
+        ),
+      );
+    const packageRoot =
+      join(root, "package");
+    const appRoot =
+      join(root, "app");
+    const legacyRuntime =
+      join(
+        appRoot,
+        ".junius",
+        "runtime",
+      );
+
+    try {
+      await mkdir(
+        join(
+          packageRoot,
+          "runtime",
+          "src",
+        ),
+        { recursive: true },
+      );
+      await writeFile(
+        join(
+          packageRoot,
+          "runtime",
+          "src",
+          "host.js",
+        ),
+        "export {};\n",
+        "utf8",
+      );
+      await mkdir(
+        join(appRoot, "src"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(
+          appRoot,
+          "src",
+          "host.ts",
+        ),
+        "export {};\n",
+        "utf8",
+      );
+      await mkdir(
+        legacyRuntime,
+        { recursive: true },
+      );
+      await writeFile(
+        join(
+          legacyRuntime,
+          "legacy-marker.txt",
+        ),
+        "legacy\n",
+        "utf8",
+      );
+
+      await copyApplication(
+        packageRoot,
+        appRoot,
+      );
+
+      await assert.rejects(
+        readFile(
+          join(
+            legacyRuntime,
+            "legacy-marker.txt",
+          ),
+          "utf8",
+        ),
+        /ENOENT/u,
+      );
+    } finally {
+      await rm(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  },
+);
+
+test(
+  "compiled release upgrade preserves compatible compiled bootstrap runtime",
+  async () => {
+    const root =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "junius-compiled-runtime-preserve-",
+        ),
+      );
+    const packageRoot =
+      join(root, "package");
+    const appRoot =
+      join(root, "app");
+    const runtimeMarker =
+      join(
+        appRoot,
+        ".junius",
+        "runtime",
+        "current.json",
+      );
+
+    try {
+      await mkdir(
+        join(
+          packageRoot,
+          "runtime",
+          "src",
+        ),
+        { recursive: true },
+      );
+      await writeFile(
+        join(
+          packageRoot,
+          "runtime",
+          "src",
+          "host.js",
+        ),
+        "export {};\n",
+        "utf8",
+      );
+      await mkdir(
+        join(
+          appRoot,
+          ".junius",
+          "runtime",
+        ),
+        { recursive: true },
+      );
+      await writeFile(
+        runtimeMarker,
+        "{\"version\":1}\n",
+        "utf8",
+      );
+
+      await copyApplication(
+        packageRoot,
+        appRoot,
+      );
+
+      assert.equal(
+        await readFile(
+          runtimeMarker,
+          "utf8",
+        ),
+        "{\"version\":1}\n",
+      );
+    } finally {
+      await rm(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+    }
+  },
+);
+
+test(
   "installer materializes the published install lock as npm shrinkwrap",
   async () => {
     const root =

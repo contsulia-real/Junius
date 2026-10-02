@@ -6,6 +6,11 @@ import {
 
 let activeHost;
 
+const developmentMode =
+  process.env
+    .JUNIUS_INSTANCE_ROLE ===
+  "development";
+
 function spawnHost(
   release,
 ) {
@@ -34,8 +39,12 @@ function spawnHost(
         JUNIUS_RELEASE_ROOT:
           release.releaseRoot,
       },
-      stdio: "inherit",
-      windowsHide: false,
+      stdio:
+        developmentMode
+          ? "inherit"
+          : "ignore",
+      windowsHide:
+        !developmentMode,
     },
   );
 }
