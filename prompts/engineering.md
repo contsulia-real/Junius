@@ -32,6 +32,19 @@ Do not invent those decisions.
 
 Local implementation details that do not change those decisions should normally be resolved from repository evidence, existing conventions, and the narrowest coherent implementation rather than pushed back to the user as unnecessary questions.
 
+## Design from the user action outward
+
+For Junius product work, begin with the complete action the user expects to perform from Chat.
+
+- Start from natural user requests and their completed observable results, not from the MCP schema or internal helper boundaries.
+- Define the deterministic execution chain required to complete each request before choosing MCP and internal implementation boundaries.
+- Treat deterministic download, staging, validation, transformation, installation, cleanup, and similar mechanics as execution work Junius can own when the user has already chosen the action.
+- Interpret `execution service, not policy engine` as a limit on Junius making decisions for the user, not as a requirement to expose only low-level primitives.
+- Do not let an external protocol, SDK, or similarly named platform feature drive the product abstraction. Establish the Junius behavior first; reuse external mechanisms only when they serve that behavior.
+- Before deferring a capability, determine whether it is genuinely separate future functionality or a normal input form, source, destination, or completion path of the feature already requested.
+- Treat common natural Chat inputs such as local paths and remote URLs as part of the same action when users would reasonably expect both.
+- Ask only when a real product decision remains unresolved; do not make the user recover obvious missing product paths through repeated correction.
+
 ## Inspect the real implementation path first
 
 Before changing behavior, understand:

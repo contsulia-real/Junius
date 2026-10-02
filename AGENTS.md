@@ -14,6 +14,19 @@ Scope: this entire repository.
 - Reuse existing execution paths, stores, helpers, and sources of truth before creating new ones. Do not maintain parallel implementations of the same behavior.
 - Do not add compatibility layers without a concrete compatibility target.
 
+## Product reasoning discipline
+
+- Start from the complete user-facing action in Chat, not from the MCP schema, internal module boundaries, or the smallest API that is convenient to implement.
+- Before designing a feature, write down the natural things a user would say to accomplish it and treat those as the primary behavioral contract.
+- Junius is an execution service, not a primitive-only service. When the user has already chosen an action, deterministic mechanical steps needed to complete that action should normally be encapsulated by Junius instead of being pushed back onto ChatGPT as multi-call orchestration.
+- The `execution service, not policy engine` rule limits Junius from making policy or product decisions for the user; it does not forbid high-level execution operations.
+- Do not let an external protocol, SDK abstraction, or similarly named platform feature redefine the Junius product model. Establish the Junius user need first, then use external mechanisms only when they serve that need.
+- Do not narrow a requested feature merely to minimize a first implementation. Before deferring something, distinguish an actually separate future feature from a normal input form, source, destination, or completion path of the requested user action.
+- Common ways a user naturally supplies input in Chat, including local paths and remote URLs when relevant to the requested action, are part of the action unless the user explicitly excludes them or a real platform constraint prevents support.
+- Avoid exposing deterministic plumbing as separate user-facing steps when one coherent Junius operation can own download, staging, validation, transformation, installation, cleanup, or similar mechanics.
+- Ask the user only when a choice materially changes product behavior or intent. Do not force the user to enumerate obvious completion paths one at a time.
+- When proposing scope, evaluate it from `user intent -> complete observable result -> deterministic execution chain -> internal implementation`, in that order.
+
 ## Release notes
 
 - Starting with the next new Release after this rule was introduced, every Release must be documented in `CHANGELOG.md`.
