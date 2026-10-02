@@ -150,6 +150,10 @@ Junius 自己的支持基线从 ChatGPT Plus 开始。实际用于 Junius 的账
     copy_file(workspace, source, destination)
     mkdir(workspace, path)
     workspace_mutate(workspace, operations, verify)
+    list_skills(workspace?)
+    read_skill(name, workspace?, scope?, path?)
+    install_skill(source, scope, workspace?, subpath?, replace?)
+    remove_skill(name, scope, workspace?)
 
     run_command(workspace, executable, args)
 
@@ -164,6 +168,16 @@ Junius 自己的支持基线从 ChatGPT Plus 开始。实际用于 Junius 的账
     desktop(session, command, ...)
 
 Junius 没有管理 Web 界面。Workspace 的创建、删除与检查，命令执行、Job、浏览器控制和桌面控制，都设计为直接通过 ChatGPT 对话驱动。
+
+## 本地 Agent Skills
+
+Junius 会发现 `%USERPROFILE%\.agents\skills` 中的全局 Agent Skill，以及在选择 Workspace 时发现 `<workspace>\.agents\skills` 中的 Workspace Skill。同名时，Workspace Skill 在该 Workspace 中覆盖全局 Skill，但不会删除或修改全局副本。
+
+`list_skills` 只返回发现所需的元数据，不会一次性加载所有 `SKILL.md`；`read_skill` 可以读取实际生效的 Skill、显式指定 scope 的 Skill，以及该 Skill 目录内的 UTF-8 supporting files。
+
+`install_skill` 接受本地目录/压缩包、HTTP(S) 压缩包、GitHub 仓库 URL 或 GitHub tree/blob URL，并由 Junius 一次完成下载、解包、校验、staging、`replace=true` 时的完整目录替换和清理。`remove_skill` 始终要求显式 scope。Workspace scope 的安装/删除继续参与与 Workspace mutation 相同的 AGENTS.md 确认流程。
+
+Skill script 不会得到另一套 Junius runtime。加载 Skill 后，如果工作流要求运行脚本，继续使用现有 command/Job 执行表面。
 
 ## 注入式运行契约
 

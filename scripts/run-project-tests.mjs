@@ -155,6 +155,7 @@ await run(
       "cli.mjs",
     ),
     "--test",
+    "--test-concurrency=4",
     ...tests,
   ],
 );

@@ -94,7 +94,7 @@ The stable user-facing surface is MCP.
 
 There is no management Web UI.
 
-The public tools are grouped into seven areas.
+The public tools are grouped into eight areas.
 
 ### Operating contracts
 
@@ -131,6 +131,21 @@ The root has two uses:
 Workspace registration is persistent.
 
 delete_workspace unregisters the Workspace but never deletes the directory or any file inside it.
+
+### Local Agent Skills
+
+    list_skills(workspace?)
+    read_skill(name, workspace?, scope?, path?)
+    install_skill(source, scope, workspace?, subpath?, replace?)
+    remove_skill(name, scope, workspace?)
+
+Skills remain ordinary Agent Skill directories rather than Junius-owned objects. Global skills live under `%USERPROFILE%\.agents\skills`; Workspace skills live under `<workspace>\.agents\skills`. A Workspace skill with the same manifest name is effective for that Workspace while the global copy remains intact.
+
+Discovery reads only the `SKILL.md` manifest metadata needed to choose a skill. Full `SKILL.md` content and supporting UTF-8 files are read on demand. Skill-contained scripts and assets remain ordinary local files; there is no second execution runtime.
+
+`install_skill` materializes one complete skill from a local directory/archive, an HTTP(S) archive, or a GitHub repository/tree/blob URL. Remote download, archive extraction, candidate selection, Agent Skills manifest/tree validation, staging, replacement, rollback, and cleanup are one execution operation. Installed skills require the standard lowercase hyphenated name, bounded non-empty description, non-empty instruction body, and a single root `SKILL.md`. If a source contains multiple skills and no subpath selects one, Junius returns the candidates instead of guessing.
+
+Workspace scope takes precedence over global scope by name. Workspace install/remove operations run an AGENTS.md preflight for the target `.agents/skills/<name>/SKILL.md` path. Skill storage has its own containment checks; supporting-file reads cannot escape the selected skill root.
 
 ### Workspace file operations
 

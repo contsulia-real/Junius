@@ -149,6 +149,10 @@ Junius's own supported baseline starts at ChatGPT Plus. In practice, the account
     copy_file(workspace, source, destination)
     mkdir(workspace, path)
     workspace_mutate(workspace, operations, verify)
+    list_skills(workspace?)
+    read_skill(name, workspace?, scope?, path?)
+    install_skill(source, scope, workspace?, subpath?, replace?)
+    remove_skill(name, scope, workspace?)
 
     run_command(workspace, executable, args)
 
@@ -163,6 +167,16 @@ Junius's own supported baseline starts at ChatGPT Plus. In practice, the account
     desktop(session, command, ...)
 
 There is no management Web UI. Workspace creation, removal, inspection, command execution, Jobs, Browser control, and Desktop control are intended to be driven through ChatGPT conversation.
+
+## Local Agent Skills
+
+Junius discovers standard Agent Skills from `%USERPROFILE%\.agents\skills` and, when a Workspace is selected, `<workspace>\.agents\skills`. A Workspace skill overrides a same-name global skill for that Workspace without deleting or mutating the global copy.
+
+`list_skills` returns discovery metadata without eagerly loading every `SKILL.md`; `read_skill` loads the effective skill or an explicitly selected scope and can read UTF-8 supporting files inside that skill directory.
+
+`install_skill` accepts a local directory/archive, an HTTP(S) archive, a GitHub repository URL, or a GitHub tree/blob URL. It owns download, extraction, validation, staging, complete-directory replacement when `replace=true`, and cleanup. `remove_skill` always uses an explicit scope. Workspace-scoped install/remove operations participate in the same AGENTS.md acknowledgement flow as Workspace mutations.
+
+Skill scripts do not get a separate Junius runtime. After a skill is loaded, use the existing command/Job surfaces to run scripts when the skill workflow calls for them.
 
 ## Injected operating contracts
 

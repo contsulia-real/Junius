@@ -460,6 +460,10 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
           root,
           "local-app-data",
         ),
+        USERPROFILE: join(
+          root,
+          "user-profile",
+        ),
         JUNIUS_WORKSPACE_ID: "host-test",
         JUNIUS_WORKSPACE_ROOT: root,
         JUNIUS_WORKSPACE_STATE_PATH: join(
@@ -601,6 +605,10 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       "get_junius_prompts",
       "set_junius_prompt",
       "reset_junius_prompt",
+      "list_skills",
+      "read_skill",
+      "install_skill",
+      "remove_skill",
     ]) {
       assert.equal(
         tools.some(
@@ -628,6 +636,218 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         `stale MCP tool still exposed: ${removedTool}`,
       );
     }
+
+    const sourceSkillRoot =
+      join(
+        root,
+        "source-skill",
+      );
+    await mkdir(
+      sourceSkillRoot,
+      { recursive: true },
+    );
+    await writeFile(
+      join(
+        sourceSkillRoot,
+        "SKILL.md",
+      ),
+      [
+        "---",
+        "name: host-skill",
+        "description: Host integration skill",
+        "---",
+        "",
+        "# Host Skill",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const installedSkill =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "install_skill",
+        {
+          source:
+            sourceSkillRoot,
+          scope: "global",
+        },
+      );
+    assert.equal(
+      (installedSkill.payload
+        .installed as {
+          name?: unknown;
+        } | undefined)?.name,
+      "host-skill",
+    );
+
+    const listedSkills =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "list_skills",
+        {},
+      );
+    const skillRows =
+      listedSkills.payload
+        .skills as
+        | {
+            name?: unknown;
+            scope?: unknown;
+            effective?: unknown;
+          }[]
+        | undefined;
+    assert.equal(
+      skillRows?.some(
+        (skill) =>
+          skill.name ===
+            "host-skill" &&
+          skill.scope ===
+            "global" &&
+          skill.effective ===
+            true,
+      ),
+      true,
+    );
+
+    const readSkill =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "read_skill",
+        {
+          name: "host-skill",
+        },
+      );
+    assert.equal(
+      (readSkill.payload.skill as {
+        scope?: unknown;
+      } | undefined)?.scope,
+      "global",
+    );
+
+    const installedWorkspaceSkill =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "install_skill",
+        {
+          source:
+            sourceSkillRoot,
+          scope: "workspace",
+          workspace:
+            "host-test",
+        },
+      );
+    assert.equal(
+      (installedWorkspaceSkill.payload
+        .installed as {
+          scope?: unknown;
+        } | undefined)?.scope,
+      "workspace",
+    );
+
+    const listedWorkspaceSkills =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "list_skills",
+        {
+          workspace:
+            "host-test",
+        },
+      );
+    const workspaceSkillRows =
+      listedWorkspaceSkills.payload
+        .skills as
+        | {
+            name?: unknown;
+            scope?: unknown;
+            effective?: unknown;
+          }[]
+        | undefined;
+    assert.equal(
+      workspaceSkillRows?.filter(
+        (skill) =>
+          skill.name ===
+          "host-skill",
+      ).length,
+      2,
+    );
+    assert.equal(
+      workspaceSkillRows?.find(
+        (skill) =>
+          skill.scope ===
+          "workspace",
+      )?.effective,
+      true,
+    );
+    assert.equal(
+      workspaceSkillRows?.find(
+        (skill) =>
+          skill.scope ===
+          "global",
+      )?.effective,
+      false,
+    );
+
+    const readEffectiveWorkspaceSkill =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "read_skill",
+        {
+          name: "host-skill",
+          workspace:
+            "host-test",
+        },
+      );
+    assert.equal(
+      (readEffectiveWorkspaceSkill
+        .payload.skill as {
+          scope?: unknown;
+        } | undefined)?.scope,
+      "workspace",
+    );
+
+    const removedWorkspaceSkill =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "remove_skill",
+        {
+          name: "host-skill",
+          scope: "workspace",
+          workspace:
+            "host-test",
+        },
+      );
+    assert.equal(
+      (removedWorkspaceSkill.payload
+        .effectiveAfter as {
+          scope?: unknown;
+        } | undefined)?.scope,
+      "global",
+    );
+
+    const removedSkill =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "remove_skill",
+        {
+          name: "host-skill",
+          scope: "global",
+        },
+      );
+    assert.equal(
+      (removedSkill.payload
+        .removed as {
+          name?: unknown;
+        } | undefined)?.name,
+      "host-skill",
+    );
 
     const customEngineering =
       "# custom engineering from MCP\n";

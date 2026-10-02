@@ -16,6 +16,8 @@ import { registerGitTools } from "./mcp-git-tools.js";
 import { registerUpdateTools } from "./mcp-update-tools.js";
 import { registerContractTool } from "./mcp-contract-tool.js";
 import { registerPromptTools } from "./mcp-prompt-tools.js";
+import { registerSkillTools } from "./mcp-skill-tools.js";
+import { SkillService } from "./skill-service.js";
 import {
   isJuniusDevelopmentInstance,
   resolveJuniusCoreContract,
@@ -53,6 +55,15 @@ export function createMcpServer(
 
   registerContractTool(server);
   registerPromptTools(server);
+  registerSkillTools(
+    server,
+    new SkillService(
+      workspaces,
+      files,
+      {},
+      audit,
+    ),
+  );
   registerWorkspaceTools(server, workspaces, files);
   registerBrowserTool(
     server,
