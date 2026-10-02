@@ -32,6 +32,8 @@ test("release runtime emits plain JavaScript Host and Worker entries with requir
       "src/windows-job-guardian.ps1",
       "python/desktop_helper.py",
       "prompts/core.md",
+      "scripts/install-paths.mjs",
+      "scripts/install-process.mjs",
       "scripts/update.mjs",
       "scripts/windows-only.mjs",
       "package.json",
@@ -52,6 +54,25 @@ test("release runtime emits plain JavaScript Host and Worker entries with requir
     assert.doesNotMatch(
       host,
       /--import["',\s]+tsx/u,
+    );
+
+    const runtimePackage =
+      JSON.parse(
+        await readFile(
+          join(
+            root,
+            "package.json",
+          ),
+          "utf8",
+        ),
+      );
+    assert.equal(
+      runtimePackage.devDependencies,
+      undefined,
+    );
+    assert.equal(
+      runtimePackage.dependencies,
+      undefined,
     );
   } finally {
     await rm(

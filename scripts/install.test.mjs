@@ -309,14 +309,6 @@ test(
       await writeFile(
         join(
           packageRoot,
-          "AGENTS.md",
-        ),
-        "# repository instructions\n",
-        "utf8",
-      );
-      await writeFile(
-        join(
-          packageRoot,
           "icon.svg",
         ),
         "<svg aria-label=\"Junius\" />\n",
@@ -387,16 +379,6 @@ test(
         await readFile(
           join(
             appRoot,
-            "AGENTS.md",
-          ),
-          "utf8",
-        ),
-        "# repository instructions\n",
-      );
-      assert.equal(
-        await readFile(
-          join(
-            appRoot,
             "icon.svg",
           ),
           "utf8",
@@ -426,7 +408,7 @@ test(
 );
 
 test(
-  "installer includes dev dependencies even under production npm settings",
+  "installer installs runtime dependencies and omits development dependencies",
   async () => {
     const root =
       await mkdtemp(
@@ -435,34 +417,52 @@ test(
           "junius-install-deps-",
         ),
       );
-    const fixture =
+    const runtimeFixture =
       join(
         root,
-        "fixture",
+        "runtime-fixture",
       );
-
-    const previousNodeEnv =
-      process.env.NODE_ENV;
-    const previousOmit =
-      process.env.npm_config_omit;
+    const developmentFixture =
+      join(
+        root,
+        "development-fixture",
+      );
 
     try {
-      await mkdir(
-        fixture,
-        { recursive: true },
-      );
-      await writeFile(
-        join(
-          fixture,
-          "package.json",
-        ),
-        JSON.stringify({
-          name:
-            "junius-install-fixture",
-          version: "1.0.0",
-        }),
-        "utf8",
-      );
+      for (
+        const [
+          directory,
+          name,
+        ] of [
+          [
+            runtimeFixture,
+            "junius-runtime-fixture",
+          ],
+          [
+            developmentFixture,
+            "junius-development-fixture",
+          ],
+        ]
+      ) {
+        await mkdir(
+          directory,
+          {
+            recursive: true,
+          },
+        );
+        await writeFile(
+          join(
+            directory,
+            "package.json",
+          ),
+          JSON.stringify({
+            name,
+            version: "1.0.0",
+          }),
+          "utf8",
+        );
+      }
+
       await writeFile(
         join(
           root,
@@ -472,66 +472,53 @@ test(
           name:
             "junius-install-probe",
           version: "1.0.0",
+          dependencies: {
+            "junius-runtime-fixture":
+              "file:./runtime-fixture",
+          },
           devDependencies: {
-            "junius-install-fixture":
-              "file:./fixture",
+            "junius-development-fixture":
+              "file:./development-fixture",
           },
         }),
         "utf8",
       );
-
-      process.env.NODE_ENV =
-        "production";
-      process.env.npm_config_omit =
-        "dev";
 
       await installNodeDependencies(
         process.execPath,
         root,
       );
 
-      const installed =
-        await import(
-          "node:fs/promises"
-        ).then(
-          ({ stat }) =>
-            stat(
-              join(
-                root,
-                "node_modules",
-                "junius-install-fixture",
-                "package.json",
-              ),
-            ),
-        );
-
       assert.equal(
-        installed.isFile(),
-        true,
+        JSON.parse(
+          await readFile(
+            join(
+              root,
+              "node_modules",
+              "junius-runtime-fixture",
+              "package.json",
+            ),
+            "utf8",
+          ),
+        ).name,
+        "junius-runtime-fixture",
+      );
+
+      await assert.rejects(
+        readFile(
+          join(
+            root,
+            "node_modules",
+            "junius-development-fixture",
+            "package.json",
+          ),
+          "utf8",
+        ),
+        (error) =>
+          error?.code ===
+          "ENOENT",
       );
     } finally {
-      if (
-        previousNodeEnv ===
-        undefined
-      ) {
-        delete process.env.NODE_ENV;
-      } else {
-        process.env.NODE_ENV =
-          previousNodeEnv;
-      }
-
-      if (
-        previousOmit ===
-        undefined
-      ) {
-        delete process.env
-          .npm_config_omit;
-      } else {
-        process.env
-          .npm_config_omit =
-          previousOmit;
-      }
-
       await rm(
         root,
         {
@@ -544,7 +531,7 @@ test(
 );
 
 test(
-  "installed validation is isolated from inherited Junius runtime state",
+  "installed compiled validation is isolated from inherited Junius runtime state",
   async () => {
     const root =
       await mkdtemp(
@@ -553,13 +540,12 @@ test(
           "junius-validation-env-",
         ),
       );
-    const npmCli = join(
-      root,
-      "npm-cli.js",
-    );
+    const runtimeRoot =
+      join(
+        root,
+        "runtime",
+      );
 
-    const previousNpmExecPath =
-      process.env.npm_execpath;
     const previousProjectRoot =
       process.env
         .JUNIUS_PROJECT_ROOT;
@@ -571,20 +557,100 @@ test(
         .EXPECTED_APP_ROOT;
 
     try {
+      await mkdir(
+        join(
+          runtimeRoot,
+          "src",
+        ),
+        {
+          recursive: true,
+        },
+      );
+      await mkdir(
+        join(root, "bin"),
+        {
+          recursive: true,
+        },
+      );
+      await mkdir(
+        join(root, "scripts"),
+        {
+          recursive: true,
+        },
+      );
+
       await writeFile(
-        npmCli,
+        join(
+          runtimeRoot,
+          "package.json",
+        ),
+        JSON.stringify({
+          name: "junius",
+          version: "1.0.0",
+          private: true,
+          type: "module",
+        }),
+        "utf8",
+      );
+      await writeFile(
+        join(
+          runtimeRoot,
+          "src",
+          "host.js",
+        ),
+        "export {};\n",
+        "utf8",
+      );
+      await writeFile(
+        join(
+          runtimeRoot,
+          "src",
+          "worker-entry.js",
+        ),
+        "export {};\n",
+        "utf8",
+      );
+      await writeFile(
+        join(
+          runtimeRoot,
+          "src",
+          "mcp-server.js",
+        ),
         [
-          'const expected = process.env.EXPECTED_APP_ROOT;',
-          'if (process.env.JUNIUS_PROJECT_ROOT !== expected) process.exit(9);',
-          'if (process.env.JUNIUS_RUNTIME_ROOT !== undefined) process.exit(8);',
-          'if (process.argv.slice(2).join(" ") !== "run check") process.exit(7);',
-          '',
+          "const expected = process.env.EXPECTED_APP_ROOT;",
+          "if (process.env.JUNIUS_PROJECT_ROOT !== expected) process.exit(9);",
+          "if (process.env.JUNIUS_RUNTIME_ROOT !== undefined) process.exit(8);",
+          "export {};",
+          "",
         ].join("\n"),
         "utf8",
       );
+      await writeFile(
+        join(
+          root,
+          "scripts",
+          "validate-installed-runtime.mjs",
+        ),
+        await readFile(
+          join(
+            process.cwd(),
+            "scripts",
+            "validate-installed-runtime.mjs",
+          ),
+          "utf8",
+        ),
+        "utf8",
+      );
+      await writeFile(
+        join(
+          root,
+          "bin",
+          "junius.mjs",
+        ),
+        "process.exit(0);\n",
+        "utf8",
+      );
 
-      process.env.npm_execpath =
-        npmCli;
       process.env
         .JUNIUS_PROJECT_ROOT =
         "C:\\wrong\\project";
@@ -600,17 +666,6 @@ test(
         root,
       );
     } finally {
-      if (
-        previousNpmExecPath ===
-        undefined
-      ) {
-        delete process.env
-          .npm_execpath;
-      } else {
-        process.env.npm_execpath =
-          previousNpmExecPath;
-      }
-
       if (
         previousProjectRoot ===
         undefined

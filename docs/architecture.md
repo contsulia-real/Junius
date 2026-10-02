@@ -38,15 +38,15 @@ The persistent per-user application root is:
 
 Installation performs:
 
-    copy packaged Junius sources
+    copy compiled Junius application
       ↓
-    npm install in the persistent app root
+    npm install --omit=dev in the persistent app root
       ↓
     create app\.venv from the discovered Python
       ↓
     install Desktop Python requirements
       ↓
-    run the complete Junius validation
+    validate the installed compiled runtime and CLI
       ↓
     register HKCU logon startup
       ↓
@@ -56,7 +56,7 @@ Installation performs:
 
 The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user PowerShell startup script. The installer itself starts the freshly installed Host directly with that same Node executable and launcher path, rather than routing the immediate health-checked start back through the logon wrapper. No Windows service or administrator elevation is required.
 
-Release construction emits a `runtime/` tree of plain JavaScript plus the non-JavaScript runtime assets required by the Host and Agent Worker. The validated bootstrap snapshots and starts `runtime/src/host.js` and `runtime/src/worker-entry.js` when that compiled runtime is present; source-tree development falls back to the TypeScript entries. As a result, installed Release Host/Worker processes do not load `tsx` or keep its `esbuild.exe` services resident, while contributor source-test execution keeps the existing live-TypeScript path.
+Release construction compiles the TypeScript code first, assembles a compiled installable application, and packages that application directly as `junius-windows.tgz`. The installed package keeps the bootstrap/rollback layer at the application root and places the emitted Host/Worker code under `runtime/`; validated release snapshots therefore start `runtime/src/host.js` and `runtime/src/worker-entry.js` while retaining last-known-good fallback. The installed application does not contain the TypeScript source tree, source tests, `tsx`, TypeScript, or source-build configuration. Source-tree development remains separate and can still run TypeScript through `tsx`.
 
 The installed CLI also exposes `junius restart`. It reuses the installed Host stop/start helpers, stops the existing Host process tree when present, launches the installed Host launcher, and waits for the replacement Host health check before returning.
 

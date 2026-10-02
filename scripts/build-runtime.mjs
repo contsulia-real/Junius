@@ -1,14 +1,16 @@
+import { spawn } from "node:child_process";
 import {
   cp,
   mkdir,
+  readFile,
   rm,
+  writeFile,
 } from "node:fs/promises";
 import {
   dirname,
   join,
   resolve,
 } from "node:path";
-import { spawn } from "node:child_process";
 import {
   fileURLToPath,
 } from "node:url";
@@ -95,6 +97,27 @@ function run(
   );
 }
 
+function runtimePackage(
+  sourcePackage,
+) {
+  return {
+    name:
+      sourcePackage.name,
+    version:
+      sourcePackage.version,
+    private: true,
+    description:
+      sourcePackage.description,
+    license:
+      sourcePackage.license,
+    engines:
+      sourcePackage.engines,
+    os:
+      sourcePackage.os,
+    type: "module",
+  };
+}
+
 export async function buildRuntime(
   options = {},
 ) {
@@ -105,6 +128,17 @@ export async function buildRuntime(
           PROJECT_ROOT,
           "runtime",
         ),
+    );
+  const sourcePackage =
+    options.packageJson ??
+    JSON.parse(
+      await readFile(
+        join(
+          PROJECT_ROOT,
+          "package.json",
+        ),
+        "utf8",
+      ),
     );
 
   await rm(
@@ -153,6 +187,15 @@ export async function buildRuntime(
       "windows-job-guardian.ps1",
     ]
   ) {
+    await mkdir(
+      join(
+        outputRoot,
+        "src",
+      ),
+      {
+        recursive: true,
+      },
+    );
     await cp(
       join(
         PROJECT_ROOT,
@@ -227,26 +270,20 @@ export async function buildRuntime(
     );
   }
 
-  for (
-    const file of [
+  await writeFile(
+    join(
+      outputRoot,
       "package.json",
-      "install.ps1",
-    ]
-  ) {
-    await cp(
-      join(
-        PROJECT_ROOT,
-        file,
+    ),
+    JSON.stringify(
+      runtimePackage(
+        sourcePackage,
       ),
-      join(
-        outputRoot,
-        file,
-      ),
-      {
-        force: true,
-      },
-    );
-  }
+      null,
+      2,
+    ) + "\n",
+    "utf8",
+  );
 
   return {
     outputRoot,

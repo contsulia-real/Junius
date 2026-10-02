@@ -76,20 +76,25 @@ const COPY_DIRECTORIES = [
   "prompts",
   "python",
   "scripts",
-  "src",
   "runtime",
 ];
 
 const COPY_FILES = [
-  "AGENTS.md",
+  "CHANGELOG.md",
   "icon.svg",
   "install.ps1",
   "LICENSE",
   "README.md",
+  "README.zh-CN.md",
   "SECURITY.md",
   "package.json",
   "install-lock.json",
   "requirements-desktop.txt",
+];
+
+const STALE_SOURCE_PATHS = [
+  "src",
+  "AGENTS.md",
   "tsconfig.json",
   "tsconfig.runtime.json",
 ];
@@ -158,6 +163,22 @@ export async function copyApplication(
     appRoot,
     { recursive: true },
   );
+
+  for (
+    const stalePath of
+    STALE_SOURCE_PATHS
+  ) {
+    await rm(
+      join(
+        appRoot,
+        stalePath,
+      ),
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
 
   for (
     const directory of
@@ -264,7 +285,7 @@ export async function installNodeDependencies(
       [
         npmCli,
         "install",
-        "--include=dev",
+        "--omit=dev",
         "--no-audit",
         "--no-fund",
       ],
@@ -294,7 +315,7 @@ export async function installNodeDependencies(
         "/d",
         "/s",
         "/c",
-        "npm install --include=dev --no-audit --no-fund",
+        "npm install --omit=dev --no-audit --no-fund",
       ],
       {
         cwd: appRoot,
@@ -308,7 +329,7 @@ export async function installNodeDependencies(
     "npm",
     [
       "install",
-      "--include=dev",
+      "--omit=dev",
       "--no-audit",
       "--no-fund",
     ],
@@ -358,65 +379,26 @@ export async function validateInstalledApp(
     installedValidationEnvironment(
       appRoot,
     );
-  const npmCli =
-    await resolveNpmCli(
-      nodeExecutable,
-    );
-
-  if (
-    npmCli !== undefined
-  ) {
-    await assertProcess(
-      "Junius validation",
-      nodeExecutable,
-      [
-        npmCli,
-        "run",
-        "check",
-      ],
-      {
-        cwd: appRoot,
-        env: environment,
-      },
-    );
-    return;
-  }
-
-  if (
-    process.platform ===
-    "win32"
-  ) {
-    const systemRoot =
-      process.env.SystemRoot ??
-      process.env.SYSTEMROOT ??
-      "C:\\Windows";
-    await assertProcess(
-      "Junius validation",
-      join(
-        systemRoot,
-        "System32",
-        "cmd.exe",
-      ),
-      [
-        "/d",
-        "/s",
-        "/c",
-        "npm run check",
-      ],
-      {
-        cwd: appRoot,
-        env: environment,
-      },
-    );
-    return;
-  }
 
   await assertProcess(
-    "Junius validation",
-    "npm",
+    "Junius compiled runtime validation",
+    nodeExecutable,
     [
-      "run",
-      "check",
+      "scripts/validate-installed-runtime.mjs",
+      "runtime",
+    ],
+    {
+      cwd: appRoot,
+      env: environment,
+    },
+  );
+
+  await assertProcess(
+    "Junius CLI validation",
+    nodeExecutable,
+    [
+      "bin/junius.mjs",
+      "--help",
     ],
     {
       cwd: appRoot,

@@ -240,7 +240,7 @@ Release assets are built with:
 
     npm run release:build
 
-That produces `dist/junius-windows.tgz`, `dist/SHA256SUMS.txt`, `dist/install.ps1`, and `dist/release.json`. Release notes follow `CHANGELOG.md`: before tagging, the new version must have an exact `## <package.version>` section, and the GitHub Release body contains only that section's body.
+That produces `dist/junius-windows.tgz`, `dist/SHA256SUMS.txt`, `dist/install.ps1`, and `dist/release.json`. The `junius-windows.tgz` asset is the compiled installable application: TypeScript sources, `tsx`, TypeScript itself, test files, and source-build configuration are not shipped to the installed app. Release notes follow `CHANGELOG.md`: before tagging, the new version must have an exact `## <package.version>` section, and the GitHub Release body contains only that section's body.
 
 The one-command installer does not require the user to have pnpm installed. npm remains an internal dependency installer inside the verified Junius application package; npm is not the public Junius distribution channel.
 

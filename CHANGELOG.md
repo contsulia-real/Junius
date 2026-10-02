@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Published Releases now carry a precompiled JavaScript Host/Worker runtime so installed Junius no longer keeps tsx/esbuild services resident.
+- GitHub Releases now package the compiled JavaScript application directly: installed Junius no longer ships TypeScript sources, source tests, tsx/TypeScript development dependencies, or source-build configuration, and Host/Worker no longer keep esbuild services resident.
 - Added `junius restart` to restart the installed Host and wait for the replacement Host to become healthy.
 
 ## 0.0.9-alpha

@@ -1,4 +1,8 @@
-import { watch, type FSWatcher } from "node:fs";
+import {
+  existsSync,
+  watch,
+  type FSWatcher,
+} from "node:fs";
 import {
   createServer as createHttpServer,
   type Server,
@@ -215,43 +219,59 @@ function sourceChange(
   scheduleReload(reason);
 }
 
+function watchSourceArea(
+  area: HostWatchedArea,
+  path: string,
+  recursive: boolean,
+): FSWatcher | undefined {
+  if (!existsSync(path)) {
+    return undefined;
+  }
+
+  return watch(
+    path,
+    { recursive },
+    (_eventType, fileName) => {
+      sourceChange(
+        area,
+        fileName,
+      );
+    },
+  );
+}
+
 const watchers: FSWatcher[] = [
-  watch(
+  watchSourceArea(
+    "src",
     resolve(cwd, "src"),
-    { recursive: true },
-    (_eventType, fileName) => {
-      sourceChange("src", fileName);
-    },
+    true,
   ),
-  watch(
+  watchSourceArea(
+    "python",
     resolve(cwd, "python"),
-    { recursive: true },
-    (_eventType, fileName) => {
-      sourceChange("python", fileName);
-    },
+    true,
   ),
-  watch(
+  watchSourceArea(
+    "prompts",
     resolve(cwd, "prompts"),
-    { recursive: true },
-    (_eventType, fileName) => {
-      sourceChange("prompts", fileName);
-    },
+    true,
   ),
-  watch(
+  watchSourceArea(
+    "root",
     cwd,
-    { recursive: false },
-    (_eventType, fileName) => {
-      sourceChange("root", fileName);
-    },
+    false,
   ),
-  watch(
+  watchSourceArea(
+    "scripts",
     resolve(cwd, "scripts"),
-    { recursive: false },
-    (_eventType, fileName) => {
-      sourceChange("scripts", fileName);
-    },
+    false,
   ),
-];
+].filter(
+  (
+    watcher,
+  ): watcher is FSWatcher =>
+    watcher !== undefined,
+);
 
 function allowPublicRequest(
   req: Parameters<typeof hostRequestRejection>[0],

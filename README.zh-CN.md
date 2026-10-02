@@ -241,7 +241,7 @@ ChatGPT 可以直接通过 `get_junius_prompts`、`set_junius_prompt` 和 `reset
 
     npm run release:build
 
-这会生成 `dist/junius-windows.tgz`、`dist/SHA256SUMS.txt`、`dist/install.ps1` 和 `dist/release.json`。Release 说明以 `CHANGELOG.md` 为唯一内容来源：打 tag 前必须存在精确的 `## <package.version>` 小节，GitHub Release 正文只写该小节的正文。
+这会生成 `dist/junius-windows.tgz`、`dist/SHA256SUMS.txt`、`dist/install.ps1` 和 `dist/release.json`。其中 `junius-windows.tgz` 本身就是编译后的可安装应用：用户安装目录不再携带 TypeScript 源码、`tsx`、TypeScript、测试文件或源码构建配置。Release 说明以 `CHANGELOG.md` 为唯一内容来源：打 tag 前必须存在精确的 `## <package.version>` 小节，GitHub Release 正文只写该小节的正文。
 
 一行安装器不要求用户系统里安装 pnpm。npm 仅作为经过验证的 Junius 应用包内部的依赖安装器使用；npm registry 不是 Junius 的公开分发渠道。
 

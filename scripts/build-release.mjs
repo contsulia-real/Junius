@@ -2,6 +2,7 @@ import {
   createHash,
 } from "node:crypto";
 import {
+  cp,
   copyFile,
   mkdir,
   readFile,
@@ -207,36 +208,48 @@ export function validatePackedFiles(
   for (
     const required of [
       "package.json",
-      "AGENTS.md",
       "CHANGELOG.md",
       "icon.svg",
       "install.ps1",
       "install-lock.json",
+      "requirements-desktop.txt",
       "bin/junius.mjs",
-      "scripts/install.mjs",
-      "scripts/install-paths.mjs",
-      "scripts/install-process.mjs",
-      "scripts/install-python.mjs",
-      "scripts/install-application.mjs",
-      "scripts/install-windows-host.mjs",
-      "scripts/windows-only.mjs",
-      "scripts/windows-only.d.mts",
+      "scripts/host-launcher.mjs",
       "scripts/host-bootstrap.mjs",
       "scripts/host-bootstrap-paths.mjs",
       "scripts/host-bootstrap-source.mjs",
       "scripts/host-bootstrap-check.mjs",
       "scripts/host-bootstrap-releases.mjs",
       "scripts/host-bootstrap-host.mjs",
-      "scripts/build-runtime.mjs",
+      "scripts/install.mjs",
+      "scripts/install-paths.mjs",
+      "scripts/install-process.mjs",
+      "scripts/install-python.mjs",
+      "scripts/install-application.mjs",
+      "scripts/install-windows-host.mjs",
       "scripts/restart.mjs",
+      "scripts/update.mjs",
+      "scripts/validate-installed-runtime.mjs",
+      "scripts/windows-only.mjs",
+      "runtime/package.json",
       "runtime/src/host.js",
       "runtime/src/worker-entry.js",
       "runtime/src/job-bootstrap.mjs",
       "runtime/src/windows-job-guardian.ps1",
+      "runtime/python/desktop_helper.py",
+      "runtime/python/desktop_helper_common.py",
+      "runtime/python/desktop_windows.py",
+      "runtime/python/desktop_clipboard.py",
+      "runtime/python/desktop_input.py",
+      "runtime/python/user_interrupt.py",
+      "runtime/prompts/core.md",
+      "runtime/prompts/engineering.md",
+      "runtime/prompts/desktop.md",
+      "runtime/prompts/browser.md",
+      "runtime/scripts/install-paths.mjs",
+      "runtime/scripts/install-process.mjs",
       "runtime/scripts/update.mjs",
       "runtime/scripts/windows-only.mjs",
-      "runtime/package.json",
-      "src/mcp-server.ts",
       "python/desktop_helper.py",
       "python/desktop_helper_common.py",
       "python/desktop_windows.py",
@@ -260,7 +273,7 @@ export function validatePackedFiles(
   }
 
   const forbidden =
-    /(?:^|\/)(?:node_modules|\.venv|\.junius|__pycache__|\.playwright-cli)(?:\/|$)|\.pyc$/u;
+    /(?:^|\/)(?:node_modules|\.venv|\.junius|__pycache__|\.playwright-cli)(?:\/|$)|\.pyc$|\.(?:ts|tsx|mts|cts)$/u;
 
   const bad =
     [...paths].filter(
@@ -360,6 +373,178 @@ export function validateInstallLock(
   }
 }
 
+function productionPackage(
+  sourcePackage,
+) {
+  return {
+    name:
+      sourcePackage.name,
+    version:
+      sourcePackage.version,
+    private: true,
+    description:
+      sourcePackage.description,
+    bin:
+      sourcePackage.bin,
+    license:
+      sourcePackage.license,
+    repository:
+      sourcePackage.repository,
+    bugs:
+      sourcePackage.bugs,
+    homepage:
+      sourcePackage.homepage,
+    engines:
+      sourcePackage.engines,
+    os:
+      sourcePackage.os,
+    type: "module",
+    scripts: {
+      check:
+        "node scripts/validate-installed-runtime.mjs runtime",
+    },
+    dependencies:
+      sourcePackage.dependencies,
+  };
+}
+
+function productionInstallLock(
+  sourceLock,
+) {
+  const lock =
+    structuredClone(
+      sourceLock,
+    );
+  const root =
+    lock.packages?.[""];
+
+  if (
+    root === undefined
+  ) {
+    throw new Error(
+      "release_install_lock_root_missing",
+    );
+  }
+
+  delete root.devDependencies;
+
+  for (
+    const [
+      path,
+      value,
+    ] of Object.entries(
+      lock.packages,
+    )
+  ) {
+    if (
+      path !== "" &&
+      value?.dev === true
+    ) {
+      delete lock.packages[
+        path
+      ];
+    }
+  }
+
+  return lock;
+}
+
+async function copyReleaseScaffold(
+  installRoot,
+) {
+  for (
+    const directory of [
+      "bin",
+      "python",
+      "prompts",
+    ]
+  ) {
+    await cp(
+      join(
+        PROJECT_ROOT,
+        directory,
+      ),
+      join(
+        installRoot,
+        directory,
+      ),
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+
+  await mkdir(
+    join(
+      installRoot,
+      "scripts",
+    ),
+    {
+      recursive: true,
+    },
+  );
+
+  for (
+    const file of [
+      "host-launcher.mjs",
+      "host-bootstrap.mjs",
+      "host-bootstrap-paths.mjs",
+      "host-bootstrap-source.mjs",
+      "host-bootstrap-check.mjs",
+      "host-bootstrap-releases.mjs",
+      "host-bootstrap-host.mjs",
+      "install.mjs",
+      "install-paths.mjs",
+      "install-process.mjs",
+      "install-python.mjs",
+      "install-application.mjs",
+      "install-windows-host.mjs",
+      "restart.mjs",
+      "update.mjs",
+      "validate-installed-runtime.mjs",
+      "windows-only.mjs",
+    ]
+  ) {
+    await copyFile(
+      join(
+        PROJECT_ROOT,
+        "scripts",
+        file,
+      ),
+      join(
+        installRoot,
+        "scripts",
+        file,
+      ),
+    );
+  }
+
+  for (
+    const file of [
+      "CHANGELOG.md",
+      "icon.svg",
+      "install.ps1",
+      "LICENSE",
+      "README.md",
+      "README.zh-CN.md",
+      "requirements-desktop.txt",
+      "SECURITY.md",
+    ]
+  ) {
+    await copyFile(
+      join(
+        PROJECT_ROOT,
+        file,
+      ),
+      join(
+        installRoot,
+        file,
+      ),
+    );
+  }
+}
+
 export function checksumLine(
   hash,
   filename,
@@ -415,17 +600,6 @@ export async function buildRelease(
     installLock,
   );
 
-  const runtimeRoot =
-    join(
-      PROJECT_ROOT,
-      "runtime",
-    );
-  await buildRuntime({
-    outputRoot:
-      runtimeRoot,
-  });
-
-  try {
   await rm(
     distRoot,
     {
@@ -433,153 +607,226 @@ export async function buildRelease(
       force: true,
     },
   );
+  await mkdir(
+    distRoot,
+    {
+      recursive: true,
+    },
+  );
+
+  const installRoot =
+    join(
+      distRoot,
+      ".install",
+    );
   const packRoot =
     join(
       distRoot,
       ".pack",
     );
-  await mkdir(
-    packRoot,
-    {
-      recursive: true,
-    },
-  );
 
-  const npm =
-    npmInvocation();
-  const packed =
-    await run(
-      npm.executable,
-      [
-        ...npm.prefixArgs,
-        "pack",
-        "--json",
-        "--pack-destination",
-        packRoot,
-      ],
-    );
-
-  const pack =
-    parsedPackResult(
-      packed.stdout,
-    );
-  if (
-    pack === undefined ||
-    !Array.isArray(
-      pack.files,
-    ) ||
-    typeof pack.filename !==
-      "string"
-  ) {
-    throw new Error(
-      "invalid_npm_pack_result",
-    );
-  }
-
-  validatePackedFiles(
-    pack.files,
-  );
-
-  const packagePath =
-    join(
-      distRoot,
-      "junius-windows.tgz",
-    );
-  await rename(
-    join(
-      packRoot,
-      pack.filename,
-    ),
-    packagePath,
-  );
-
-  const installScript =
-    join(
-      distRoot,
-      "install.ps1",
-    );
-  await copyFile(
-    join(
-      PROJECT_ROOT,
-      "install.ps1",
-    ),
-    installScript,
-  );
-
-  const checksums = [
-    checksumLine(
-      await sha256(
-        packagePath,
-      ),
-      "junius-windows.tgz",
-    ),
-    checksumLine(
-      await sha256(
-        installScript,
-      ),
-      "install.ps1",
-    ),
-  ];
-
-  await writeFile(
-    join(
-      distRoot,
-      "SHA256SUMS.txt",
-    ),
-    checksums.join("\n") +
-      "\n",
-    "utf8",
-  );
-
-  await writeFile(
-    join(
-      distRoot,
-      "release.json",
-    ),
-    JSON.stringify(
-      {
-        version:
-          packageJson.version,
-        package:
-          "junius-windows.tgz",
-        checksums:
-          "SHA256SUMS.txt",
-      },
-      null,
-      2,
-    ) + "\n",
-    "utf8",
-  );
-
-  await rm(
-    packRoot,
-    {
-      recursive: true,
-      force: true,
-    },
-  );
-
-  console.log(
-    JSON.stringify({
-      ok: true,
-      version:
-        packageJson.version,
-      assets: [
-        "junius-windows.tgz",
-        "SHA256SUMS.txt",
-        "install.ps1",
-        "release.json",
-      ],
-    }),
-  );
-  } finally {
-    await rm(
-      runtimeRoot,
+  try {
+    await mkdir(
+      installRoot,
       {
         recursive: true,
-        force: true,
       },
     );
+    await copyReleaseScaffold(
+      installRoot,
+    );
+    await buildRuntime({
+      outputRoot:
+        join(
+          installRoot,
+          "runtime",
+        ),
+      packageJson,
+    });
+
+    const releasePackage =
+      productionPackage(
+        packageJson,
+      );
+    const releaseLock =
+      productionInstallLock(
+        installLock,
+      );
+
+    await writeFile(
+      join(
+        installRoot,
+        "package.json",
+      ),
+      JSON.stringify(
+        releasePackage,
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
+    await writeFile(
+      join(
+        installRoot,
+        "install-lock.json",
+      ),
+      JSON.stringify(
+        releaseLock,
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
+
+    validateInstallLock(
+      releasePackage,
+      releaseLock,
+    );
+
+    await mkdir(
+      packRoot,
+      {
+        recursive: true,
+      },
+    );
+
+    const npm =
+      npmInvocation();
+    const packed =
+      await run(
+        npm.executable,
+        [
+          ...npm.prefixArgs,
+          "pack",
+          installRoot,
+          "--json",
+          "--pack-destination",
+          packRoot,
+        ],
+      );
+
+    const pack =
+      parsedPackResult(
+        packed.stdout,
+      );
+    if (
+      pack === undefined ||
+      !Array.isArray(
+        pack.files,
+      ) ||
+      typeof pack.filename !==
+        "string"
+    ) {
+      throw new Error(
+        "invalid_npm_pack_result",
+      );
+    }
+
+    validatePackedFiles(
+      pack.files,
+    );
+
+    const packagePath =
+      join(
+        distRoot,
+        "junius-windows.tgz",
+      );
+    await rename(
+      join(
+        packRoot,
+        pack.filename,
+      ),
+      packagePath,
+    );
+
+    const installScript =
+      join(
+        distRoot,
+        "install.ps1",
+      );
+    await copyFile(
+      join(
+        PROJECT_ROOT,
+        "install.ps1",
+      ),
+      installScript,
+    );
+
+    const checksums = [
+      checksumLine(
+        await sha256(
+          packagePath,
+        ),
+        "junius-windows.tgz",
+      ),
+      checksumLine(
+        await sha256(
+          installScript,
+        ),
+        "install.ps1",
+      ),
+    ];
+
+    await writeFile(
+      join(
+        distRoot,
+        "SHA256SUMS.txt",
+      ),
+      checksums.join("\n") +
+        "\n",
+      "utf8",
+    );
+
+    await writeFile(
+      join(
+        distRoot,
+        "release.json",
+      ),
+      JSON.stringify(
+        {
+          version:
+            packageJson.version,
+          package:
+            "junius-windows.tgz",
+          checksums:
+            "SHA256SUMS.txt",
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
+
+    console.log(
+      JSON.stringify({
+        ok: true,
+        version:
+          packageJson.version,
+        assets: [
+          "junius-windows.tgz",
+          "SHA256SUMS.txt",
+          "install.ps1",
+          "release.json",
+        ],
+      }),
+    );
+  } finally {
+    await Promise.allSettled([
+      rm(
+        installRoot,
+        {
+          recursive: true,
+          force: true,
+        },
+      ),
+      rm(
+        packRoot,
+        {
+          recursive: true,
+          force: true,
+        },
+      ),
+    ]);
   }
 }
 

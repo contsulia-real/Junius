@@ -8,6 +8,7 @@ import {
 } from "node:http";
 import {
   access,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -39,6 +40,42 @@ async function exists(path) {
   } catch {
     return false;
   }
+}
+
+async function freeLoopbackPort() {
+  const server =
+    createServer();
+
+  server.listen(
+    0,
+    "127.0.0.1",
+  );
+  await once(
+    server,
+    "listening",
+  );
+
+  const address =
+    server.address();
+  assert.equal(
+    typeof address,
+    "object",
+  );
+  assert.notEqual(
+    address,
+    null,
+  );
+
+  const port =
+    address.port;
+
+  server.close();
+  await once(
+    server,
+    "close",
+  );
+
+  return port;
 }
 
 test(
@@ -155,6 +192,7 @@ function runProcess(
           args,
           {
             cwd:
+              options.cwd ??
               process.cwd(),
             env:
               options.env ??
@@ -208,36 +246,48 @@ function runProcess(
 
 const requiredPackFiles = [
   "package.json",
-  "AGENTS.md",
   "CHANGELOG.md",
   "icon.svg",
   "install.ps1",
   "install-lock.json",
+  "requirements-desktop.txt",
   "bin/junius.mjs",
-  "scripts/install.mjs",
-  "scripts/install-paths.mjs",
-  "scripts/install-process.mjs",
-  "scripts/install-python.mjs",
-  "scripts/install-application.mjs",
-  "scripts/install-windows-host.mjs",
-  "scripts/windows-only.mjs",
-  "scripts/windows-only.d.mts",
+  "scripts/host-launcher.mjs",
   "scripts/host-bootstrap.mjs",
   "scripts/host-bootstrap-paths.mjs",
   "scripts/host-bootstrap-source.mjs",
   "scripts/host-bootstrap-check.mjs",
   "scripts/host-bootstrap-releases.mjs",
   "scripts/host-bootstrap-host.mjs",
-  "scripts/build-runtime.mjs",
+  "scripts/install.mjs",
+  "scripts/install-paths.mjs",
+  "scripts/install-process.mjs",
+  "scripts/install-python.mjs",
+  "scripts/install-application.mjs",
+  "scripts/install-windows-host.mjs",
   "scripts/restart.mjs",
+  "scripts/update.mjs",
+  "scripts/validate-installed-runtime.mjs",
+  "scripts/windows-only.mjs",
+  "runtime/package.json",
   "runtime/src/host.js",
   "runtime/src/worker-entry.js",
   "runtime/src/job-bootstrap.mjs",
   "runtime/src/windows-job-guardian.ps1",
+  "runtime/python/desktop_helper.py",
+  "runtime/python/desktop_helper_common.py",
+  "runtime/python/desktop_windows.py",
+  "runtime/python/desktop_clipboard.py",
+  "runtime/python/desktop_input.py",
+  "runtime/python/user_interrupt.py",
+  "runtime/prompts/core.md",
+  "runtime/prompts/engineering.md",
+  "runtime/prompts/desktop.md",
+  "runtime/prompts/browser.md",
+  "runtime/scripts/install-paths.mjs",
+  "runtime/scripts/install-process.mjs",
   "runtime/scripts/update.mjs",
   "runtime/scripts/windows-only.mjs",
-  "runtime/package.json",
-  "src/mcp-server.ts",
   "python/desktop_helper.py",
   "python/desktop_helper_common.py",
   "python/desktop_windows.py",
@@ -416,6 +466,18 @@ test(
         ]),
       /release_contains_forbidden_files/u,
     );
+
+    assert.throws(
+      () =>
+        validatePackedFiles([
+          ...requiredPackFiles,
+          {
+            path:
+              "src/source.ts",
+          },
+        ]),
+      /release_contains_forbidden_files/u,
+    );
   },
 );
 
@@ -558,6 +620,206 @@ test(
     await buildRelease({
       distRoot: dist,
     });
+
+    const extractedRoot =
+      join(
+        tempRoot,
+        "extracted",
+      );
+    await mkdir(
+      extractedRoot,
+      {
+        recursive: true,
+      },
+    );
+    const extraction =
+      await runProcess(
+        "tar.exe",
+        [
+          "-xzf",
+          join(
+            dist,
+            "junius-windows.tgz",
+          ),
+          "-C",
+          extractedRoot,
+        ],
+      );
+    assert.equal(
+      extraction.exitCode,
+      0,
+      extraction.stderr +
+        extraction.stdout,
+    );
+
+    const packedRoot =
+      join(
+        extractedRoot,
+        "package",
+      );
+    const packedPackage =
+      JSON.parse(
+        await readFile(
+          join(
+            packedRoot,
+            "package.json",
+          ),
+          "utf8",
+        ),
+      );
+    const packedLock =
+      JSON.parse(
+        await readFile(
+          join(
+            packedRoot,
+            "install-lock.json",
+          ),
+          "utf8",
+        ),
+      );
+
+    assert.equal(
+      packedPackage
+        .devDependencies,
+      undefined,
+    );
+    assert.equal(
+      packedLock
+        .packages[""]
+        .devDependencies,
+      undefined,
+    );
+    assert.equal(
+      await exists(
+        join(
+          packedRoot,
+          "runtime",
+          "src",
+          "host.js",
+        ),
+      ),
+      true,
+    );
+    assert.equal(
+      await exists(
+        join(
+          packedRoot,
+          "runtime",
+          "src",
+          "worker-entry.js",
+        ),
+      ),
+      true,
+    );
+    for (
+      const sourceOnlyPath of [
+        "AGENTS.md",
+        "tsconfig.json",
+        "tsconfig.runtime.json",
+        "src",
+        join(
+          "scripts",
+          "build-runtime.mjs",
+        ),
+      ]
+    ) {
+      assert.equal(
+        await exists(
+          join(
+            packedRoot,
+            sourceOnlyPath,
+          ),
+        ),
+        false,
+        "release shipped source-only path: " +
+          sourceOnlyPath,
+      );
+    }
+
+    const dependencyInstall =
+      await runProcess(
+        "cmd.exe",
+        [
+          "/d",
+          "/s",
+          "/c",
+          "npm install --omit=dev --no-audit --no-fund",
+        ],
+        {
+          cwd: packedRoot,
+        },
+      );
+    assert.equal(
+      dependencyInstall
+        .exitCode,
+      0,
+      dependencyInstall.stderr +
+        dependencyInstall.stdout,
+    );
+    assert.equal(
+      await exists(
+        join(
+          packedRoot,
+          "node_modules",
+          "tsx",
+        ),
+      ),
+      false,
+    );
+    assert.equal(
+      await exists(
+        join(
+          packedRoot,
+          "node_modules",
+          "typescript",
+        ),
+      ),
+      false,
+    );
+
+    const compiledPort =
+      await freeLoopbackPort();
+    const compiledStartup =
+      await runProcess(
+        process.execPath,
+        [
+          join(
+            packedRoot,
+            "scripts",
+            "host-launcher.mjs",
+          ),
+        ],
+        {
+          cwd: packedRoot,
+          env: {
+            ...process.env,
+            JUNIUS_PROJECT_ROOT:
+              packedRoot,
+            JUNIUS_RUNTIME_ROOT:
+              join(
+                tempRoot,
+                "compiled-runtime-state",
+              ),
+            JUNIUS_MCP_PORT:
+              String(
+                compiledPort,
+              ),
+            JUNIUS_BOOTSTRAP_TEST_EXIT_AFTER_HEALTH:
+              "1",
+          },
+        },
+      );
+    assert.equal(
+      compiledStartup.exitCode,
+      0,
+      compiledStartup.stderr +
+        compiledStartup.stdout,
+    );
+    assert.match(
+      compiledStartup.stderr,
+      /promoted validated release/u,
+    );
+
     const packageData =
       await readFile(
         join(
