@@ -187,6 +187,13 @@ $payloadFile = Join-Path (
     $nonce +
     ".json"
 )
+$payloadStagingFile = Join-Path (
+    [IO.Path]::GetTempPath()
+) (
+    "junius-job-payload-" +
+    $nonce +
+    ".tmp"
+)
 $exitCode = 1
 
 try {
@@ -291,6 +298,12 @@ try {
         "JUNIUS_JOB_PAYLOAD_FILE"
     ] = $payloadFile
 
+    [IO.File]::WriteAllText(
+        $payloadStagingFile,
+        $payloadJson,
+        (New-Object Text.UTF8Encoding($false))
+    )
+
     $bootstrap = New-Object System.Diagnostics.Process
     $bootstrap.StartInfo = $startInfo
 
@@ -326,10 +339,9 @@ try {
             $stdout
         )
 
-    [IO.File]::WriteAllText(
-        $payloadFile,
-        $payloadJson,
-        (New-Object Text.UTF8Encoding($false))
+    [IO.File]::Move(
+        $payloadStagingFile,
+        $payloadFile
     )
 
     $payloadPid = $null
@@ -471,6 +483,7 @@ finally {
 
     Remove-Item -LiteralPath $readyFile -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $payloadFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $payloadStagingFile -Force -ErrorAction SilentlyContinue
 }
 
 exit $exitCode
