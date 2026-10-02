@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import { spawnManagedWorker } from "./worker-process.js";
+import { windowsProcessOwnsConsole } from "./windows-console.test-helper.js";
 
 test("spawnManagedWorker ignores startup IPC for another worker id", async () => {
   const root = await mkdtemp(
@@ -145,6 +146,8 @@ test("spawnManagedWorker starts an isolated healthy Junius worker", async () => 
       
       environment: {
         ...process.env,
+        JUNIUS_INSTANCE_ROLE:
+          "installed",
         JUNIUS_WORKSPACE_ID: "worker-test",
         JUNIUS_WORKSPACE_ROOT: root,
         JUNIUS_WORKSPACE_STATE_PATH: join(
@@ -160,6 +163,13 @@ test("spawnManagedWorker starts an isolated healthy Junius worker", async () => 
       assert.equal(worker.pid > 0, true);
       assert.equal(worker.mcpPort > 0, true);
       assert.equal(worker.controlPort > 0, true);
+
+      if (process.platform === "win32") {
+        assert.equal(
+          await windowsProcessOwnsConsole(worker.pid),
+          false,
+        );
+      }
 
       const privateHealthUrl =
         `http://127.0.0.1:${worker.controlPort}/__junius/worker-health`;

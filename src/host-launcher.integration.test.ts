@@ -12,6 +12,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { terminateProcessTree } from "./process-termination.js";
+import { windowsProcessOwnsConsole } from "./windows-console.test-helper.js";
 
 test("source-test launcher pins port 18787 and marks the source-test instance", async () => {
   const root = await mkdtemp(
@@ -215,5 +217,118 @@ await writeFile(
     );
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("installed launcher starts bootstrap without a Windows console", {
+  skip: process.platform !== "win32",
+}, async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "junius-background-launcher-"),
+  );
+  const runtimeRoot = join(root, "runtime");
+  const bootstrapRoot = join(
+    runtimeRoot,
+    "bootstrap",
+  );
+  const stableBootstrapPath = join(
+    bootstrapRoot,
+    "host-bootstrap.mjs",
+  );
+  const markerPath = join(root, "bootstrap-pid.txt");
+  let bootstrapPid: number | undefined;
+
+  await mkdir(
+    bootstrapRoot,
+    { recursive: true },
+  );
+  await writeFile(
+    stableBootstrapPath,
+    `
+import { writeFile } from "node:fs/promises";
+await writeFile(
+  ${JSON.stringify(markerPath)},
+  String(process.pid),
+  "utf8",
+);
+setInterval(() => {}, 1000);
+`,
+    "utf8",
+  );
+
+  const child = spawn(
+    process.execPath,
+    [
+      join(
+        process.cwd(),
+        "scripts",
+        "host-launcher.mjs",
+      ),
+    ],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        JUNIUS_RUNTIME_ROOT:
+          runtimeRoot,
+      },
+      windowsHide: true,
+      stdio: "ignore",
+    },
+  );
+
+  try {
+    const deadline =
+      Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      try {
+        bootstrapPid = Number(
+          await readFile(
+            markerPath,
+            "utf8",
+          ),
+        );
+        break;
+      } catch {
+        await new Promise(
+          (resolvePromise) =>
+            setTimeout(
+              resolvePromise,
+              25,
+            ),
+        );
+      }
+    }
+
+    assert.equal(
+      Number.isSafeInteger(bootstrapPid),
+      true,
+    );
+    assert.equal(
+      await windowsProcessOwnsConsole(
+        bootstrapPid!,
+      ),
+      false,
+    );
+  } finally {
+    if (bootstrapPid !== undefined) {
+      try {
+        process.kill(
+          bootstrapPid,
+          "SIGTERM",
+        );
+      } catch {
+        // already gone
+      }
+    }
+    await terminateProcessTree(child);
+    await rm(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
   }
 });

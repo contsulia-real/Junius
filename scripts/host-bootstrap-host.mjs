@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { join } from "node:path";
 import {
   HEALTH_TIMEOUT_MS,
   projectRoot,
@@ -44,6 +45,8 @@ function spawnHost(
           ? "inherit"
           : "ignore",
       windowsHide:
+        !developmentMode,
+      detached:
         !developmentMode,
     },
   );
@@ -133,10 +136,82 @@ export async function stopChild(
     return;
   }
 
-  child.kill("SIGTERM");
+  const pid = child.pid;
+  if (pid === undefined) {
+    child.kill();
+    return;
+  }
+
+  const systemRoot =
+    process.env.SystemRoot ??
+    process.env.SYSTEMROOT ??
+    "C:\\Windows";
+  const taskkill =
+    join(
+      systemRoot,
+      "System32",
+      "taskkill.exe",
+    );
 
   await new Promise(
     (resolvePromise) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolvePromise();
+      };
+
+      let killer;
+      try {
+        killer = spawn(
+          taskkill,
+          [
+            "/PID",
+            String(pid),
+            "/T",
+            "/F",
+          ],
+          {
+            windowsHide: true,
+            stdio: "ignore",
+          },
+        );
+      } catch {
+        child.kill();
+        finish();
+        return;
+      }
+
+      killer.once(
+        "error",
+        () => {
+          if (
+            child.exitCode === null &&
+            child.signalCode === null
+          ) {
+            child.kill();
+          }
+          finish();
+        },
+      );
+      killer.once(
+        "close",
+        finish,
+      );
+    },
+  );
+
+  await new Promise(
+    (resolvePromise) => {
+      if (
+        child.exitCode !== null ||
+        child.signalCode !== null
+      ) {
+        resolvePromise();
+        return;
+      }
+
       const timer =
         setTimeout(
           resolvePromise,

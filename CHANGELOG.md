@@ -2,9 +2,13 @@
 
 ## Unreleased
 
+## 0.0.12-alpha
+
+- Installed Junius now detaches the bootstrap, Host, and Worker process layers as well as hiding their windows, so the normal installed runtime no longer owns Windows console objects; the source-test instance remains foreground.
+
 ## 0.0.11-alpha
 
-- Installed Junius now keeps the launcher, bootstrap, Host, and Worker process chain consoleless in normal operation while preserving foreground output for the source-test instance.
+- Installed Junius now hides console windows across the normal launcher, bootstrap, Host, and Worker process chain while preserving foreground output for the source-test instance.
 - Compiled-release upgrades now invalidate incompatible legacy source-runtime bootstrap state while preserving compatible compiled last-known-good runtime state.
 
 ## 0.0.10-alpha

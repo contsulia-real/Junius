@@ -105,6 +105,8 @@ async function main() {
           : "ignore",
       windowsHide:
         !developmentMode,
+      detached:
+        !developmentMode,
     },
   );
 

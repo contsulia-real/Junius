@@ -1,12 +1,12 @@
 {
   "name": "junius",
-  "version": "0.0.11-alpha",
+  "version": "0.0.12-alpha",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "junius",
-      "version": "0.0.11-alpha",
+      "version": "0.0.12-alpha",
       "license": "ISC",
       "dependencies": {
         "@modelcontextprotocol/server": "2.1.0",

@@ -211,6 +211,8 @@ export async function spawnManagedWorker(
     silent: true,
     windowsHide:
       !developmentMode,
+    detached:
+      !developmentMode,
   });
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
