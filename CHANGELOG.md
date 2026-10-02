@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.10-alpha
+
 - GitHub Releases now package the compiled JavaScript application directly: installed Junius no longer ships TypeScript sources, source tests, tsx/TypeScript development dependencies, or source-build configuration, and Host/Worker no longer keep esbuild services resident.
 - Added `junius restart` to restart the installed Host and wait for the replacement Host to become healthy.
 
