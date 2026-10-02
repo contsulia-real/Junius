@@ -4,7 +4,7 @@
 
 ## 0.0.12-alpha
 
-- Installed Junius now detaches the bootstrap, Host, and Worker process layers as well as hiding their windows, so the normal installed runtime no longer owns Windows console objects; the source-test instance remains foreground.
+- Installed Junius now runs detached from the invoking terminal with no visible process windows in normal operation; the source-test instance remains foreground.
 
 ## 0.0.11-alpha
 
