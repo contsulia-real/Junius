@@ -589,6 +589,19 @@ The Workspace root is cwd and the built-in file-tool root. It is not process con
 
 Loopback binding, Worker authentication, request bounds, process cleanup, transactional file handling, resource affinity, Desktop takeover disclosure, and Audit are system-integrity mechanisms. They are not substitutes for the caller's operation-level decision.
 
+## Deferred design items
+
+The following Chat-mode orchestration ideas are intentionally unresolved and are not part of the current Junius architecture:
+
+- a persistent Goal object that outlives one Chat session;
+- a Plan mode layered over a Goal, including explicit planning versus execution state;
+- first-class ChatGPT entry points for Goal/Plan flows through plugin invocation surfaces such as `@` or the composer `+` menu;
+- long-running Goal execution that is not bound to one foreground MCP tool-call lifetime;
+- cross-Chat handoff so a later Chat session can resume the same Goal without depending on the previous Chat transcript or context window;
+- controller/lease semantics for preventing two Chat sessions from concurrently driving the same persistent Goal.
+
+No persistence model, public MCP API, agent-loop design, or ChatGPT UI integration for these ideas is frozen yet. They remain deferred until the product direction is revisited.
+
 ## Validation
 
 The project-level check performs:
