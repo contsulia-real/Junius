@@ -137,6 +137,15 @@ test("AuditStore persists events and bounds retained history", async () => {
       action: "third",
       status: "succeeded",
     });
+    assert.deepEqual(
+      store.recent(2).map(
+        (event) => event.action,
+      ),
+      [
+        "third",
+        "second",
+      ],
+    );
     await store.close();
 
     const reopened = new AuditStore(

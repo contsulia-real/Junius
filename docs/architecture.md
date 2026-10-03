@@ -250,6 +250,36 @@ Host diagnostics share the same 8787 loopback listener as MCP:
 
 There is no separate Host control listener. Unknown Host paths return 404, and all other management interaction is through MCP tools.
 
+## ChatGPT conversation observability panel
+
+Junius registers a native ChatGPT conversation-panel entrypoint on its existing MCP server. The entrypoint uses the ChatGPT Plugin Extension `thread` surface and renders an MCP App resource beside the conversation; there is no browser extension or ChatGPT DOM injection.
+
+The panel has two tabs:
+
+- **Tools** lists the current model-visible Junius tool catalog and recent tool calls for the current ChatGPT conversation.
+- **Logs** displays the existing Junius Audit event stream. It is structured operational history, not captured console output, command stdout/stderr, file contents, screenshots, typed text, or clipboard content.
+
+Observability state belongs to the Worker, not to an individual `McpServer` instance. This matters because the modern MCP handler may create a server instance per request while one Worker continues to serve the same active runtime.
+
+Every ordinary MCP tool invocation passes through one common observation hook. The hook records bounded execution facts only:
+
+    tool name
+    start / completion time
+    success / failure
+    ChatGPT session identifier when supplied
+    explicit ChatGPT turn identifier when supplied
+    request metadata key names
+
+Arbitrary request metadata values are not retained. Panel-only plumbing tools are excluded from the visible tool catalog and from usage counts.
+
+ChatGPT's `openai/session` request metadata is used to isolate one conversation from another. If session metadata is absent, Junius does not merge calls from identified conversations into the panel.
+
+Turn accounting is deliberately stricter. Junius groups tool calls into a turn only when ChatGPT supplies an explicit OpenAI turn identifier in the request metadata. It does not infer turn boundaries from timing gaps, call ordering, or message-like metadata. When no explicit turn identity is available, the panel continues to show exact conversation-level calls and clearly reports that per-turn grouping is unavailable.
+
+The UI uses the standard MCP Apps bridge for `ui/initialize` and app-initiated `tools/call`. ChatGPT-specific metadata is used only for the conversation-panel entrypoint and optional widget state.
+
+The panel resource is part of the validated source fingerprint, source snapshot, compiled runtime, and GitHub Release payload so UI-only changes follow the same validation and last-known-good rules as the rest of Junius.
+
 ## Workspace persistence
 
 Workspace state is stored independently from the repository.

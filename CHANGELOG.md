@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a native ChatGPT conversation-side Junius observability panel with Tools and Logs tabs. It lists model-visible Junius tools, records per-conversation tool activity, groups counts by explicit ChatGPT turn identifiers when provided, and shows the existing structured Audit log without persisting arbitrary tool metadata values.
+
 ## 0.0.12-alpha
 
 - Installed Junius now runs detached from the invoking terminal with no visible process windows in normal operation; the source-test instance remains foreground.

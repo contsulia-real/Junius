@@ -217,6 +217,7 @@ export async function buildRuntime(
     const directory of [
       "python",
       "prompts",
+      "ui",
     ]
   ) {
     await cp(

@@ -95,6 +95,7 @@ export async function fingerprintSource(
       "src",
       "python",
       "prompts",
+      "ui",
       "runtime",
     ]
   ) {
@@ -176,6 +177,7 @@ export async function copySnapshot(
       "src",
       "python",
       "prompts",
+      "ui",
       "runtime",
     ]
   ) {

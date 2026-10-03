@@ -284,6 +284,7 @@ const requiredPackFiles = [
   "runtime/prompts/engineering.md",
   "runtime/prompts/desktop.md",
   "runtime/prompts/browser.md",
+  "runtime/ui/observability-panel.html",
   "runtime/scripts/install-paths.mjs",
   "runtime/scripts/install-process.mjs",
   "runtime/scripts/update.mjs",

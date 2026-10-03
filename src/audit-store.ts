@@ -317,6 +317,29 @@ export class AuditStore {
     return event;
   }
 
+  recent(
+    limit = 200,
+  ): readonly AuditEvent[] {
+    const boundedLimit = Math.max(
+      1,
+      Math.min(
+        RECENT_MEMORY_LIMIT,
+        Math.floor(limit),
+      ),
+    );
+
+    return [...this.#recent.values()]
+      .sort((left, right) =>
+        right.timestamp.localeCompare(
+          left.timestamp,
+        ),
+      )
+      .slice(
+        0,
+        boundedLimit,
+      );
+  }
+
   async list(
     limit = 200,
   ): Promise<readonly AuditEvent[]> {

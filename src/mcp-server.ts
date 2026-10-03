@@ -6,6 +6,9 @@ import type { JobManager } from "./job-manager.js";
 import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { DesktopComputerUseService } from "./desktop-computer-use.js";
 import type { AuditStore } from "./audit-store.js";
+import { McpObservabilityStore } from "./mcp-observability.js";
+import { attachMcpObservability } from "./mcp-observability-server.js";
+import { registerMcpObservabilityPanel } from "./mcp-observability-panel.js";
 import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
 import { registerBrowserTool } from "./mcp-browser-tool.js";
 import { registerDesktopTool } from "./mcp-desktop-tool.js";
@@ -34,6 +37,8 @@ export function createMcpServer(
   playwrightCli: PlaywrightCliService,
   desktop: DesktopComputerUseService,
   audit?: AuditStore,
+  observability: McpObservabilityStore =
+    new McpObservabilityStore(),
 ): McpServer {
   const developmentInstance =
     isJuniusDevelopmentInstance();
@@ -90,6 +95,16 @@ export function createMcpServer(
       server,
     );
   }
+
+  registerMcpObservabilityPanel(
+    server,
+    observability,
+    audit,
+  );
+  attachMcpObservability(
+    server,
+    observability,
+  );
 
   return server;
 }

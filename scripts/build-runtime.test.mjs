@@ -32,6 +32,7 @@ test("release runtime emits plain JavaScript Host and Worker entries with requir
       "src/windows-job-guardian.ps1",
       "python/desktop_helper.py",
       "prompts/core.md",
+      "ui/observability-panel.html",
       "scripts/install-paths.mjs",
       "scripts/install-process.mjs",
       "scripts/update.mjs",

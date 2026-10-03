@@ -18,6 +18,7 @@ import {
   type JobSnapshot,
 } from "./job-manager.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
+import { McpObservabilityStore } from "./mcp-observability.js";
 import {
   PlaywrightCliService,
   resolveBrowserStatePath,
@@ -132,6 +133,8 @@ export async function startAgentWorker(
       resolveAuditPath(),
       resolveAuditRetention(),
     );
+  const observability =
+    new McpObservabilityStore();
   const interrupt =
     new EscapeInterruptService();
   const browser =
@@ -198,6 +201,7 @@ export async function startAgentWorker(
       browser,
       desktop,
       audit,
+      observability,
     );
 
   const {

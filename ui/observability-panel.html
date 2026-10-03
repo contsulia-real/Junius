@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Junius 监控</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --surface: #f7f7f8;
+      --surface-strong: #eeeeef;
+      --text: #151515;
+      --muted: #6f6f78;
+      --border: rgba(0, 0, 0, 0.10);
+      --accent: #151515;
+      --success: #16794b;
+      --danger: #c9362b;
+      --running: #9a6700;
+      --radius: 10px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #171717;
+        --surface: #202020;
+        --surface-strong: #2a2a2a;
+        --text: #f4f4f4;
+        --muted: #a8a8b0;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #f4f4f4;
+        --success: #51b985;
+        --danger: #ff7167;
+        --running: #e9b949;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family:
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      font-size: 13px;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      background: color-mix(in srgb, var(--bg) 94%, transparent);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .titlebar {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--muted);
+      flex: 0 0 auto;
+    }
+
+    .status-dot.online {
+      background: var(--success);
+    }
+
+    .status-dot.error {
+      background: var(--danger);
+    }
+
+    .updated {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 0 10px 8px;
+    }
+
+    .tab {
+      border: 0;
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .tab[aria-selected="true"] {
+      background: var(--surface-strong);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .content {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .panel {
+      display: none;
+      padding: 12px;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .section {
+      margin-bottom: 18px;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-head {
+      min-height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .counter {
+      min-width: 22px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--surface-strong);
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .turn {
+      padding: 10px 11px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .turn:last-child {
+      border-bottom: 0;
+    }
+
+    .turn.current {
+      background: color-mix(in srgb, var(--surface) 78%, var(--accent) 4%);
+    }
+
+    .turn-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .turn-name {
+      font-weight: 620;
+    }
+
+    .turn-meta {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 7px;
+      border-radius: 7px;
+      background: var(--surface-strong);
+      min-width: 0;
+    }
+
+    .chip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      font-size: 11px;
+    }
+
+    .chip-count {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+    }
+
+    .notice {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 10px 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .notice strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .call-row,
+    .tool-row,
+    .log-row {
+      padding: 9px 11px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .call-row:last-child,
+    .tool-row:last-child,
+    .log-row:last-child {
+      border-bottom: 0;
+    }
+
+    .tool-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .tool-main {
+      min-width: 0;
+    }
+
+    .tool-name {
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    .tool-title {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .call-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 10px;
+    }
+
+    .call-tool {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      font-size: 11px;
+    }
+
+    .call-time,
+    .call-duration {
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .call-state {
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .call-state.succeeded {
+      color: var(--success);
+    }
+
+    .call-state.failed {
+      color: var(--danger);
+    }
+
+    .call-state.running {
+      color: var(--running);
+    }
+
+    .log-list {
+      max-height: calc(100vh - 130px);
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+
+    .log-row {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr);
+      gap: 4px 9px;
+    }
+
+    .log-time {
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .log-main {
+      min-width: 0;
+    }
+
+    .log-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .log-category {
+      color: var(--muted);
+      font-size: 10px;
+      flex: 0 0 auto;
+    }
+
+    .log-action {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      font-size: 11px;
+    }
+
+    .log-status {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      background: var(--muted);
+    }
+
+    .log-status.succeeded {
+      background: var(--success);
+    }
+
+    .log-status.failed,
+    .log-status.cancelled {
+      background: var(--danger);
+    }
+
+    .log-status.started {
+      background: var(--running);
+    }
+
+    .log-detail {
+      margin-top: 3px;
+      color: var(--muted);
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      font-size: 10px;
+    }
+
+    .empty {
+      padding: 18px 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    details.debug {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    details.debug summary {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .debug-value {
+      margin-top: 5px;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="titlebar">
+        <div class="brand">
+          <span id="statusDot" class="status-dot"></span>
+          <span>Junius</span>
+        </div>
+        <span id="updated" class="updated">连接中</span>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Junius 监控">
+        <button class="tab" id="toolsTab" role="tab" aria-selected="true" data-tab="tools">工具</button>
+        <button class="tab" id="logsTab" role="tab" aria-selected="false" data-tab="logs">日志</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section id="toolsPanel" class="panel active" role="tabpanel">
+        <div class="section">
+          <div class="section-head">
+            <div class="section-title">轮次调用</div>
+            <div id="turnCount" class="counter">0</div>
+          </div>
+          <div id="turns"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div class="section-title">最近调用</div>
+            <div id="callCount" class="counter">0</div>
+          </div>
+          <div id="calls" class="card"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div class="section-title">可用工具</div>
+            <div id="toolCount" class="counter">0</div>
+          </div>
+          <div id="tools" class="card"></div>
+          <details class="debug">
+            <summary>调用上下文</summary>
+            <div id="metaKeys" class="debug-value">暂无</div>
+          </details>
+        </div>
+      </section>
+
+      <section id="logsPanel" class="panel" role="tabpanel">
+        <div class="section">
+          <div class="section-head">
+            <div class="section-title">Junius 日志</div>
+            <div id="logCount" class="counter">0</div>
+          </div>
+          <div id="logs" class="card log-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const SNAPSHOT_TOOL = "junius_observability_snapshot";
+      const POLL_MS = 1000;
+      const MAX_VISIBLE_CALLS = 80;
+      const MAX_VISIBLE_LOGS = 300;
+
+      let activeTab = "tools";
+      let lastSnapshot = null;
+      let pollTimer = null;
+      let busy = false;
+
+      let rpcId = 0;
+      const pendingRequests = new Map();
+
+      function rpcNotify(method, params) {
+        window.parent.postMessage(
+          {
+            jsonrpc: "2.0",
+            method,
+            params,
+          },
+          "*",
+        );
+      }
+
+      function rpcRequest(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = ++rpcId;
+          const timeout = setTimeout(() => {
+            pendingRequests.delete(id);
+            reject(
+              new Error(
+                "mcp_apps_bridge_timeout:" + method,
+              ),
+            );
+          }, 8000);
+
+          pendingRequests.set(
+            id,
+            {
+              resolve(value) {
+                clearTimeout(timeout);
+                resolve(value);
+              },
+              reject(error) {
+                clearTimeout(timeout);
+                reject(error);
+              },
+            },
+          );
+
+          window.parent.postMessage(
+            {
+              jsonrpc: "2.0",
+              id,
+              method,
+              params,
+            },
+            "*",
+          );
+        });
+      }
+
+      window.addEventListener(
+        "message",
+        (event) => {
+          if (event.source !== window.parent) return;
+
+          const message = event.data;
+          if (!message || message.jsonrpc !== "2.0") return;
+
+          if (
+            message.method === "ui/resource-teardown" &&
+            (typeof message.id === "number" || typeof message.id === "string")
+          ) {
+            window.parent.postMessage(
+              {
+                jsonrpc: "2.0",
+                id: message.id,
+                result: {},
+              },
+              "*",
+            );
+            return;
+          }
+
+          if (typeof message.id === "number") {
+            const pending = pendingRequests.get(message.id);
+            if (!pending) return;
+            pendingRequests.delete(message.id);
+
+            if (message.error) {
+              pending.reject(message.error);
+            } else {
+              pending.resolve(message.result);
+            }
+            return;
+          }
+
+          if (message.method === "ui/notifications/tool-result") {
+            const snapshot = payloadFromToolResult(message.params);
+            if (snapshot && typeof snapshot === "object") {
+              render(snapshot);
+              setConnection("online", "刚刚更新");
+            } else {
+              void refresh();
+            }
+          }
+        },
+        { passive: true },
+      );
+
+      async function initializeBridge() {
+        await rpcRequest(
+          "ui/initialize",
+          {
+            appInfo: {
+              name: "junius-observability",
+              version: "1",
+            },
+            appCapabilities: {},
+            protocolVersion: "2026-01-26",
+          },
+        );
+        rpcNotify(
+          "ui/notifications/initialized",
+          {},
+        );
+      }
+
+      const bridgeReady = initializeBridge();
+
+      async function callTool(name, args) {
+        await bridgeReady;
+        return rpcRequest(
+          "tools/call",
+          {
+            name,
+            arguments: args,
+          },
+        );
+      }
+
+      const byId = (id) => document.getElementById(id);
+      const statusDot = byId("statusDot");
+      const updated = byId("updated");
+
+      function text(value) {
+        return value == null ? "" : String(value);
+      }
+
+      function escapeHtml(value) {
+        return text(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function time(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "—";
+        return new Intl.DateTimeFormat(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(date);
+      }
+
+      function duration(value) {
+        if (!Number.isFinite(value)) return "";
+        if (value < 1000) return value + " ms";
+        return (value / 1000).toFixed(value < 10000 ? 1 : 0) + " s";
+      }
+
+      function statusLabel(status) {
+        if (status === "succeeded") return "完成";
+        if (status === "failed") return "失败";
+        if (status === "running") return "运行中";
+        if (status === "cancelled") return "取消";
+        if (status === "started") return "开始";
+        return text(status);
+      }
+
+      function empty(label) {
+        return '<div class="empty">' + escapeHtml(label) + "</div>";
+      }
+
+      function setConnection(state, label) {
+        statusDot.classList.toggle("online", state === "online");
+        statusDot.classList.toggle("error", state === "error");
+        updated.textContent = label;
+      }
+
+      function setTab(tab) {
+        activeTab = tab === "logs" ? "logs" : "tools";
+
+        for (const button of document.querySelectorAll(".tab")) {
+          const selected = button.dataset.tab === activeTab;
+          button.setAttribute("aria-selected", selected ? "true" : "false");
+        }
+
+        byId("toolsPanel").classList.toggle("active", activeTab === "tools");
+        byId("logsPanel").classList.toggle("active", activeTab === "logs");
+
+        try {
+          window.openai?.setWidgetState?.({ tab: activeTab });
+        } catch {
+          // Host state persistence is optional.
+        }
+      }
+
+      function renderTurns(snapshot) {
+        const turns = Array.isArray(snapshot.turns) ? snapshot.turns : [];
+        const container = byId("turns");
+        byId("turnCount").textContent = String(turns.length);
+
+        if (turns.length === 0) {
+          const ungrouped = Number(snapshot.ungroupedCalls ?? 0);
+
+          container.innerHTML =
+            '<div class="notice"><strong>尚未收到 ChatGPT turn 标识。</strong>' +
+            (ungrouped > 0
+              ? " 当前 conversation 已记录 " + ungrouped + " 次 Junius 工具调用，但不会用时间窗口伪造 turn。"
+              : " 当 ChatGPT 在工具调用元数据中提供明确 turn id 后，这里会自动按轮次聚合。") +
+            "</div>";
+          return;
+        }
+
+        container.className = "card";
+        container.innerHTML = turns.map((turn, index) => {
+          const tools = Array.isArray(turn.tools) ? turn.tools : [];
+          const chips = tools.map((tool) =>
+            '<span class="chip"><span class="chip-name">' +
+            escapeHtml(tool.name) +
+            '</span><span class="chip-count">× ' +
+            escapeHtml(tool.count) +
+            "</span></span>"
+          ).join("");
+
+          return '<div class="turn' + (index === 0 ? " current" : "") + '">' +
+            '<div class="turn-top"><span class="turn-name">' +
+            (index === 0 ? "当前轮次" : "历史轮次") +
+            '</span><span class="turn-meta">' +
+            escapeHtml(time(turn.lastCallAt)) +
+            " · " +
+            escapeHtml(turn.totalCalls) +
+            " 次</span></div>" +
+            '<div class="chips">' + chips + "</div></div>";
+        }).join("");
+      }
+
+      function renderCalls(snapshot) {
+        const calls = Array.isArray(snapshot.calls)
+          ? snapshot.calls.slice(0, MAX_VISIBLE_CALLS)
+          : [];
+        byId("callCount").textContent = String(
+          Array.isArray(snapshot.calls) ? snapshot.calls.length : 0
+        );
+
+        const container = byId("calls");
+        if (calls.length === 0) {
+          container.innerHTML = empty("当前 conversation 还没有 Junius 工具调用");
+          return;
+        }
+
+        container.innerHTML = calls.map((call) =>
+          '<div class="call-row">' +
+            '<div class="call-tool">' + escapeHtml(call.tool) + "</div>" +
+            '<div class="call-state ' + escapeHtml(call.status) + '">' +
+              escapeHtml(statusLabel(call.status)) +
+            "</div>" +
+            '<div class="call-time">' + escapeHtml(time(call.startedAt)) + "</div>" +
+            '<div class="call-duration">' + escapeHtml(duration(call.durationMs)) + "</div>" +
+          "</div>"
+        ).join("");
+      }
+
+      function renderTools(snapshot) {
+        const tools = Array.isArray(snapshot.tools) ? snapshot.tools : [];
+        byId("toolCount").textContent = String(tools.length);
+
+        const container = byId("tools");
+        if (tools.length === 0) {
+          container.innerHTML = empty("暂无工具");
+        } else {
+          container.innerHTML = tools.map((tool) =>
+            '<div class="tool-row"><div class="tool-main">' +
+              '<div class="tool-name">' + escapeHtml(tool.name) + "</div>" +
+              (tool.title
+                ? '<div class="tool-title">' + escapeHtml(tool.title) + "</div>"
+                : "") +
+            "</div></div>"
+          ).join("");
+        }
+
+        const keys = Array.isArray(snapshot.observedRequestMetaKeys)
+          ? snapshot.observedRequestMetaKeys
+          : [];
+        byId("metaKeys").textContent = keys.length > 0
+          ? keys.join(" · ")
+          : "暂无";
+      }
+
+      function renderLogs(snapshot) {
+        const logs = Array.isArray(snapshot.logs)
+          ? snapshot.logs.slice(0, MAX_VISIBLE_LOGS)
+          : [];
+        byId("logCount").textContent = String(
+          Array.isArray(snapshot.logs) ? snapshot.logs.length : 0
+        );
+
+        const container = byId("logs");
+        if (logs.length === 0) {
+          container.innerHTML = empty("暂无日志");
+          return;
+        }
+
+        container.innerHTML = logs.map((entry) => {
+          const details = [
+            entry.workspace ? "Workspace " + entry.workspace : "",
+            entry.subject ? entry.subject : "",
+            Number.isFinite(entry.durationMs) ? duration(entry.durationMs) : "",
+            entry.summary ? entry.summary : "",
+          ].filter(Boolean).join(" · ");
+
+          return '<div class="log-row">' +
+            '<div class="log-time">' + escapeHtml(time(entry.timestamp)) + "</div>" +
+            '<div class="log-main">' +
+              '<div class="log-line">' +
+                '<span class="log-status ' + escapeHtml(entry.status) + '"></span>' +
+                '<span class="log-category">' + escapeHtml(entry.category) + "</span>" +
+                '<span class="log-action">' + escapeHtml(entry.action) + "</span>" +
+              "</div>" +
+              (details
+                ? '<div class="log-detail">' + escapeHtml(details) + "</div>"
+                : "") +
+            "</div>" +
+          "</div>";
+        }).join("");
+      }
+
+      function render(snapshot) {
+        lastSnapshot = snapshot;
+        renderTurns(snapshot);
+        renderCalls(snapshot);
+        renderTools(snapshot);
+        renderLogs(snapshot);
+      }
+
+      function payloadFromToolResult(result) {
+        return result?.structuredContent ??
+          result?.result?.structuredContent ??
+          result?.content?.structuredContent ??
+          null;
+      }
+
+      async function refresh() {
+        if (busy || document.visibilityState === "hidden") return;
+
+        busy = true;
+        try {
+          const result = await callTool(SNAPSHOT_TOOL, {});
+          const snapshot = payloadFromToolResult(result);
+
+          if (!snapshot || typeof snapshot !== "object") {
+            throw new Error("invalid_observability_snapshot");
+          }
+
+          render(snapshot);
+          setConnection("online", "刚刚更新");
+        } catch (error) {
+          console.error("[Junius panel]", error);
+          setConnection("error", "连接失败");
+        } finally {
+          busy = false;
+        }
+      }
+
+      function schedule() {
+        if (pollTimer !== null) {
+          clearInterval(pollTimer);
+        }
+        pollTimer = setInterval(refresh, POLL_MS);
+      }
+
+      for (const button of document.querySelectorAll(".tab")) {
+        button.addEventListener("click", () => {
+          setTab(button.dataset.tab);
+        });
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          void refresh();
+        }
+      });
+
+      try {
+        const storedTab = window.openai?.widgetState?.tab;
+        if (storedTab === "logs" || storedTab === "tools") {
+          activeTab = storedTab;
+        }
+      } catch {
+        // Optional host state.
+      }
+
+      setTab(activeTab);
+      schedule();
+      void refresh();
+    })();
+  </script>
+</body>
+</html>
