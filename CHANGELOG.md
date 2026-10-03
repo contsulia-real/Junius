@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.3-alpha
+
 - Hardened Junius turn lifecycle tracking: ordinary tools are now refused until `junius_turn_begin` succeeds, fallback turns are no longer created for missing boundaries, ordinary tool results remind ChatGPT to call `junius_turn_end`, and a new begin still closes an unfinished prior turn as recovery.
 
 ## 0.1.2-alpha
