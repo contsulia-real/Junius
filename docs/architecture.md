@@ -254,6 +254,8 @@ There is no separate Host control listener. Unknown Host paths return 404, and a
 
 Junius registers a native ChatGPT conversation-panel entrypoint on its existing MCP server. The entrypoint uses the ChatGPT Plugin Extension `thread` surface and renders an MCP App resource beside the conversation; there is no browser extension or ChatGPT DOM injection.
 
+The panel is closed by default for every ChatGPT conversation. Opening and closing are separate, session-scoped control actions. ChatGPT may call `open_junius_test_window` only when the current user explicitly asks in chat to open or show the Junius test window, then call `junius_observability_panel` once to mount the authorized thread panel. ChatGPT may call `close_junius_test_window` only when the current user explicitly asks to close, hide, or dismiss it. Ordinary Junius tool activity never changes this state. If the thread entrypoint is mounted without an open authorization for that `openai/session`, the UI remains hidden and requests ChatGPT to close it. Window authorization is in-memory Worker state and resets closed when the Worker restarts.
+
 The panel has two tabs:
 
 - **Tools** lists the current model-visible Junius tool catalog and recent tool calls for the current ChatGPT conversation.

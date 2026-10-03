@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-alpha
+
 - Added a native ChatGPT conversation-side Junius observability panel with Tools and Logs tabs. It lists model-visible Junius tools, records per-conversation tool activity, groups counts by explicit ChatGPT turn identifiers when provided, and shows the existing structured Audit log without persisting arbitrary tool metadata values.
+- The Junius test window now starts closed for every ChatGPT conversation and can be opened or closed only through explicit user chat requests. Direct or unauthorized panel mounts immediately request closure, and ordinary Junius tool activity never changes the window state.
 
 ## 0.0.12-alpha
 

@@ -11,6 +11,8 @@ import {
 import {
   JUNIUS_PANEL_SNAPSHOT_TOOL,
   JUNIUS_PANEL_TOOL,
+  JUNIUS_TEST_WINDOW_CLOSE_TOOL,
+  JUNIUS_TEST_WINDOW_OPEN_TOOL,
   attachMcpObservability,
 } from "./mcp-observability-server.js";
 import {
@@ -124,6 +126,7 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
         | undefined
     )?.visibility,
     [
+      "model",
       "app",
     ],
   );
@@ -191,6 +194,14 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
     content?.text ?? "",
     /ui\/resource-teardown/u,
   );
+  assert.match(
+    content?.text ?? "",
+    /requestClose/u,
+  );
+  assert.match(
+    content?.text ?? "",
+    /testWindowOpen/u,
+  );
 
   const script =
     (content?.text ?? "")
@@ -254,6 +265,14 @@ test("MCP observability automatically records ordinary tools and excludes panel 
     ordinarySnapshot.tools,
     [
       {
+        name: "close_junius_test_window",
+        title: "关闭 Junius 测试窗口",
+      },
+      {
+        name: "open_junius_test_window",
+        title: "打开 Junius 测试窗口",
+      },
+      {
         name: "ordinary_tool",
         title: "Ordinary Tool",
       },
@@ -299,5 +318,177 @@ test("MCP observability automatically records ordinary tools and excludes panel 
       "conversation-1",
     ).calls.length,
     1,
+  );
+});
+
+
+test("Junius test window controls require a ChatGPT session and gate the panel", async () => {
+  const server =
+    new McpServer({
+      name: "Junius Test",
+      version: "0",
+    });
+  const store =
+    new McpObservabilityStore();
+
+  registerMcpObservabilityPanel(
+    server,
+    store,
+  );
+
+  const view =
+    internals(server);
+  const openTool =
+    view._registeredTools[
+      JUNIUS_TEST_WINDOW_OPEN_TOOL
+    ];
+  const closeTool =
+    view._registeredTools[
+      JUNIUS_TEST_WINDOW_CLOSE_TOOL
+    ];
+  const panelTool =
+    view._registeredTools[
+      JUNIUS_PANEL_TOOL
+    ];
+
+  assert.ok(openTool);
+  assert.ok(closeTool);
+  assert.ok(panelTool);
+
+  assert.deepEqual(
+    (
+      openTool._meta?.ui as
+        | {
+            visibility?:
+              readonly string[];
+          }
+        | undefined
+    )?.visibility,
+    [
+      "model",
+    ],
+  );
+  assert.deepEqual(
+    (
+      closeTool._meta?.ui as
+        | {
+            visibility?:
+              readonly string[];
+          }
+        | undefined
+    )?.visibility,
+    [
+      "model",
+    ],
+  );
+
+  const unauthorizedPanel =
+    await view.executeToolHandler(
+      panelTool,
+      {},
+      fakeContext({
+        "openai/session":
+          "conversation-1",
+      }),
+    ) as {
+      structuredContent?: {
+        testWindowOpen?: boolean;
+      };
+    };
+
+  assert.equal(
+    unauthorizedPanel
+      .structuredContent
+      ?.testWindowOpen,
+    false,
+  );
+
+  const missingSession =
+    await view.executeToolHandler(
+      openTool,
+      {},
+      fakeContext(),
+    ) as {
+      isError?: boolean;
+    };
+  assert.equal(
+    missingSession.isError,
+    true,
+  );
+
+  const opened =
+    await view.executeToolHandler(
+      openTool,
+      {},
+      fakeContext({
+        "openai/session":
+          "conversation-1",
+      }),
+    ) as {
+      structuredContent?: {
+        testWindowOpen?: boolean;
+      };
+    };
+  assert.equal(
+    opened.structuredContent
+      ?.testWindowOpen,
+    true,
+  );
+  assert.equal(
+    store.isTestWindowOpen(
+      "conversation-1",
+    ),
+    true,
+  );
+  assert.equal(
+    store.isTestWindowOpen(
+      "conversation-2",
+    ),
+    false,
+  );
+
+  const authorizedPanel =
+    await view.executeToolHandler(
+      panelTool,
+      {},
+      fakeContext({
+        "openai/session":
+          "conversation-1",
+      }),
+    ) as {
+      structuredContent?: {
+        testWindowOpen?: boolean;
+      };
+    };
+  assert.equal(
+    authorizedPanel
+      .structuredContent
+      ?.testWindowOpen,
+    true,
+  );
+
+  const closed =
+    await view.executeToolHandler(
+      closeTool,
+      {},
+      fakeContext({
+        "openai/session":
+          "conversation-1",
+      }),
+    ) as {
+      structuredContent?: {
+        testWindowOpen?: boolean;
+      };
+    };
+  assert.equal(
+    closed.structuredContent
+      ?.testWindowOpen,
+    false,
+  );
+  assert.equal(
+    store.isTestWindowOpen(
+      "conversation-1",
+    ),
+    false,
   );
 });

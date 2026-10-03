@@ -214,3 +214,63 @@ test("extractOpenAiRequestIdentity accepts explicit OpenAI turn-id spellings onl
     },
   );
 });
+
+
+test("Junius test window authorization defaults closed and is conversation-scoped", () => {
+  const store =
+    new McpObservabilityStore();
+
+  assert.equal(
+    store.isTestWindowOpen(
+      "conversation-a",
+    ),
+    false,
+  );
+  assert.equal(
+    store.snapshot(
+      "conversation-a",
+    ).testWindowOpen,
+    false,
+  );
+
+  store.setTestWindowOpen(
+    "conversation-a",
+    true,
+  );
+
+  assert.equal(
+    store.isTestWindowOpen(
+      "conversation-a",
+    ),
+    true,
+  );
+  assert.equal(
+    store.snapshot(
+      "conversation-a",
+    ).testWindowOpen,
+    true,
+  );
+  assert.equal(
+    store.snapshot(
+      "conversation-b",
+    ).testWindowOpen,
+    false,
+  );
+  assert.equal(
+    store.snapshot()
+      .testWindowOpen,
+    false,
+  );
+
+  store.setTestWindowOpen(
+    "conversation-a",
+    false,
+  );
+
+  assert.equal(
+    store.snapshot(
+      "conversation-a",
+    ).testWindowOpen,
+    false,
+  );
+});

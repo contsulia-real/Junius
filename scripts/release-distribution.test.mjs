@@ -1133,7 +1133,7 @@ test(
               address.port,
             "-CheckOnly",
             "-CurrentVersion",
-            "0.0.999-alpha-ChatGPT",
+            "1.0.0-alpha",
             "-Json",
           ],
         );

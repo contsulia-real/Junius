@@ -521,6 +521,8 @@
     (() => {
       "use strict";
 
+      document.body.style.visibility = "hidden";
+
       const SNAPSHOT_TOOL = "junius_observability_snapshot";
       const POLL_MS = 1000;
       const MAX_VISIBLE_CALLS = 80;
@@ -865,6 +867,18 @@
 
       function render(snapshot) {
         lastSnapshot = snapshot;
+
+        if (snapshot.testWindowOpen !== true) {
+          document.body.style.visibility = "hidden";
+          try {
+            void window.openai?.requestClose?.();
+          } catch {
+            // ChatGPT close support is optional outside the target host.
+          }
+          return;
+        }
+
+        document.body.style.visibility = "visible";
         renderTurns(snapshot);
         renderCalls(snapshot);
         renderTools(snapshot);

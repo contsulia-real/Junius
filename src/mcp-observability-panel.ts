@@ -19,6 +19,8 @@ import {
 import {
   JUNIUS_PANEL_SNAPSHOT_TOOL,
   JUNIUS_PANEL_TOOL,
+  JUNIUS_TEST_WINDOW_CLOSE_TOOL,
+  JUNIUS_TEST_WINDOW_OPEN_TOOL,
 } from "./mcp-observability-server.js";
 
 export const PANEL_RESOURCE_URI =
@@ -49,6 +51,7 @@ function panelToolMeta(): Record<string, unknown> {
       resourceUri:
         PANEL_RESOURCE_URI,
       visibility: [
+        "model",
         "app",
       ],
     },
@@ -76,6 +79,22 @@ function appOnlyToolMeta(): Record<string, unknown> {
     ui: {
       visibility: [
         "app",
+      ],
+    },
+    securitySchemes: [
+      {
+        type:
+          "noauth",
+      },
+    ],
+  };
+}
+
+function modelOnlyToolMeta(): Record<string, unknown> {
+  return {
+    ui: {
+      visibility: [
+        "model",
       ],
     },
     securitySchemes: [
@@ -149,12 +168,71 @@ export function registerMcpObservabilityPanel(
   );
 
   server.registerTool(
+    JUNIUS_TEST_WINDOW_OPEN_TOOL,
+    {
+      title:
+        "打开 Junius 测试窗口",
+      description:
+        "Only call this tool when the current user explicitly asks in ChatGPT chat to open or show the Junius test window. Never call it proactively, infer permission from debugging work, or use it because another Junius tool ran. After it succeeds, call junius_observability_panel once in the same user request to mount the authorized conversation-side panel.",
+      inputSchema:
+        z.object({}),
+      _meta:
+        modelOnlyToolMeta(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint:
+          false,
+        idempotentHint:
+          true,
+        openWorldHint:
+          false,
+      },
+    },
+    async (_args, context) => {
+      const identity =
+        extractOpenAiRequestIdentity(
+          context.mcpReq._meta,
+        );
+      if (identity.sessionId === undefined) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text:
+                "Cannot open the Junius test window because ChatGPT did not provide a conversation session id.",
+            },
+          ],
+        };
+      }
+
+      observability.setTestWindowOpen(
+        identity.sessionId,
+        true,
+      );
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              "Junius test window is authorized to open for this conversation.",
+          },
+        ],
+        structuredContent: {
+          testWindowOpen: true,
+        },
+      };
+    },
+  );
+
+  server.registerTool(
     JUNIUS_PANEL_TOOL,
     {
       title:
         "Junius 监控",
       description:
-        "在当前 ChatGPT conversation 右侧打开 Junius 工具调用与日志面板。",
+        "Mount the Junius test window in the current ChatGPT conversation. Call this only immediately after open_junius_test_window succeeded for the user's current explicit request. This tool does not authorize opening by itself; unauthorized mounts close themselves.",
       inputSchema:
         z.object({}),
       _meta:
@@ -178,6 +256,65 @@ export function registerMcpObservabilityPanel(
           context,
         ),
     }),
+  );
+
+  server.registerTool(
+    JUNIUS_TEST_WINDOW_CLOSE_TOOL,
+    {
+      title:
+        "关闭 Junius 测试窗口",
+      description:
+        "Only call this tool when the current user explicitly asks in ChatGPT chat to close, hide, or dismiss the Junius test window. Never close it proactively or because the conversation became idle.",
+      inputSchema:
+        z.object({}),
+      _meta:
+        modelOnlyToolMeta(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint:
+          false,
+        idempotentHint:
+          true,
+        openWorldHint:
+          false,
+      },
+    },
+    async (_args, context) => {
+      const identity =
+        extractOpenAiRequestIdentity(
+          context.mcpReq._meta,
+        );
+      if (identity.sessionId === undefined) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text:
+                "Cannot close the Junius test window because ChatGPT did not provide a conversation session id.",
+            },
+          ],
+        };
+      }
+
+      observability.setTestWindowOpen(
+        identity.sessionId,
+        false,
+      );
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              "Junius test window is authorized to close for this conversation.",
+          },
+        ],
+        structuredContent: {
+          testWindowOpen: false,
+        },
+      };
+    },
   );
 
   server.registerTool(

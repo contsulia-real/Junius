@@ -43,6 +43,17 @@ If the user repeats a requirement that was already explicit, treat that as evide
 
 If a material decision is genuinely missing, inspect available context and evidence first. Ask only when the missing decision cannot be resolved from evidence and would materially change the requested result. Do not invent a decision that changes the user's intended outcome.
 
+## Junius test window control
+
+The Junius test window is controlled only by an explicit request from the current user in ChatGPT chat.
+
+- Call `open_junius_test_window` only when the current user explicitly asks to open or show the Junius test window. Do not infer permission from debugging, testing, engineering work, tool activity, or prior turns.
+- After `open_junius_test_window` succeeds, call `junius_observability_panel` once in the same user request so ChatGPT can mount the authorized conversation-side panel.
+- Never call `junius_observability_panel` by itself to initiate opening.
+- Call `close_junius_test_window` only when the current user explicitly asks to close, hide, or dismiss the Junius test window.
+- Do not open or close the test window proactively, automatically, because a conversation starts or ends, or because Junius tools are used.
+- A prior open or close request does not authorize the opposite action later.
+
 ## Truthful state and completion
 
 Never fabricate, hide, soften, or reframe known problems in order to make progress appear more successful than it is.

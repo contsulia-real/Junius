@@ -60,6 +60,8 @@ export interface McpObservabilitySnapshot {
     boolean;
   readonly sessionIdentityAvailable:
     boolean;
+  readonly testWindowOpen:
+    boolean;
   readonly observedRequestMetaKeys:
     readonly string[];
 }
@@ -190,6 +192,37 @@ export class McpObservabilityStore {
       string,
       MutableObservedToolCall
     >();
+
+  readonly #openTestWindowSessions =
+    new Set<string>();
+
+  setTestWindowOpen(
+    sessionId: string,
+    open: boolean,
+  ): void {
+    if (open) {
+      this.#openTestWindowSessions.add(
+        sessionId,
+      );
+      return;
+    }
+
+    this.#openTestWindowSessions.delete(
+      sessionId,
+    );
+  }
+
+  isTestWindowOpen(
+    sessionId?: string,
+  ): boolean {
+    if (sessionId === undefined) {
+      return false;
+    }
+
+    return this
+      .#openTestWindowSessions
+      .has(sessionId);
+  }
 
   replaceToolCatalog(
     tools:
@@ -496,6 +529,8 @@ export class McpObservabilityStore {
         turnSummaries.length > 0,
       sessionIdentityAvailable:
         sessionId !== undefined,
+      testWindowOpen:
+        this.isTestWindowOpen(sessionId),
       observedRequestMetaKeys:
         [...metaKeys].sort(),
     };
