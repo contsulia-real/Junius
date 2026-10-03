@@ -1,0 +1,162 @@
+name: Release Hotfix 0.1.5-alpha
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "install-lock.json"
+      - "src/mcp-server.test.ts"
+      - "CHANGELOG.md"
+      - ".github/workflows/release-hotfix-0.1.5.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'Bump version to 0.1.5-alpha'
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ripgrep
+        run: choco install ripgrep -y --no-progress
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($version -cne "0.1.5-alpha") {
+            throw "Expected version 0.1.5-alpha, got $version."
+          }
+          $tag = "v$version"
+          git fetch --tags --force
+          git rev-parse -q --verify "refs/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release tag $tag already exists."
+          }
+
+      - name: Validate
+        run: pnpm run check
+
+      - name: Validate GitHub release distribution
+        run: npm run check:release
+
+      - name: Build release assets
+        run: npm run release:build
+
+      - name: Build release changelog
+        run: npm run release:notes
+
+      - name: Create release tag
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$tag" "$env:GITHUB_SHA"
+          git push origin "$tag"
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $assets = @(
+            "dist/junius-windows.tgz",
+            "dist/SHA256SUMS.txt",
+            "dist/install.ps1",
+            "dist/release.json"
+          )
+          gh release create "$tag" @assets --draft --verify-tag --title "$tag" --notes-file "dist/release-notes.md"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create draft GitHub Release."
+          }
+
+      - name: Install from draft release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $releaseJson = gh release view "$tag" --json databaseId,isDraft,tagName
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to read draft GitHub Release for $tag."
+          }
+          $release = $releaseJson | ConvertFrom-Json
+          if ($release.tagName -cne $tag -or $release.isDraft -ne $true) {
+            throw "Expected draft release for $tag."
+          }
+          & .\install.ps1 -ReleaseId ([long]$release.databaseId)
+
+      - name: Verify installed Host
+        shell: pwsh
+        run: |
+          $health = Invoke-RestMethod "http://127.0.0.1:8787/__junius/host-health"
+          if ($health.ok -ne $true -or [string]::IsNullOrWhiteSpace($health.activeWorkerId)) {
+            throw "Installed Junius Host is not healthy."
+          }
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          gh release edit "$tag" --draft=false --prerelease
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to publish GitHub Release."
+          }
+
+      - name: Remove failed draft release
+        if: failure()
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $isDraft = gh release view "$tag" --json isDraft --jq ".isDraft" 2>$null
+          if ($LASTEXITCODE -eq 0 -and $isDraft -eq "true") {
+            gh release delete "$tag" --yes
+          }
+
+      - name: Remove failed release tag
+        if: failure()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          git push origin ":refs/tags/$tag"

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5-alpha
+
 - Fixed observability on modern ChatGPT MCP calls, which do not carry `Mcp-Session-Id`. Junius now prefers the transport session when present and otherwise uses ChatGPT's documented `openai/session` conversation id, so turn begin/end, tool monitoring, Skill usage, and the panel work on both protocol eras.
 
 ## 0.1.4-alpha
