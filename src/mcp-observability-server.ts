@@ -5,9 +5,10 @@ import type {
   RegisteredTool,
   ServerContext,
 } from "@modelcontextprotocol/server";
-import type {
-  McpObservabilityStore,
-  ObservedToolDescriptor,
+import {
+  extractOpenAiRequestIdentity,
+  type McpObservabilityStore,
+  type ObservedToolDescriptor,
 } from "./mcp-observability.js";
 import {
   JUNIUS_TURN_BEGIN_TOOL,
@@ -78,6 +79,43 @@ function appOnly(
     visibility.includes("app") &&
     !visibility.includes("model")
   );
+}
+
+const TURN_END_REMINDER =
+  "[Junius internal] If this is the final Junius tool call for the current user message, call junius_turn_end before writing the final assistant answer.";
+
+function withTurnEndReminder(
+  result:
+    | CallToolResult
+    | InputRequiredResult,
+):
+  | CallToolResult
+  | InputRequiredResult {
+  const content =
+    (
+      result as {
+        content?: unknown;
+      }
+    ).content;
+
+  if (!Array.isArray(content)) {
+    return result;
+  }
+
+  return {
+    ...result,
+    content: [
+      ...content,
+      {
+        type:
+          "text" as const,
+        text:
+          TURN_END_REMINDER,
+      },
+    ],
+  } as
+    | CallToolResult
+    | InputRequiredResult;
 }
 
 function catalog(
@@ -168,6 +206,31 @@ export function attachMcpObservability(
         );
       }
 
+      const identity =
+        extractOpenAiRequestIdentity(
+          context.mcpReq._meta,
+        );
+
+      if (
+        !observability.hasActiveTurn(
+          identity.sessionId,
+        )
+      ) {
+        return {
+          isError: true,
+          content: [
+            {
+              type:
+                "text" as const,
+              text:
+                "Junius turn is not started. Call junius_turn_begin with the current user input parts, then retry " +
+                name +
+                ".",
+            },
+          ],
+        };
+      }
+
       const callId =
         observability.beginToolCall(
           name,
@@ -195,7 +258,9 @@ export function attachMcpObservability(
             ? "failed"
             : "succeeded",
         );
-        return result;
+        return withTurnEndReminder(
+          result,
+        );
       } catch (error) {
         observability.finishToolCall(
           callId,

@@ -227,6 +227,140 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
   );
 });
 
+test("MCP observability refuses ordinary tools until an explicit Junius turn begins", async () => {
+  const server =
+    new McpServer({
+      name: "Junius Test",
+      version: "0",
+    });
+  const store =
+    new McpObservabilityStore();
+  let executions = 0;
+
+  server.registerTool(
+    "ordinary_tool",
+    {
+      inputSchema: {
+        value:
+          z.string(),
+      },
+    },
+    async () => {
+      executions += 1;
+      return {
+        content: [],
+      };
+    },
+  );
+
+  registerMcpTurnTools(
+    server,
+    store,
+  );
+  attachMcpObservability(
+    server,
+    store,
+  );
+
+  const view =
+    internals(server);
+  const context =
+    fakeContext({
+      "openai/session":
+        "conversation-1",
+    });
+
+  const blocked =
+    await view.executeToolHandler(
+      view._registeredTools
+        .ordinary_tool,
+      {
+        value: "blocked",
+      },
+      context,
+    ) as {
+      isError?: boolean;
+      content?: readonly {
+        type?: string;
+        text?: string;
+      }[];
+    };
+
+  assert.equal(
+    blocked.isError,
+    true,
+  );
+  assert.equal(
+    executions,
+    0,
+  );
+  assert.match(
+    blocked.content?.[0]?.text ?? "",
+    /junius_turn_begin/u,
+  );
+  assert.deepEqual(
+    store.snapshot(
+      "conversation-1",
+    ).turns,
+    [],
+  );
+
+  const begin =
+    await view.executeToolHandler(
+      view._registeredTools[
+        JUNIUS_TURN_BEGIN_TOOL
+      ],
+      {
+        parts: [
+          {
+            type: "text",
+            text: "执行一次工具",
+          },
+        ],
+      },
+      context,
+    ) as {
+      content?: readonly {
+        type?: string;
+        text?: string;
+      }[];
+    };
+
+  assert.match(
+    begin.content?.[0]?.text ?? "",
+    /junius_turn_end/u,
+  );
+
+  const allowed =
+    await view.executeToolHandler(
+      view._registeredTools
+        .ordinary_tool,
+      {
+        value: "allowed",
+      },
+      context,
+    ) as {
+      isError?: boolean;
+      content?: readonly {
+        type?: string;
+        text?: string;
+      }[];
+    };
+
+  assert.notEqual(
+    allowed.isError,
+    true,
+  );
+  assert.equal(
+    executions,
+    1,
+  );
+  assert.match(
+    allowed.content?.at(-1)?.text ?? "",
+    /junius_turn_end/u,
+  );
+});
+
 test("MCP observability records ordinary tools inside Junius-owned turns and excludes turn plumbing", async () => {
   const server =
     new McpServer({

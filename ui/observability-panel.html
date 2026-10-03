@@ -437,10 +437,6 @@
     .event-input {
       margin-top: 6px;
     }
-
-    .fallback {
-      color: var(--running);
-    }
   </style>
 </head>
 <body>
@@ -725,7 +721,7 @@
         return (
           '<summary class="turn-summary">' +
             '<span class="chevron"></span>' +
-            '<span class="turn-title' + (turn.fallback ? " fallback" : "") + '" title="' +
+            '<span class="turn-title" title="' +
               escapeHtml(turn.title) + '">' +
               escapeHtml(turn.title) +
             "</span>" +

@@ -73,7 +73,6 @@ export interface ObservedTurn {
   readonly status:
     | "active"
     | "completed";
-  readonly fallback: boolean;
   readonly totalCalls: number;
   readonly tools:
     readonly ObservedTurnToolGroup[];
@@ -334,7 +333,6 @@ interface MutableObservedTurn {
   completedAt?: string;
   completedAtMs?: number;
   completedSequence?: number;
-  fallback: boolean;
   calls:
     MutableObservedToolCall[];
 }
@@ -513,7 +511,6 @@ export class McpObservabilityStore {
     sessionId:
       string | undefined,
     title: string,
-    fallback: boolean,
     startedAtMs:
       number,
   ): MutableObservedTurn {
@@ -557,7 +554,6 @@ export class McpObservabilityStore {
         startedAtMs,
         startedSequence:
           this.#nextSequence(),
-        fallback,
         calls: [],
       };
 
@@ -584,7 +580,6 @@ export class McpObservabilityStore {
       this.#createTurn(
         sessionId,
         renderTurnTitle(parts),
-        false,
         Date.now(),
       );
 
@@ -639,22 +634,12 @@ export class McpObservabilityStore {
       : this.#turnsById.get(id);
   }
 
-  #ensureTurn(
-    sessionId:
-      string | undefined,
-    startedAtMs: number,
-  ): MutableObservedTurn {
-    return (
-      this.#activeTurn(
-        sessionId,
-      ) ??
-      this.#createTurn(
-        sessionId,
-        "未捕获用户提示词",
-        true,
-        startedAtMs,
-      )
-    );
+  hasActiveTurn(
+    sessionId?: string,
+  ): boolean {
+    return this.#activeTurn(
+      sessionId,
+    ) !== undefined;
   }
 
   beginToolCall(
@@ -669,10 +654,16 @@ export class McpObservabilityStore {
     const startedAtMs =
       Date.now();
     const turn =
-      this.#ensureTurn(
+      this.#activeTurn(
         identity.sessionId,
-        startedAtMs,
       );
+
+    if (turn === undefined) {
+      throw new Error(
+        "junius_turn_not_started",
+      );
+    }
+
     const id =
       randomUUID();
 
@@ -932,8 +923,6 @@ export class McpObservabilityStore {
         undefined
           ? "active"
           : "completed",
-      fallback:
-        turn.fallback,
       totalCalls:
         turn.calls.length,
       tools,

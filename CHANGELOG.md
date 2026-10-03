@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hardened Junius turn lifecycle tracking: ordinary tools are now refused until `junius_turn_begin` succeeds, fallback turns are no longer created for missing boundaries, ordinary tool results remind ChatGPT to call `junius_turn_end`, and a new begin still closes an unfinished prior turn as recovery.
+
 ## 0.1.2-alpha
 
 - Reworked the ChatGPT observability panel around Junius-owned turns. Tools and Logs now use turn accordions; turn titles come from the user prompt with literal `[File]` placeholders, tool calls are grouped by tool with per-call input differences, and the Logs tab shows the ordered tool-call event timeline for each turn.

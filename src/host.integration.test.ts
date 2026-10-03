@@ -259,6 +259,10 @@ async function callMcpTool(
         params: {
           name,
           arguments: args,
+          _meta: {
+            "openai/session":
+              "host-integration",
+          },
         },
       }),
     },
@@ -283,6 +287,8 @@ async function callMcpTool(
             type?: string;
             text?: string;
           }[];
+          structuredContent?:
+            Record<string, unknown>;
         };
       }
     ).result;
@@ -311,24 +317,42 @@ async function callMcpTool(
         .map(
           (item) =>
             item.text,
+        )
+        .filter(
+          (value) =>
+            !value.startsWith(
+              "[Junius internal]",
+            ),
         );
+
+    let payload:
+      Record<string, unknown> =
+        result?.structuredContent ?? {};
 
     if (
       textContents[0] !==
       undefined
     ) {
-      let payload:
-        Record<string, unknown> = {};
       try {
         payload = JSON.parse(
           textContents[0],
         ) as Record<string, unknown>;
       } catch (error) {
-        if (!allowError) {
+        if (
+          result?.structuredContent ===
+            undefined &&
+          !allowError
+        ) {
           throw error;
         }
       }
+    }
 
+    if (
+      textContents.length > 0 ||
+      result?.structuredContent !==
+        undefined
+    ) {
       return {
         response,
         payload,
@@ -661,6 +685,27 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         "",
       ].join("\n"),
       "utf8",
+    );
+
+    const begunTurn =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "junius_turn_begin",
+        {
+          parts: [
+            {
+              type: "text",
+              text:
+                "Exercise the Host MCP integration surface.",
+            },
+          ],
+        },
+        true,
+      );
+    assert.equal(
+      begunTurn.isError,
+      false,
     );
 
     const installedSkill =
@@ -1708,6 +1753,19 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       typeof supervisorState.latencyTraces?.[0]
         ?.proxyOverheadMs,
       "number",
+    );
+
+    const endedTurn =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "junius_turn_end",
+        {},
+        true,
+      );
+    assert.equal(
+      endedTurn.isError,
+      false,
     );
   } finally {
     child.kill();

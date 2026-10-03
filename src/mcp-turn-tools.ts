@@ -57,7 +57,7 @@ export function registerMcpTurnTools(
       title:
         "Begin Junius turn",
       description:
-        "Internal Junius turn boundary. Call this as the first Junius tool for every user message that will use Junius. Pass the current user input as ordered parts: exact user-authored text parts and one {type:'file'} part for every attached file or image. Do not put file names or file contents into text parts. Junius renders each file part literally as [File].",
+        "Internal Junius turn boundary. MUST be called as the first Junius tool for every user message that will use Junius. Ordinary Junius tools are refused until this succeeds. Pass the current user input as ordered parts: exact user-authored text parts and one {type:'file'} part for every attached file or image. Do not put file names or file contents into text parts. Junius renders each file part literally as [File]. After the final Junius tool call, MUST call junius_turn_end before the final assistant answer.",
       inputSchema:
         z.object({
           parts:
@@ -115,7 +115,14 @@ export function registerMcpTurnTools(
         );
 
       return {
-        content: [],
+        content: [
+          {
+            type:
+              "text" as const,
+            text:
+              "Junius turn started. After the final Junius tool call for this user message, call junius_turn_end before the final assistant answer.",
+          },
+        ],
         structuredContent: {
           turnId,
         },
@@ -129,7 +136,7 @@ export function registerMcpTurnTools(
       title:
         "End Junius turn",
       description:
-        "Internal Junius turn boundary. Call this after the final Junius tool call for the current user message and before the final assistant answer.",
+        "Internal Junius turn boundary. MUST be called after the final Junius tool call for the current user message and before the final assistant answer. Do not leave a completed user request with an active Junius turn.",
       inputSchema:
         z.object({}),
       _meta:

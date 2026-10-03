@@ -176,10 +176,6 @@ test("McpObservabilityStore owns turn boundaries, groups tools, preserves call d
     "completed",
   );
   assert.equal(
-    turn.fallback,
-    false,
-  );
-  assert.equal(
     turn.totalCalls,
     3,
   );
@@ -275,46 +271,31 @@ test("McpObservabilityStore owns turn boundaries, groups tools, preserves call d
   );
 });
 
-test("McpObservabilityStore creates a fallback turn so calls never remain ungrouped", () => {
+test("McpObservabilityStore rejects tool calls before an explicit turn begins", () => {
   const store =
     new McpObservabilityStore();
 
-  const call =
-    store.beginToolCall(
-      "run_command",
-      {
-        executable:
-          "git",
-      },
-      {
-        "openai/session":
-          "conversation-a",
-      },
-    );
-  store.finishToolCall(
-    call,
-    "succeeded",
+  assert.throws(
+    () =>
+      store.beginToolCall(
+        "run_command",
+        {
+          executable:
+            "git",
+        },
+        {
+          "openai/session":
+            "conversation-a",
+        },
+      ),
+    /junius_turn_not_started/u,
   );
 
-  const snapshot =
+  assert.deepEqual(
     store.snapshot(
       "conversation-a",
-    );
-  const turn =
-    snapshot.turns[0];
-
-  assert.ok(turn);
-  assert.equal(
-    turn.title,
-    "未捕获用户提示词",
-  );
-  assert.equal(
-    turn.fallback,
-    true,
-  );
-  assert.equal(
-    turn.totalCalls,
-    1,
+    ).turns,
+    [],
   );
 });
 
