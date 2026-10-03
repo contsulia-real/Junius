@@ -521,8 +521,6 @@
     (() => {
       "use strict";
 
-      document.body.style.visibility = "hidden";
-
       const SNAPSHOT_TOOL = "junius_observability_snapshot";
       const POLL_MS = 1000;
       const MAX_VISIBLE_CALLS = 80;
@@ -530,6 +528,7 @@
 
       let activeTab = "tools";
       let lastSnapshot = null;
+      let closeRevision = null;
       let pollTimer = null;
       let busy = false;
 
@@ -868,8 +867,15 @@
       function render(snapshot) {
         lastSnapshot = snapshot;
 
-        if (snapshot.testWindowOpen !== true) {
-          document.body.style.visibility = "hidden";
+        const nextCloseRevision =
+          Number(
+            snapshot.testWindowCloseRevision ?? 0,
+          );
+
+        if (closeRevision === null) {
+          closeRevision = nextCloseRevision;
+        } else if (nextCloseRevision !== closeRevision) {
+          closeRevision = nextCloseRevision;
           try {
             void window.openai?.requestClose?.();
           } catch {
@@ -878,7 +884,6 @@
           return;
         }
 
-        document.body.style.visibility = "visible";
         renderTurns(snapshot);
         renderCalls(snapshot);
         renderTools(snapshot);

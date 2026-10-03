@@ -216,61 +216,52 @@ test("extractOpenAiRequestIdentity accepts explicit OpenAI turn-id spellings onl
 });
 
 
-test("Junius test window authorization defaults closed and is conversation-scoped", () => {
+test("Junius test window close revisions are conversation-scoped", () => {
   const store =
     new McpObservabilityStore();
 
   assert.equal(
-    store.isTestWindowOpen(
+    store.testWindowCloseRevision(
       "conversation-a",
     ),
-    false,
+    0,
   );
   assert.equal(
     store.snapshot(
       "conversation-a",
-    ).testWindowOpen,
-    false,
-  );
-
-  store.setTestWindowOpen(
-    "conversation-a",
-    true,
+    ).testWindowCloseRevision,
+    0,
   );
 
   assert.equal(
-    store.isTestWindowOpen(
+    store.requestTestWindowClose(
       "conversation-a",
     ),
-    true,
+    1,
   );
   assert.equal(
     store.snapshot(
       "conversation-a",
-    ).testWindowOpen,
-    true,
+    ).testWindowCloseRevision,
+    1,
   );
   assert.equal(
     store.snapshot(
       "conversation-b",
-    ).testWindowOpen,
-    false,
+    ).testWindowCloseRevision,
+    0,
   );
+
   assert.equal(
-    store.snapshot()
-      .testWindowOpen,
-    false,
+    store.requestTestWindowClose(
+      "conversation-a",
+    ),
+    2,
   );
-
-  store.setTestWindowOpen(
-    "conversation-a",
-    false,
-  );
-
   assert.equal(
     store.snapshot(
       "conversation-a",
-    ).testWindowOpen,
-    false,
+    ).testWindowCloseRevision,
+    2,
   );
 });

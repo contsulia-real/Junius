@@ -60,8 +60,8 @@ export interface McpObservabilitySnapshot {
     boolean;
   readonly sessionIdentityAvailable:
     boolean;
-  readonly testWindowOpen:
-    boolean;
+  readonly testWindowCloseRevision:
+    number;
   readonly observedRequestMetaKeys:
     readonly string[];
 }
@@ -193,35 +193,34 @@ export class McpObservabilityStore {
       MutableObservedToolCall
     >();
 
-  readonly #openTestWindowSessions =
-    new Set<string>();
+  readonly #testWindowCloseRevisions =
+    new Map<string, number>();
 
-  setTestWindowOpen(
+  requestTestWindowClose(
     sessionId: string,
-    open: boolean,
-  ): void {
-    if (open) {
-      this.#openTestWindowSessions.add(
-        sessionId,
-      );
-      return;
-    }
+  ): number {
+    const revision =
+      (this.#testWindowCloseRevisions
+        .get(sessionId) ?? 0) + 1;
 
-    this.#openTestWindowSessions.delete(
+    this.#testWindowCloseRevisions.set(
       sessionId,
+      revision,
     );
+
+    return revision;
   }
 
-  isTestWindowOpen(
+  testWindowCloseRevision(
     sessionId?: string,
-  ): boolean {
+  ): number {
     if (sessionId === undefined) {
-      return false;
+      return 0;
     }
 
     return this
-      .#openTestWindowSessions
-      .has(sessionId);
+      .#testWindowCloseRevisions
+      .get(sessionId) ?? 0;
   }
 
   replaceToolCatalog(
@@ -529,8 +528,10 @@ export class McpObservabilityStore {
         turnSummaries.length > 0,
       sessionIdentityAvailable:
         sessionId !== undefined,
-      testWindowOpen:
-        this.isTestWindowOpen(sessionId),
+      testWindowCloseRevision:
+        this.testWindowCloseRevision(
+          sessionId,
+        ),
       observedRequestMetaKeys:
         [...metaKeys].sort(),
     };

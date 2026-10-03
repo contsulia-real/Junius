@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed the Junius test-window authorization gate. The ChatGPT thread panel can now be opened directly by the user or from chat, while chat-driven close requests remain session-scoped one-shot signals.
+
 ## 0.1.0-alpha
 
 - Added a native ChatGPT conversation-side Junius observability panel with Tools and Logs tabs. It lists model-visible Junius tools, records per-conversation tool activity, groups counts by explicit ChatGPT turn identifiers when provided, and shows the existing structured Audit log without persisting arbitrary tool metadata values.

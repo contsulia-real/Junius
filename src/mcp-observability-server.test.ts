@@ -12,7 +12,6 @@ import {
   JUNIUS_PANEL_SNAPSHOT_TOOL,
   JUNIUS_PANEL_TOOL,
   JUNIUS_TEST_WINDOW_CLOSE_TOOL,
-  JUNIUS_TEST_WINDOW_OPEN_TOOL,
   attachMcpObservability,
 } from "./mcp-observability-server.js";
 import {
@@ -200,7 +199,7 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
   );
   assert.match(
     content?.text ?? "",
-    /testWindowOpen/u,
+    /testWindowCloseRevision/u,
   );
 
   const script =
@@ -269,10 +268,6 @@ test("MCP observability automatically records ordinary tools and excludes panel 
         title: "关闭 Junius 测试窗口",
       },
       {
-        name: "open_junius_test_window",
-        title: "打开 Junius 测试窗口",
-      },
-      {
         name: "ordinary_tool",
         title: "Ordinary Tool",
       },
@@ -322,7 +317,7 @@ test("MCP observability automatically records ordinary tools and excludes panel 
 });
 
 
-test("Junius test window controls require a ChatGPT session and gate the panel", async () => {
+test("Junius panel opens without authorization and close signals are conversation-scoped", async () => {
   const server =
     new McpServer({
       name: "Junius Test",
@@ -338,10 +333,6 @@ test("Junius test window controls require a ChatGPT session and gate the panel",
 
   const view =
     internals(server);
-  const openTool =
-    view._registeredTools[
-      JUNIUS_TEST_WINDOW_OPEN_TOOL
-    ];
   const closeTool =
     view._registeredTools[
       JUNIUS_TEST_WINDOW_CLOSE_TOOL
@@ -351,38 +342,10 @@ test("Junius test window controls require a ChatGPT session and gate the panel",
       JUNIUS_PANEL_TOOL
     ];
 
-  assert.ok(openTool);
   assert.ok(closeTool);
   assert.ok(panelTool);
 
-  assert.deepEqual(
-    (
-      openTool._meta?.ui as
-        | {
-            visibility?:
-              readonly string[];
-          }
-        | undefined
-    )?.visibility,
-    [
-      "model",
-    ],
-  );
-  assert.deepEqual(
-    (
-      closeTool._meta?.ui as
-        | {
-            visibility?:
-              readonly string[];
-          }
-        | undefined
-    )?.visibility,
-    [
-      "model",
-    ],
-  );
-
-  const unauthorizedPanel =
+  const manuallyOpened =
     await view.executeToolHandler(
       panelTool,
       {},
@@ -392,20 +355,20 @@ test("Junius test window controls require a ChatGPT session and gate the panel",
       }),
     ) as {
       structuredContent?: {
-        testWindowOpen?: boolean;
+        testWindowCloseRevision?: number;
       };
     };
 
   assert.equal(
-    unauthorizedPanel
+    manuallyOpened
       .structuredContent
-      ?.testWindowOpen,
-    false,
+      ?.testWindowCloseRevision,
+    0,
   );
 
   const missingSession =
     await view.executeToolHandler(
-      openTool,
+      closeTool,
       {},
       fakeContext(),
     ) as {
@@ -413,57 +376,6 @@ test("Junius test window controls require a ChatGPT session and gate the panel",
     };
   assert.equal(
     missingSession.isError,
-    true,
-  );
-
-  const opened =
-    await view.executeToolHandler(
-      openTool,
-      {},
-      fakeContext({
-        "openai/session":
-          "conversation-1",
-      }),
-    ) as {
-      structuredContent?: {
-        testWindowOpen?: boolean;
-      };
-    };
-  assert.equal(
-    opened.structuredContent
-      ?.testWindowOpen,
-    true,
-  );
-  assert.equal(
-    store.isTestWindowOpen(
-      "conversation-1",
-    ),
-    true,
-  );
-  assert.equal(
-    store.isTestWindowOpen(
-      "conversation-2",
-    ),
-    false,
-  );
-
-  const authorizedPanel =
-    await view.executeToolHandler(
-      panelTool,
-      {},
-      fakeContext({
-        "openai/session":
-          "conversation-1",
-      }),
-    ) as {
-      structuredContent?: {
-        testWindowOpen?: boolean;
-      };
-    };
-  assert.equal(
-    authorizedPanel
-      .structuredContent
-      ?.testWindowOpen,
     true,
   );
 
@@ -477,18 +389,46 @@ test("Junius test window controls require a ChatGPT session and gate the panel",
       }),
     ) as {
       structuredContent?: {
-        testWindowOpen?: boolean;
+        testWindowCloseRevision?: number;
       };
     };
+
   assert.equal(
     closed.structuredContent
-      ?.testWindowOpen,
-    false,
+      ?.testWindowCloseRevision,
+    1,
   );
   assert.equal(
-    store.isTestWindowOpen(
+    store.testWindowCloseRevision(
       "conversation-1",
     ),
-    false,
+    1,
+  );
+  assert.equal(
+    store.testWindowCloseRevision(
+      "conversation-2",
+    ),
+    0,
+  );
+
+  const reopened =
+    await view.executeToolHandler(
+      panelTool,
+      {},
+      fakeContext({
+        "openai/session":
+          "conversation-1",
+      }),
+    ) as {
+      structuredContent?: {
+        testWindowCloseRevision?: number;
+      };
+    };
+
+  assert.equal(
+    reopened
+      .structuredContent
+      ?.testWindowCloseRevision,
+    1,
   );
 });

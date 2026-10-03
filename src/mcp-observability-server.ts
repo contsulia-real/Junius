@@ -10,8 +10,6 @@ import type {
   ObservedToolDescriptor,
 } from "./mcp-observability.js";
 
-export const JUNIUS_TEST_WINDOW_OPEN_TOOL =
-  "open_junius_test_window";
 export const JUNIUS_TEST_WINDOW_CLOSE_TOOL =
   "close_junius_test_window";
 export const JUNIUS_PANEL_TOOL =
