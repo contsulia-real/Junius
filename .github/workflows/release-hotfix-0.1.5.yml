@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   release:
-    if: github.event.head_commit.message == 'Bump version to 0.1.5-alpha'
+    if: github.event.head_commit.message == 'Release v0.1.5-alpha'
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -55,8 +55,8 @@ jobs:
           }
           $tag = "v$version"
           git fetch --tags --force
-          git rev-parse -q --verify "refs/tags/$tag" *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $existingTag = git tag --list "$tag"
+          if ($existingTag -ceq $tag) {
             throw "Release tag $tag already exists."
           }
 
