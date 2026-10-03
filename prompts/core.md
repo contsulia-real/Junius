@@ -52,6 +52,20 @@ Users may open the Junius test window directly from the ChatGPT UI. No separate 
 - Manual opening and closing through the ChatGPT UI are normal supported actions.
 - Ordinary Junius tool activity does not itself require the test window to be open.
 
+## Junius turn observability
+
+Whenever the current user message will use any Junius model-visible tool, Junius must receive explicit internal turn boundaries:
+
+1. Call `junius_turn_begin` before the first other Junius tool call for that user message.
+2. Pass the current user input to `junius_turn_begin` as ordered `parts`:
+   - user-authored text uses `{ "type": "text", "text": "..." }`;
+   - every attached file or image uses exactly one `{ "type": "file" }` part;
+   - do not substitute file names, file contents, or descriptions for file parts.
+3. Execute the requested Junius tools.
+4. After the final Junius tool call for that user message completes, call `junius_turn_end` before writing the final assistant answer.
+
+Do this even when there is only one Junius tool call. For parallel Junius work, begin the turn before starting the parallel calls and end it only after all calls finish. The turn-boundary tools are internal observability plumbing and are not part of the user's tool-call statistics.
+
 ## Truthful state and completion
 
 Never fabricate, hide, soften, or reframe known problems in order to make progress appear more successful than it is.

@@ -3,235 +3,419 @@ import test from "node:test";
 import {
   McpObservabilityStore,
   extractOpenAiRequestIdentity,
+  renderTurnTitle,
 } from "./mcp-observability.js";
 
-test("McpObservabilityStore scopes calls by ChatGPT session and groups explicit turns", () => {
-  const store = new McpObservabilityStore();
+test("renderTurnTitle keeps user text and renders every file input as [File]", () => {
+  assert.equal(
+    renderTurnTitle([
+      {
+        type: "text",
+        text:
+          "比较这几个文件\n并告诉我差异",
+      },
+      {
+        type: "file",
+      },
+      {
+        type: "file",
+      },
+      {
+        type: "file",
+      },
+    ]),
+    "比较这几个文件 并告诉我差异 [File] [File] [File]",
+  );
+});
+
+test("McpObservabilityStore owns turn boundaries, groups tools, preserves call differences, and orders events", () => {
+  const store =
+    new McpObservabilityStore();
 
   store.replaceToolCatalog([
     {
       name: "run_command",
-      title: "Run Local Command",
+      title:
+        "Run Command",
     },
     {
-      name: "git_snapshot",
-      title: "Git Snapshot",
+      name:
+        "git_snapshot",
+      title:
+        "Git Snapshot",
     },
   ]);
 
-  const first = store.beginToolCall(
-    "run_command",
-    {
-      "openai/session": "conversation-a",
-      "openai/turn": "turn-1",
-      "openai/locale": "zh-CN",
-    },
+  store.beginTurn(
+    "conversation-a",
+    [
+      {
+        type: "text",
+        text:
+          "检查项目然后比较两个输入",
+      },
+      {
+        type: "file",
+      },
+      {
+        type: "file",
+      },
+    ],
   );
-  store.finishToolCall(first, "succeeded");
 
-  const second = store.beginToolCall(
-    "run_command",
-    {
-      "openai/session": "conversation-a",
-      "openai/turn": "turn-1",
-    },
-  );
-  store.finishToolCall(second, "succeeded");
-
-  const third = store.beginToolCall(
-    "git_snapshot",
-    {
-      "openai/session": "conversation-a",
-      "openai/turn": "turn-2",
-    },
-  );
-  store.finishToolCall(third, "failed");
-
-  const otherConversation = store.beginToolCall(
-    "run_command",
-    {
-      "openai/session": "conversation-b",
-      "openai/turn": "turn-9",
-    },
-  );
+  const first =
+    store.beginToolCall(
+      "run_command",
+      {
+        executable:
+          "git",
+        args: [
+          "status",
+        ],
+      },
+      {
+        "openai/session":
+          "conversation-a",
+      },
+    );
   store.finishToolCall(
-    otherConversation,
+    first,
     "succeeded",
   );
 
-  const snapshot = store.snapshot(
+  const second =
+    store.beginToolCall(
+      "run_command",
+      {
+        executable:
+          "git",
+        args: [
+          "diff",
+          "--stat",
+        ],
+      },
+      {
+        "openai/session":
+          "conversation-a",
+      },
+    );
+  store.finishToolCall(
+    second,
+    "failed",
+  );
+
+  const third =
+    store.beginToolCall(
+      "git_snapshot",
+      {
+        recent_commits: 5,
+      },
+      {
+        "openai/session":
+          "conversation-a",
+      },
+    );
+  store.finishToolCall(
+    third,
+    "succeeded",
+  );
+
+  store.endTurn(
     "conversation-a",
   );
 
-  assert.deepEqual(
-    snapshot.tools.map((tool) => tool.name),
-    [
-      "git_snapshot",
-      "run_command",
-    ],
-  );
-  assert.equal(
-    snapshot.turnIdentityAvailable,
-    true,
-  );
-  assert.deepEqual(
-    snapshot.turns.map((turn) => ({
-      id: turn.id,
-      totalCalls: turn.totalCalls,
-      tools: turn.tools,
-    })),
+  store.beginTurn(
+    "conversation-b",
     [
       {
-        id: "turn-2",
-        totalCalls: 1,
-        tools: [
-          {
-            name: "git_snapshot",
-            count: 1,
-          },
-        ],
-      },
-      {
-        id: "turn-1",
-        totalCalls: 2,
-        tools: [
-          {
-            name: "run_command",
-            count: 2,
-          },
-        ],
+        type: "text",
+        text: "别的会话",
       },
     ],
   );
-  assert.equal(
-    snapshot.calls.length,
-    3,
-  );
-  assert.deepEqual(
-    snapshot.observedRequestMetaKeys,
-    [
-      "openai/locale",
-      "openai/session",
-      "openai/turn",
-    ],
-  );
-});
-
-test("McpObservabilityStore does not invent a turn when ChatGPT only supplies a session", () => {
-  const store = new McpObservabilityStore();
-
-  const call = store.beginToolCall(
-    "run_command",
-    {
-      "openai/session": "conversation-a",
-      "some/private/value": "do-not-store",
-    },
-  );
-  store.finishToolCall(
-    call,
-    "succeeded",
-  );
-
-  const otherSession =
+  const other =
     store.beginToolCall(
-      "git_snapshot",
+      "run_command",
+      {
+        executable:
+          "echo",
+      },
       {
         "openai/session":
           "conversation-b",
       },
     );
   store.finishToolCall(
-    otherSession,
+    other,
     "succeeded",
   );
-
-  const snapshot = store.snapshot(
-    "conversation-a",
+  store.endTurn(
+    "conversation-b",
   );
 
+  const snapshot =
+    store.snapshot(
+      "conversation-a",
+    );
+
   assert.equal(
-    snapshot.turnIdentityAvailable,
-    false,
-  );
-  assert.deepEqual(
-    snapshot.turns,
-    [],
-  );
-  assert.equal(
-    snapshot.ungroupedCalls,
+    snapshot.turns.length,
     1,
   );
-  assert.deepEqual(
-    snapshot.observedRequestMetaKeys,
-    [
-      "openai/session",
-      "some/private/value",
-    ],
+
+  const turn =
+    snapshot.turns[0];
+  assert.ok(turn);
+
+  assert.equal(
+    turn.title,
+    "检查项目然后比较两个输入 [File] [File]",
   );
   assert.equal(
-    JSON.stringify(snapshot)
-      .includes("do-not-store"),
+    turn.status,
+    "completed",
+  );
+  assert.equal(
+    turn.fallback,
     false,
   );
-
   assert.equal(
-    store.snapshot()
-      .calls.length,
-    0,
+    turn.totalCalls,
+    3,
+  );
+  assert.deepEqual(
+    turn.tools.map(
+      (tool) => ({
+        name:
+          tool.name,
+        title:
+          tool.title,
+        count:
+          tool.count,
+      }),
+    ),
+    [
+      {
+        name:
+          "run_command",
+        title:
+          "Run Command",
+        count: 2,
+      },
+      {
+        name:
+          "git_snapshot",
+        title:
+          "Git Snapshot",
+        count: 1,
+      },
+    ],
+  );
+
+  const runCommand =
+    turn.tools[0];
+  assert.ok(runCommand);
+
+  assert.deepEqual(
+    runCommand.calls.map(
+      (call) =>
+        call.input,
+    ),
+    [
+      {
+        executable:
+          "git",
+        args: [
+          "status",
+        ],
+      },
+      {
+        executable:
+          "git",
+        args: [
+          "diff",
+          "--stat",
+        ],
+      },
+    ],
+  );
+
+  assert.deepEqual(
+    turn.events.map(
+      (event) =>
+        event.kind,
+    ),
+    [
+      "turn_started",
+      "tool_started",
+      "tool_succeeded",
+      "tool_started",
+      "tool_failed",
+      "tool_started",
+      "tool_succeeded",
+      "turn_completed",
+    ],
+  );
+
+  assert.deepEqual(
+    [...turn.events]
+      .map(
+        (event) =>
+          event.sequence,
+      ),
+    [...turn.events]
+      .map(
+        (event) =>
+          event.sequence,
+      )
+      .sort(
+        (left, right) =>
+          left - right,
+      ),
   );
 });
 
-test("extractOpenAiRequestIdentity accepts explicit OpenAI turn-id spellings only", () => {
-  assert.deepEqual(
-    extractOpenAiRequestIdentity({
-      "openai/session": "conversation-a",
-      "openai/turn_id": "turn-3",
-      "openai/userAgent": "ChatGPT",
-    }),
-    {
-      sessionId: "conversation-a",
-      turnId: "turn-3",
-      turnMetaKey: "openai/turn_id",
-      requestMetaKeys: [
-        "openai/session",
-        "openai/turn_id",
-        "openai/userAgent",
-      ],
-    },
-  );
-
-  assert.deepEqual(
-    extractOpenAiRequestIdentity({
-      "openai/session": "conversation-a",
-      "openai/message_id": "message-1",
-    }),
-    {
-      sessionId: "conversation-a",
-      requestMetaKeys: [
-        "openai/message_id",
-        "openai/session",
-      ],
-    },
-  );
-});
-
-
-test("Junius test window close revisions are conversation-scoped", () => {
+test("McpObservabilityStore creates a fallback turn so calls never remain ungrouped", () => {
   const store =
     new McpObservabilityStore();
 
-  assert.equal(
-    store.testWindowCloseRevision(
-      "conversation-a",
-    ),
-    0,
+  const call =
+    store.beginToolCall(
+      "run_command",
+      {
+        executable:
+          "git",
+      },
+      {
+        "openai/session":
+          "conversation-a",
+      },
+    );
+  store.finishToolCall(
+    call,
+    "succeeded",
   );
-  assert.equal(
+
+  const snapshot =
     store.snapshot(
       "conversation-a",
-    ).testWindowCloseRevision,
-    0,
+    );
+  const turn =
+    snapshot.turns[0];
+
+  assert.ok(turn);
+  assert.equal(
+    turn.title,
+    "未捕获用户提示词",
   );
+  assert.equal(
+    turn.fallback,
+    true,
+  );
+  assert.equal(
+    turn.totalCalls,
+    1,
+  );
+});
+
+test("beginTurn closes an unfinished prior turn in the same conversation", () => {
+  const store =
+    new McpObservabilityStore();
+
+  store.beginTurn(
+    "conversation-a",
+    [
+      {
+        type: "text",
+        text: "第一轮",
+      },
+    ],
+  );
+  const first =
+    store.beginToolCall(
+      "run_command",
+      {},
+      {
+        "openai/session":
+          "conversation-a",
+      },
+    );
+  store.finishToolCall(
+    first,
+    "succeeded",
+  );
+
+  store.beginTurn(
+    "conversation-a",
+    [
+      {
+        type: "text",
+        text: "第二轮",
+      },
+    ],
+  );
+  const second =
+    store.beginToolCall(
+      "git_snapshot",
+      {},
+      {
+        "openai/session":
+          "conversation-a",
+      },
+    );
+  store.finishToolCall(
+    second,
+    "succeeded",
+  );
+
+  const turns =
+    store.snapshot(
+      "conversation-a",
+    ).turns;
+
+  assert.equal(
+    turns[0]?.title,
+    "第二轮",
+  );
+  assert.equal(
+    turns[0]?.status,
+    "active",
+  );
+  assert.equal(
+    turns[1]?.title,
+    "第一轮",
+  );
+  assert.equal(
+    turns[1]?.status,
+    "completed",
+  );
+});
+
+test("extractOpenAiRequestIdentity uses only the ChatGPT conversation session", () => {
+  assert.deepEqual(
+    extractOpenAiRequestIdentity({
+      "openai/session":
+        "conversation-a",
+      "openai/message_id":
+        "message-1",
+      "openai/turn_id":
+        "not-used",
+    }),
+    {
+      sessionId:
+        "conversation-a",
+      requestMetaKeys: [
+        "openai/message_id",
+        "openai/session",
+        "openai/turn_id",
+      ],
+    },
+  );
+});
+
+test("Junius test window close revisions remain conversation-scoped", () => {
+  const store =
+    new McpObservabilityStore();
 
   assert.equal(
     store.requestTestWindowClose(
@@ -250,18 +434,5 @@ test("Junius test window close revisions are conversation-scoped", () => {
       "conversation-b",
     ).testWindowCloseRevision,
     0,
-  );
-
-  assert.equal(
-    store.requestTestWindowClose(
-      "conversation-a",
-    ),
-    2,
-  );
-  assert.equal(
-    store.snapshot(
-      "conversation-a",
-    ).testWindowCloseRevision,
-    2,
   );
 });

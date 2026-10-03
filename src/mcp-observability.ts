@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+import {
+  createHash,
+  randomUUID,
+} from "node:crypto";
 
 export type ObservedToolCallStatus =
   | "running"
@@ -12,67 +15,89 @@ export interface ObservedToolDescriptor {
 
 export interface OpenAiRequestIdentity {
   readonly sessionId?: string;
-  readonly turnId?: string;
-  readonly turnMetaKey?: string;
   readonly requestMetaKeys:
     readonly string[];
 }
 
+export type TurnPromptPart =
+  | {
+      readonly type: "text";
+      readonly text: string;
+    }
+  | {
+      readonly type: "file";
+    };
+
 export interface ObservedToolCall {
   readonly id: string;
   readonly tool: string;
+  readonly input: unknown;
   readonly startedAt: string;
   readonly completedAt?: string;
   readonly durationMs?: number;
   readonly status:
     ObservedToolCallStatus;
-  readonly sessionId?: string;
-  readonly turnId?: string;
-  readonly turnMetaKey?: string;
-  readonly requestMetaKeys:
-    readonly string[];
 }
 
-export interface ObservedTurnToolCount {
+export interface ObservedTurnToolGroup {
   readonly name: string;
+  readonly title?: string;
   readonly count: number;
+  readonly calls:
+    readonly ObservedToolCall[];
 }
 
-export interface ObservedTurnSummary {
+export type ObservedTurnEventKind =
+  | "turn_started"
+  | "tool_started"
+  | "tool_succeeded"
+  | "tool_failed"
+  | "turn_completed";
+
+export interface ObservedTurnEvent {
+  readonly kind:
+    ObservedTurnEventKind;
+  readonly at: string;
+  readonly sequence: number;
+  readonly tool?: string;
+  readonly callId?: string;
+  readonly input?: unknown;
+  readonly durationMs?: number;
+}
+
+export interface ObservedTurn {
   readonly id: string;
-  readonly turnMetaKey?: string;
+  readonly title: string;
   readonly startedAt: string;
-  readonly lastCallAt: string;
+  readonly completedAt?: string;
+  readonly status:
+    | "active"
+    | "completed";
+  readonly fallback: boolean;
   readonly totalCalls: number;
   readonly tools:
-    readonly ObservedTurnToolCount[];
+    readonly ObservedTurnToolGroup[];
+  readonly events:
+    readonly ObservedTurnEvent[];
 }
 
 export interface McpObservabilitySnapshot {
-  readonly tools:
-    readonly ObservedToolDescriptor[];
-  readonly calls:
-    readonly ObservedToolCall[];
   readonly turns:
-    readonly ObservedTurnSummary[];
-  readonly ungroupedCalls: number;
-  readonly turnIdentityAvailable:
-    boolean;
+    readonly ObservedTurn[];
   readonly sessionIdentityAvailable:
     boolean;
   readonly testWindowCloseRevision:
     number;
-  readonly observedRequestMetaKeys:
-    readonly string[];
 }
 
-const MAX_RECENT_CALLS = 1_000;
+const MAX_TURNS = 200;
+const MAX_INPUT_STRING = 4_096;
+const MAX_INPUT_ARRAY = 48;
+const MAX_INPUT_KEYS = 64;
+const MAX_INPUT_DEPTH = 8;
 
 const OPENAI_SESSION_KEY =
   "openai/session";
-
-const OPENAI_TURN_KEY =
-  /^openai\/turn(?:[_-]?id)?$/iu;
 
 function metaRecord(
   value: unknown,
@@ -119,62 +144,199 @@ export function extractOpenAiRequestIdentity(
       ],
     );
 
-  let turnId:
-    string | undefined;
-  let turnMetaKey:
-    string | undefined;
-
-  for (const key of requestMetaKeys) {
-    if (
-      !OPENAI_TURN_KEY.test(
-        key,
-      )
-    ) {
-      continue;
-    }
-
-    const candidate =
-      stringIdentity(
-        record[key],
-      );
-    if (
-      candidate === undefined
-    ) {
-      continue;
-    }
-
-    turnId = candidate;
-    turnMetaKey = key;
-    break;
-  }
-
   return {
     ...(sessionId === undefined
       ? {}
       : { sessionId }),
-    ...(turnId === undefined
-      ? {}
-      : {
-          turnId,
-          turnMetaKey,
-        }),
     requestMetaKeys,
   };
+}
+
+function compactWhitespace(
+  value: string,
+): string {
+  return value
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+export function renderTurnTitle(
+  parts:
+    readonly TurnPromptPart[],
+): string {
+  const title =
+    compactWhitespace(
+      parts
+        .map((part) =>
+          part.type === "file"
+            ? "[File]"
+            : part.text,
+        )
+        .filter(
+          (part) =>
+            part.length > 0,
+        )
+        .join(" "),
+    );
+
+  return title.length > 0
+    ? title
+    : "（空白输入）";
+}
+
+function longStringSummary(
+  value: string,
+): Readonly<Record<string, unknown>> {
+  const digest =
+    createHash("sha256")
+      .update(value)
+      .digest("hex")
+      .slice(0, 16);
+
+  return {
+    preview:
+      value.slice(
+        0,
+        MAX_INPUT_STRING,
+      ),
+    length:
+      value.length,
+    sha256:
+      digest,
+    truncated:
+      true,
+  };
+}
+
+function summarizeInput(
+  value: unknown,
+  depth = 0,
+): unknown {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number"
+  ) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value.length >
+      MAX_INPUT_STRING
+      ? longStringSummary(value)
+      : value;
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (typeof value === "undefined") {
+    return "[undefined]";
+  }
+
+  if (
+    typeof value === "function" ||
+    typeof value === "symbol"
+  ) {
+    return String(value);
+  }
+
+  if (depth >= MAX_INPUT_DEPTH) {
+    return "[max depth]";
+  }
+
+  if (Array.isArray(value)) {
+    const visible =
+      value
+        .slice(
+          0,
+          MAX_INPUT_ARRAY,
+        )
+        .map((item) =>
+          summarizeInput(
+            item,
+            depth + 1,
+          ),
+        );
+
+    if (
+      value.length >
+      MAX_INPUT_ARRAY
+    ) {
+      visible.push({
+        truncatedItems:
+          value.length -
+          MAX_INPUT_ARRAY,
+      });
+    }
+
+    return visible;
+  }
+
+  const record =
+    metaRecord(value);
+  const entries =
+    Object.entries(record);
+  const visible =
+    entries.slice(
+      0,
+      MAX_INPUT_KEYS,
+    );
+  const result:
+    Record<string, unknown> = {};
+
+  for (
+    const [key, item] of visible
+  ) {
+    result[key] =
+      summarizeInput(
+        item,
+        depth + 1,
+      );
+  }
+
+  if (
+    entries.length >
+    MAX_INPUT_KEYS
+  ) {
+    result.__truncatedKeys =
+      entries.length -
+      MAX_INPUT_KEYS;
+  }
+
+  return result;
 }
 
 interface MutableObservedToolCall {
   id: string;
   tool: string;
+  input: unknown;
   startedAt: string;
   startedAtMs: number;
+  startedSequence: number;
   completedAt?: string;
+  completedAtMs?: number;
+  completedSequence?: number;
   durationMs?: number;
-  status: ObservedToolCallStatus;
+  status:
+    ObservedToolCallStatus;
+  turnId: string;
+}
+
+interface MutableObservedTurn {
+  id: string;
   sessionId?: string;
-  turnId?: string;
-  turnMetaKey?: string;
-  requestMetaKeys:
-    readonly string[];
+  title: string;
+  startedAt: string;
+  startedAtMs: number;
+  startedSequence: number;
+  completedAt?: string;
+  completedAtMs?: number;
+  completedSequence?: number;
+  fallback: boolean;
+  calls:
+    MutableObservedToolCall[];
 }
 
 export class McpObservabilityStore {
@@ -184,8 +346,17 @@ export class McpObservabilityStore {
       ObservedToolDescriptor
     >();
 
-  readonly #calls:
-    MutableObservedToolCall[] = [];
+  readonly #turns:
+    MutableObservedTurn[] = [];
+
+  readonly #turnsById =
+    new Map<
+      string,
+      MutableObservedTurn
+    >();
+
+  readonly #activeTurnBySession =
+    new Map<string, string>();
 
   readonly #callsById =
     new Map<
@@ -195,6 +366,19 @@ export class McpObservabilityStore {
 
   readonly #testWindowCloseRevisions =
     new Map<string, number>();
+
+  #sequence = 0;
+
+  #nextSequence(): number {
+    this.#sequence += 1;
+    return this.#sequence;
+  }
+
+  #sessionKey(
+    sessionId?: string,
+  ): string {
+    return sessionId ?? "";
+  }
 
   requestTestWindowClose(
     sessionId: string,
@@ -233,8 +417,10 @@ export class McpObservabilityStore {
       this.#tools.set(
         tool.name,
         {
-          name: tool.name,
-          ...(tool.title === undefined
+          name:
+            tool.name,
+          ...(tool.title ===
+          undefined
             ? {}
             : {
                 title:
@@ -245,8 +431,235 @@ export class McpObservabilityStore {
     }
   }
 
+  #completeTurn(
+    turn:
+      MutableObservedTurn,
+    completedAtMs:
+      number,
+  ): void {
+    if (
+      turn.completedAtMs !==
+      undefined
+    ) {
+      return;
+    }
+
+    turn.completedAtMs =
+      completedAtMs;
+    turn.completedAt =
+      new Date(
+        completedAtMs,
+      ).toISOString();
+    turn.completedSequence =
+      this.#nextSequence();
+
+    const key =
+      this.#sessionKey(
+        turn.sessionId,
+      );
+
+    if (
+      this.#activeTurnBySession
+        .get(key) === turn.id
+    ) {
+      this
+        .#activeTurnBySession
+        .delete(key);
+    }
+  }
+
+  #pruneTurns(): void {
+    while (
+      this.#turns.length >
+      MAX_TURNS
+    ) {
+      const index =
+        this.#turns.findIndex(
+          (turn) =>
+            turn.completedAtMs !==
+            undefined,
+        );
+
+      if (index < 0) {
+        return;
+      }
+
+      const [removed] =
+        this.#turns.splice(
+          index,
+          1,
+        );
+
+      if (removed === undefined) {
+        return;
+      }
+
+      this.#turnsById.delete(
+        removed.id,
+      );
+
+      for (
+        const call of
+        removed.calls
+      ) {
+        this.#callsById.delete(
+          call.id,
+        );
+      }
+    }
+  }
+
+  #createTurn(
+    sessionId:
+      string | undefined,
+    title: string,
+    fallback: boolean,
+    startedAtMs:
+      number,
+  ): MutableObservedTurn {
+    const key =
+      this.#sessionKey(
+        sessionId,
+      );
+    const activeId =
+      this.#activeTurnBySession
+        .get(key);
+
+    if (
+      activeId !== undefined
+    ) {
+      const active =
+        this.#turnsById.get(
+          activeId,
+        );
+
+      if (active !== undefined) {
+        this.#completeTurn(
+          active,
+          startedAtMs,
+        );
+      }
+    }
+
+    const turn:
+      MutableObservedTurn = {
+        id:
+          randomUUID(),
+        ...(sessionId ===
+        undefined
+          ? {}
+          : { sessionId }),
+        title,
+        startedAt:
+          new Date(
+            startedAtMs,
+          ).toISOString(),
+        startedAtMs,
+        startedSequence:
+          this.#nextSequence(),
+        fallback,
+        calls: [],
+      };
+
+    this.#turns.push(turn);
+    this.#turnsById.set(
+      turn.id,
+      turn,
+    );
+    this.#activeTurnBySession.set(
+      key,
+      turn.id,
+    );
+    this.#pruneTurns();
+
+    return turn;
+  }
+
+  beginTurn(
+    sessionId: string,
+    parts:
+      readonly TurnPromptPart[],
+  ): string {
+    const turn =
+      this.#createTurn(
+        sessionId,
+        renderTurnTitle(parts),
+        false,
+        Date.now(),
+      );
+
+    return turn.id;
+  }
+
+  endTurn(
+    sessionId: string,
+  ): string | undefined {
+    const activeId =
+      this.#activeTurnBySession
+        .get(
+          this.#sessionKey(
+            sessionId,
+          ),
+        );
+
+    if (activeId === undefined) {
+      return undefined;
+    }
+
+    const turn =
+      this.#turnsById.get(
+        activeId,
+      );
+
+    if (turn === undefined) {
+      return undefined;
+    }
+
+    this.#completeTurn(
+      turn,
+      Date.now(),
+    );
+
+    return turn.id;
+  }
+
+  #activeTurn(
+    sessionId?: string,
+  ): MutableObservedTurn | undefined {
+    const id =
+      this.#activeTurnBySession
+        .get(
+          this.#sessionKey(
+            sessionId,
+          ),
+        );
+
+    return id === undefined
+      ? undefined
+      : this.#turnsById.get(id);
+  }
+
+  #ensureTurn(
+    sessionId:
+      string | undefined,
+    startedAtMs: number,
+  ): MutableObservedTurn {
+    return (
+      this.#activeTurn(
+        sessionId,
+      ) ??
+      this.#createTurn(
+        sessionId,
+        "未捕获用户提示词",
+        true,
+        startedAtMs,
+      )
+    );
+  }
+
   beginToolCall(
     tool: string,
+    input: unknown,
     metadata?: unknown,
   ): string {
     const identity =
@@ -255,39 +668,38 @@ export class McpObservabilityStore {
       );
     const startedAtMs =
       Date.now();
-    const id = randomUUID();
+    const turn =
+      this.#ensureTurn(
+        identity.sessionId,
+        startedAtMs,
+      );
+    const id =
+      randomUUID();
 
     const call:
       MutableObservedToolCall = {
         id,
         tool,
+        input:
+          summarizeInput(input),
         startedAt:
           new Date(
             startedAtMs,
           ).toISOString(),
         startedAtMs,
-        status: "running",
-        ...identity,
+        startedSequence:
+          this.#nextSequence(),
+        status:
+          "running",
+        turnId:
+          turn.id,
       };
 
-    this.#calls.push(call);
+    turn.calls.push(call);
     this.#callsById.set(
       id,
       call,
     );
-
-    while (
-      this.#calls.length >
-      MAX_RECENT_CALLS
-    ) {
-      const removed =
-        this.#calls.shift();
-      if (removed !== undefined) {
-        this.#callsById.delete(
-          removed.id,
-        );
-      }
-    }
 
     return id;
   }
@@ -302,6 +714,7 @@ export class McpObservabilityStore {
   ): void {
     const call =
       this.#callsById.get(id);
+
     if (
       call === undefined ||
       call.status !== "running"
@@ -311,11 +724,17 @@ export class McpObservabilityStore {
 
     const completedAtMs =
       Date.now();
-    call.status = status;
+
+    call.status =
+      status;
+    call.completedAtMs =
+      completedAtMs;
     call.completedAt =
       new Date(
         completedAtMs,
       ).toISOString();
+    call.completedSequence =
+      this.#nextSequence();
     call.durationMs =
       Math.max(
         0,
@@ -324,216 +743,231 @@ export class McpObservabilityStore {
       );
   }
 
-  snapshot(
-    sessionId?: string,
-  ): McpObservabilitySnapshot {
-    const visibleCalls =
-      this.#calls
-        .filter(
-          (call) =>
-            call.sessionId ===
-              sessionId,
-        )
-        .map(
-          (
-            call,
-          ): ObservedToolCall => ({
-            id: call.id,
-            tool: call.tool,
-            startedAt:
-              call.startedAt,
-            ...(call.completedAt ===
-            undefined
-              ? {}
-              : {
-                  completedAt:
-                    call.completedAt,
-                }),
-            ...(call.durationMs ===
-            undefined
-              ? {}
-              : {
-                  durationMs:
-                    call.durationMs,
-                }),
-            status:
-              call.status,
-            ...(call.sessionId ===
-            undefined
-              ? {}
-              : {
-                  sessionId:
-                    call.sessionId,
-                }),
-            ...(call.turnId ===
-            undefined
-              ? {}
-              : {
-                  turnId:
-                    call.turnId,
-                  turnMetaKey:
-                    call.turnMetaKey,
-                }),
-            requestMetaKeys:
-              call.requestMetaKeys,
+  #snapshotCall(
+    call:
+      MutableObservedToolCall,
+  ): ObservedToolCall {
+    return {
+      id:
+        call.id,
+      tool:
+        call.tool,
+      input:
+        call.input,
+      startedAt:
+        call.startedAt,
+      ...(call.completedAt ===
+      undefined
+        ? {}
+        : {
+            completedAt:
+              call.completedAt,
           }),
-        )
-        .reverse();
+      ...(call.durationMs ===
+      undefined
+        ? {}
+        : {
+            durationMs:
+              call.durationMs,
+          }),
+      status:
+        call.status,
+    };
+  }
 
-    const turns =
-      new Map<
-        string,
+  #turnEvents(
+    turn:
+      MutableObservedTurn,
+  ): readonly ObservedTurnEvent[] {
+    const events:
+      ObservedTurnEvent[] = [
         {
-          id: string;
-          turnMetaKey?:
-            string;
-          startedAt: string;
-          lastCallAt: string;
-          tools:
-            Map<string, number>;
-          totalCalls: number;
-        }
-      >();
+          kind:
+            "turn_started",
+          at:
+            turn.startedAt,
+          sequence:
+            turn.startedSequence,
+        },
+      ];
 
-    const metaKeys =
-      new Set<string>();
-    let ungroupedCalls = 0;
-
-    for (const call of visibleCalls) {
-      for (
-        const key of
-        call.requestMetaKeys
-      ) {
-        metaKeys.add(key);
-      }
+    for (const call of turn.calls) {
+      events.push({
+        kind:
+          "tool_started",
+        at:
+          call.startedAt,
+        sequence:
+          call.startedSequence,
+        tool:
+          call.tool,
+        callId:
+          call.id,
+        input:
+          call.input,
+      });
 
       if (
-        call.turnId === undefined
+        call.completedAt !==
+          undefined &&
+        call.completedSequence !==
+          undefined
       ) {
-        ungroupedCalls += 1;
-        continue;
-      }
-
-      let turn =
-        turns.get(
-          call.turnId,
-        );
-      if (turn === undefined) {
-        turn = {
-          id: call.turnId,
-          ...(call.turnMetaKey ===
+        events.push({
+          kind:
+            call.status ===
+            "failed"
+              ? "tool_failed"
+              : "tool_succeeded",
+          at:
+            call.completedAt,
+          sequence:
+            call.completedSequence,
+          tool:
+            call.tool,
+          callId:
+            call.id,
+          ...(call.durationMs ===
           undefined
             ? {}
             : {
-                turnMetaKey:
-                  call.turnMetaKey,
+                durationMs:
+                  call.durationMs,
               }),
-          startedAt:
-            call.startedAt,
-          lastCallAt:
-            call.startedAt,
-          tools:
-            new Map(),
-          totalCalls: 0,
-        };
-        turns.set(
-          call.turnId,
-          turn,
-        );
+        });
       }
+    }
 
-      if (
-        call.startedAt <
-        turn.startedAt
-      ) {
-        turn.startedAt =
-          call.startedAt;
-      }
-      if (
-        call.startedAt >
-        turn.lastCallAt
-      ) {
-        turn.lastCallAt =
-          call.startedAt;
-      }
+    if (
+      turn.completedAt !==
+        undefined &&
+      turn.completedSequence !==
+        undefined
+    ) {
+      events.push({
+        kind:
+          "turn_completed",
+        at:
+          turn.completedAt,
+        sequence:
+          turn.completedSequence,
+      });
+    }
 
-      turn.totalCalls += 1;
-      turn.tools.set(
+    return events.sort(
+      (left, right) =>
+        left.sequence -
+        right.sequence,
+    );
+  }
+
+  #snapshotTurn(
+    turn:
+      MutableObservedTurn,
+  ): ObservedTurn {
+    const groups =
+      new Map<
+        string,
+        MutableObservedToolCall[]
+      >();
+
+    for (const call of turn.calls) {
+      const calls =
+        groups.get(call.tool) ??
+        [];
+
+      calls.push(call);
+      groups.set(
         call.tool,
-        (
-          turn.tools.get(
-            call.tool,
-          ) ?? 0
-        ) + 1,
+        calls,
       );
     }
 
-    const turnSummaries =
-      [...turns.values()]
+    const tools =
+      [...groups.entries()]
         .map(
           (
-            turn,
-          ): ObservedTurnSummary => ({
-            id: turn.id,
-            ...(turn.turnMetaKey ===
-            undefined
-              ? {}
-              : {
-                  turnMetaKey:
-                    turn.turnMetaKey,
-                }),
-            startedAt:
-              turn.startedAt,
-            lastCallAt:
-              turn.lastCallAt,
-            totalCalls:
-              turn.totalCalls,
-            tools:
-              [...turn.tools.entries()]
-                .map(
-                  ([name, count]) => ({
-                    name,
-                    count,
+            [name, calls],
+          ): ObservedTurnToolGroup => {
+            const descriptor =
+              this.#tools.get(name);
+
+            return {
+              name,
+              ...(descriptor?.title ===
+              undefined
+                ? {}
+                : {
+                    title:
+                      descriptor.title,
                   }),
-                )
-                .sort(
-                  (left, right) =>
-                    left.name.localeCompare(
-                      right.name,
-                    ),
+              count:
+                calls.length,
+              calls:
+                calls.map((call) =>
+                  this.#snapshotCall(
+                    call,
+                  ),
                 ),
-          }),
-        )
-        .sort(
-          (left, right) =>
-            right.lastCallAt
-              .localeCompare(
-                left.lastCallAt,
-              ),
+            };
+          },
         );
 
     return {
-      tools:
-        [...this.#tools.values()]
-          .sort(
-            (left, right) =>
-              left.name.localeCompare(
-                right.name,
-              ),
+      id:
+        turn.id,
+      title:
+        turn.title,
+      startedAt:
+        turn.startedAt,
+      ...(turn.completedAt ===
+      undefined
+        ? {}
+        : {
+            completedAt:
+              turn.completedAt,
+          }),
+      status:
+        turn.completedAt ===
+        undefined
+          ? "active"
+          : "completed",
+      fallback:
+        turn.fallback,
+      totalCalls:
+        turn.calls.length,
+      tools,
+      events:
+        this.#turnEvents(turn),
+    };
+  }
+
+  snapshot(
+    sessionId?: string,
+  ): McpObservabilitySnapshot {
+    const turns =
+      this.#turns
+        .filter(
+          (turn) =>
+            turn.sessionId ===
+              sessionId &&
+            turn.calls.length > 0,
+        )
+        .map((turn) =>
+          this.#snapshotTurn(
+            turn,
           ),
-      calls: visibleCalls,
-      turns: turnSummaries,
-      ungroupedCalls,
-      turnIdentityAvailable:
-        turnSummaries.length > 0,
+        )
+        .reverse();
+
+    return {
+      turns,
       sessionIdentityAvailable:
         sessionId !== undefined,
       testWindowCloseRevision:
         this.testWindowCloseRevision(
           sessionId,
         ),
-      observedRequestMetaKeys:
-        [...metaKeys].sort(),
     };
   }
 }

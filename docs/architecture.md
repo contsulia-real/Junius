@@ -256,27 +256,18 @@ Junius registers a native ChatGPT conversation-panel entrypoint on its existing 
 
 The panel can be opened directly by the user from the ChatGPT UI or opened from chat by calling `junius_observability_panel`. There is no separate authorization state. Closing from chat uses `close_junius_test_window`, which emits a session-scoped one-shot close revision; a currently mounted panel observes the revision change and requests closure. A later manual reopen treats the current revision as its baseline and opens normally.
 
-The panel has two tabs:
+The panel has two tabs, and both are turn-first:
 
-- **Tools** lists the current model-visible Junius tool catalog and recent tool calls for the current ChatGPT conversation.
-- **Logs** displays the existing Junius Audit event stream. It is structured operational history, not captured console output, command stdout/stderr, file contents, screenshots, typed text, or clipboard content.
+- **Tools** renders only turn accordions. A turn summary title is the current user prompt rendered on one line; every attached file or image is represented by the literal placeholder `[File]`. Expanding a turn reveals tool accordions grouped by tool name. Expanding a tool reveals each invocation in that turn, including its bounded in-memory input snapshot, status, time, and duration.
+- **Logs** renders the same turn accordions. Expanding a turn shows its complete ordered event timeline from turn start through tool start/completion events to turn end. It does not group the timeline by tool and no longer uses the Audit stream as the panel log source.
 
 Observability state belongs to the Worker, not to an individual `McpServer` instance. This matters because the modern MCP handler may create a server instance per request while one Worker continues to serve the same active runtime.
 
-Every ordinary MCP tool invocation passes through one common observation hook. The hook records bounded execution facts only:
+Junius owns the turn model instead of depending on an OpenAI turn identifier. For every user message that will use Junius, the calling assistant must invoke `junius_turn_begin` before the first other Junius tool and `junius_turn_end` after the final Junius tool. `junius_turn_begin` receives ordered prompt parts: exact user-authored text parts and one file part per attachment. Junius converts each file part to the literal `[File]` title placeholder. Turn boundary tools are internal plumbing and are excluded from tool statistics.
 
-    tool name
-    start / completion time
-    success / failure
-    ChatGPT session identifier when supplied
-    explicit ChatGPT turn identifier when supplied
-    request metadata key names
+Every ordinary MCP tool invocation passes through one common observation hook. The hook attaches the call to the active Junius turn for that `openai/session`, captures a bounded in-memory input snapshot so repeated calls to the same tool can be distinguished, and records ordered start/completion events. Tool inputs captured for observability are not written to the persistent Audit store. If an ordinary tool arrives without an active begin marker, Junius creates a fallback turn so no tool call exists outside a turn; starting a new explicit turn also closes any unfinished prior turn in that conversation.
 
-Arbitrary request metadata values are not retained. Panel-only plumbing tools are excluded from the visible tool catalog and from usage counts.
-
-ChatGPT's `openai/session` request metadata is used to isolate one conversation from another. If session metadata is absent, Junius does not merge calls from identified conversations into the panel.
-
-Turn accounting is deliberately stricter. Junius groups tool calls into a turn only when ChatGPT supplies an explicit OpenAI turn identifier in the request metadata. It does not infer turn boundaries from timing gaps, call ordering, or message-like metadata. When no explicit turn identity is available, the panel continues to show exact conversation-level calls and clearly reports that per-turn grouping is unavailable.
+ChatGPT's `openai/session` request metadata is used only to isolate one conversation from another. Junius does not use message-like metadata or timing gaps to infer turn identity.
 
 The UI uses the standard MCP Apps bridge for `ui/initialize` and app-initiated `tools/call`. ChatGPT-specific metadata is used only for the conversation-panel entrypoint and optional widget state.
 

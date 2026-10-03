@@ -9,9 +9,6 @@ import {
 import {
   fileURLToPath,
 } from "node:url";
-import type {
-  AuditStore,
-} from "./audit-store.js";
 import {
   extractOpenAiRequestIdentity,
   type McpObservabilityStore,
@@ -108,7 +105,6 @@ function modelOnlyToolMeta(): Record<string, unknown> {
 function panelSnapshot(
   observability:
     McpObservabilityStore,
-  audit: AuditStore | undefined,
   context: ServerContext,
 ): Record<string, unknown> {
   const identity =
@@ -120,12 +116,6 @@ function panelSnapshot(
     ...observability.snapshot(
       identity.sessionId,
     ),
-    logs:
-      audit === undefined
-        ? []
-        : audit.recent(256),
-    panelRequestMetaKeys:
-      identity.requestMetaKeys,
   };
 }
 
@@ -133,14 +123,13 @@ export function registerMcpObservabilityPanel(
   server: McpServer,
   observability:
     McpObservabilityStore,
-  audit?: AuditStore,
 ): void {
   server.registerResource(
     "Junius Observability Panel",
     PANEL_RESOURCE_URI,
     {
       description:
-        "Junius tool activity and audit logs for the current ChatGPT conversation.",
+        "Junius turn-grouped tool activity and ordered tool-call events for the current ChatGPT conversation.",
       mimeType:
         MCP_APP_MIME_TYPE,
     },
@@ -159,7 +148,7 @@ export function registerMcpObservabilityPanel(
                 false,
             },
             "openai/widgetDescription":
-              "Junius 工具调用与日志监控面板。",
+              "Junius turn、工具调用与事件日志面板。",
           },
         },
       ],
@@ -192,7 +181,6 @@ export function registerMcpObservabilityPanel(
       structuredContent:
         panelSnapshot(
           observability,
-          audit,
           context,
         ),
     }),
@@ -264,7 +252,7 @@ export function registerMcpObservabilityPanel(
       title:
         "Read Junius observability snapshot",
       description:
-        "Return the current Junius tool-call snapshot and recent audit events for the mounted Junius panel.",
+        "Return the current Junius turn snapshot for the mounted Junius panel.",
       inputSchema:
         z.object({}),
       _meta:
@@ -284,7 +272,6 @@ export function registerMcpObservabilityPanel(
       structuredContent:
         panelSnapshot(
           observability,
-          audit,
           context,
         ),
     }),

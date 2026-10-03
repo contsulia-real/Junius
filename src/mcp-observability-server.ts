@@ -9,6 +9,10 @@ import type {
   McpObservabilityStore,
   ObservedToolDescriptor,
 } from "./mcp-observability.js";
+import {
+  JUNIUS_TURN_BEGIN_TOOL,
+  JUNIUS_TURN_END_TOOL,
+} from "./mcp-turn-tools.js";
 
 export const JUNIUS_TEST_WINDOW_CLOSE_TOOL =
   "close_junius_test_window";
@@ -21,6 +25,8 @@ const INTERNAL_OBSERVABILITY_TOOLS =
   new Set([
     JUNIUS_PANEL_TOOL,
     JUNIUS_PANEL_SNAPSHOT_TOOL,
+    JUNIUS_TURN_BEGIN_TOOL,
+    JUNIUS_TURN_END_TOOL,
   ]);
 
 interface McpServerRegistryView {
@@ -165,6 +171,7 @@ export function attachMcpObservability(
       const callId =
         observability.beginToolCall(
           name,
+          args,
           context.mcpReq._meta,
         );
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { z } from "zod";
 import {
   McpServer,
   type RegisteredTool,
@@ -18,6 +19,11 @@ import {
   PANEL_RESOURCE_URI,
   registerMcpObservabilityPanel,
 } from "./mcp-observability-panel.js";
+import {
+  JUNIUS_TURN_BEGIN_TOOL,
+  JUNIUS_TURN_END_TOOL,
+  registerMcpTurnTools,
+} from "./mcp-turn-tools.js";
 
 interface ServerInternals {
   readonly _registeredTools:
@@ -201,6 +207,14 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
     content?.text ?? "",
     /testWindowCloseRevision/u,
   );
+  assert.match(
+    content?.text ?? "",
+    /tool-accordion/u,
+  );
+  assert.doesNotMatch(
+    content?.text ?? "",
+    /最近调用/u,
+  );
 
   const script =
     (content?.text ?? "")
@@ -213,7 +227,7 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
   );
 });
 
-test("MCP observability automatically records ordinary tools and excludes panel plumbing", async () => {
+test("MCP observability records ordinary tools inside Junius-owned turns and excludes turn plumbing", async () => {
   const server =
     new McpServer({
       name: "Junius Test",
@@ -225,13 +239,22 @@ test("MCP observability automatically records ordinary tools and excludes panel 
   server.registerTool(
     "ordinary_tool",
     {
-      title: "Ordinary Tool",
+      title:
+        "Ordinary Tool",
+      inputSchema: {
+        value:
+          z.string(),
+      },
     },
     async () => ({
       content: [],
     }),
   );
 
+  registerMcpTurnTools(
+    server,
+    store,
+  );
   registerMcpObservabilityPanel(
     server,
     store,
@@ -243,44 +266,114 @@ test("MCP observability automatically records ordinary tools and excludes panel 
 
   const view =
     internals(server);
-  await view.executeToolHandler(
-    view._registeredTools
-      .ordinary_tool,
-    {},
+  const context =
     fakeContext({
       "openai/session":
         "conversation-1",
-      "openai/turn_id":
-        "turn-1",
-    }),
+    });
+
+  await view.executeToolHandler(
+    view._registeredTools[
+      JUNIUS_TURN_BEGIN_TOOL
+    ],
+    {
+      parts: [
+        {
+          type: "text",
+          text:
+            "对比这两个文件",
+        },
+        {
+          type: "file",
+        },
+        {
+          type: "file",
+        },
+      ],
+    },
+    context,
   );
 
-  const ordinarySnapshot =
+  await view.executeToolHandler(
+    view._registeredTools
+      .ordinary_tool,
+    {
+      value: "first",
+    },
+    context,
+  );
+
+  await view.executeToolHandler(
+    view._registeredTools
+      .ordinary_tool,
+    {
+      value: "second",
+    },
+    context,
+  );
+
+  await view.executeToolHandler(
+    view._registeredTools[
+      JUNIUS_TURN_END_TOOL
+    ],
+    {},
+    context,
+  );
+
+  const snapshot =
     store.snapshot(
       "conversation-1",
     );
 
-  assert.deepEqual(
-    ordinarySnapshot.tools,
-    [
-      {
-        name: "close_junius_test_window",
-        title: "关闭 Junius 测试窗口",
-      },
-      {
-        name: "ordinary_tool",
-        title: "Ordinary Tool",
-      },
-    ],
+  assert.equal(
+    snapshot.turns.length,
+    1,
+  );
+
+  const turn =
+    snapshot.turns[0];
+  assert.ok(turn);
+  assert.equal(
+    turn.title,
+    "对比这两个文件 [File] [File]",
   );
   assert.equal(
-    ordinarySnapshot.calls.length,
+    turn.totalCalls,
+    2,
+  );
+  assert.equal(
+    turn.tools.length,
     1,
   );
   assert.equal(
-    ordinarySnapshot.calls[0]
-      ?.tool,
+    turn.tools[0]?.name,
     "ordinary_tool",
+  );
+  assert.deepEqual(
+    turn.tools[0]?.calls.map(
+      (call) => call.input,
+    ),
+    [
+      {
+        value: "first",
+      },
+      {
+        value: "second",
+      },
+    ],
+  );
+  assert.deepEqual(
+    turn.events.map(
+      (event) => event.kind,
+    ),
+    [
+      "turn_started",
+      "tool_started",
+      "tool_succeeded",
+      "tool_started",
+      "tool_succeeded",
+      "turn_completed",
+    ],
   );
 
   const panelResult =
@@ -289,33 +382,23 @@ test("MCP observability automatically records ordinary tools and excludes panel 
         JUNIUS_PANEL_TOOL
       ],
       {},
-      fakeContext({
-        "openai/session":
-          "conversation-1",
-        "openai/turn_id":
-          "turn-1",
-      }),
+      context,
     ) as {
       structuredContent?: {
-        calls?: readonly unknown[];
+        turns?: readonly {
+          title?: string;
+        }[];
       };
     };
 
   assert.equal(
     panelResult
       .structuredContent
-      ?.calls
-      ?.length,
-    1,
-  );
-  assert.equal(
-    store.snapshot(
-      "conversation-1",
-    ).calls.length,
-    1,
+      ?.turns?.[0]
+      ?.title,
+    "对比这两个文件 [File] [File]",
   );
 });
-
 
 test("Junius panel opens without authorization and close signals are conversation-scoped", async () => {
   const server =

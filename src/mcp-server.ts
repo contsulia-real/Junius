@@ -9,6 +9,7 @@ import type { AuditStore } from "./audit-store.js";
 import { McpObservabilityStore } from "./mcp-observability.js";
 import { attachMcpObservability } from "./mcp-observability-server.js";
 import { registerMcpObservabilityPanel } from "./mcp-observability-panel.js";
+import { registerMcpTurnTools } from "./mcp-turn-tools.js";
 import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
 import { registerBrowserTool } from "./mcp-browser-tool.js";
 import { registerDesktopTool } from "./mcp-desktop-tool.js";
@@ -96,10 +97,13 @@ export function createMcpServer(
     );
   }
 
+  registerMcpTurnTools(
+    server,
+    observability,
+  );
   registerMcpObservabilityPanel(
     server,
     observability,
-    audit,
   );
   attachMcpObservability(
     server,

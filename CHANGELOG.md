@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reworked the ChatGPT observability panel around Junius-owned turns. Tools and Logs now use turn accordions; turn titles come from the user prompt with literal `[File]` placeholders, tool calls are grouped by tool with per-call input differences, and the Logs tab shows the ordered tool-call event timeline for each turn.
+
 ## 0.1.1-alpha
 
 - Removed the Junius test-window authorization gate. The ChatGPT thread panel can now be opened directly by the user or from chat, while chat-driven close requests remain session-scoped one-shot signals.

@@ -9,11 +9,10 @@
       color-scheme: light dark;
       --bg: #ffffff;
       --surface: #f7f7f8;
-      --surface-strong: #eeeeef;
-      --text: #151515;
-      --muted: #6f6f78;
-      --border: rgba(0, 0, 0, 0.10);
-      --accent: #151515;
+      --surface-2: #efeff0;
+      --text: #171717;
+      --muted: #74747d;
+      --border: rgba(0, 0, 0, 0.11);
       --success: #16794b;
       --danger: #c9362b;
       --running: #9a6700;
@@ -24,11 +23,10 @@
       :root {
         --bg: #171717;
         --surface: #202020;
-        --surface-strong: #2a2a2a;
+        --surface-2: #292929;
         --text: #f4f4f4;
         --muted: #a8a8b0;
         --border: rgba(255, 255, 255, 0.12);
-        --accent: #f4f4f4;
         --success: #51b985;
         --danger: #ff7167;
         --running: #e9b949;
@@ -55,8 +53,7 @@
       font-size: 13px;
     }
 
-    button,
-    input {
+    button {
       font: inherit;
     }
 
@@ -69,10 +66,10 @@
     .header {
       position: sticky;
       top: 0;
-      z-index: 4;
+      z-index: 5;
+      border-bottom: 1px solid var(--border);
       background: color-mix(in srgb, var(--bg) 94%, transparent);
       backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
     }
 
     .titlebar {
@@ -80,6 +77,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       padding: 0 14px;
     }
 
@@ -89,7 +87,6 @@
       gap: 8px;
       min-width: 0;
       font-weight: 650;
-      letter-spacing: -0.01em;
     }
 
     .status-dot {
@@ -109,6 +106,7 @@
     }
 
     .updated {
+      flex: 0 0 auto;
       color: var(--muted);
       font-size: 11px;
       white-space: nowrap;
@@ -131,14 +129,9 @@
     }
 
     .tab[aria-selected="true"] {
-      background: var(--surface-strong);
+      background: var(--surface-2);
       color: var(--text);
       font-weight: 600;
-    }
-
-    .content {
-      flex: 1 1 auto;
-      min-height: 0;
     }
 
     .panel {
@@ -150,173 +143,133 @@
       display: block;
     }
 
-    .section {
-      margin-bottom: 18px;
-    }
-
-    .section:last-child {
-      margin-bottom: 0;
-    }
-
-    .section-head {
-      min-height: 26px;
+    .panel-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      margin-bottom: 7px;
+      min-height: 26px;
+      margin-bottom: 8px;
     }
 
-    .section-title {
+    .panel-title {
+      color: var(--muted);
       font-size: 12px;
       font-weight: 650;
-      color: var(--muted);
-      text-transform: uppercase;
       letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
     .counter {
       min-width: 22px;
       padding: 2px 7px;
       border-radius: 999px;
-      background: var(--surface-strong);
+      background: var(--surface-2);
       color: var(--muted);
       font-size: 11px;
       text-align: center;
     }
 
-    .card {
+    .turn-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    details {
+      min-width: 0;
+    }
+
+    summary {
+      list-style: none;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .turn-accordion {
+      overflow: hidden;
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      overflow: hidden;
       background: var(--surface);
     }
 
-    .turn {
-      padding: 10px 11px;
-      border-bottom: 1px solid var(--border);
+    .turn-summary {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 12px;
+      cursor: pointer;
+      user-select: none;
     }
 
-    .turn:last-child {
-      border-bottom: 0;
+    .chevron {
+      width: 8px;
+      height: 8px;
+      border-right: 1.5px solid var(--muted);
+      border-bottom: 1.5px solid var(--muted);
+      transform: rotate(-45deg);
+      transition: transform 120ms ease;
+      justify-self: center;
     }
 
-    .turn.current {
-      background: color-mix(in srgb, var(--surface) 78%, var(--accent) 4%);
+    details[open] > summary .chevron {
+      transform: rotate(45deg);
     }
 
-    .turn-top {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
-
-    .turn-name {
+    .turn-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-weight: 620;
     }
 
     .turn-meta {
       color: var(--muted);
-      font-size: 11px;
-      white-space: nowrap;
-    }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 7px;
-      border-radius: 7px;
-      background: var(--surface-strong);
-      min-width: 0;
-    }
-
-    .chip-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-family:
-        ui-monospace,
-        SFMono-Regular,
-        Consolas,
-        monospace;
-      font-size: 11px;
-    }
-
-    .chip-count {
-      color: var(--muted);
+      font-size: 10px;
       font-variant-numeric: tabular-nums;
-      font-size: 11px;
+      white-space: nowrap;
     }
 
-    .notice {
-      border: 1px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 10px 11px;
+    .turn-body {
+      border-top: 1px solid var(--border);
+      padding: 8px;
+    }
+
+    .turn-empty,
+    .empty {
+      padding: 18px 12px;
       color: var(--muted);
-      line-height: 1.5;
+      text-align: center;
     }
 
-    .notice strong {
-      color: var(--text);
-      font-weight: 600;
+    .tool-list {
+      display: grid;
+      gap: 6px;
     }
 
-    .call-row,
-    .tool-row,
-    .log-row {
-      padding: 9px 11px;
-      border-bottom: 1px solid var(--border);
+    .tool-accordion {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
     }
 
-    .call-row:last-child,
-    .tool-row:last-child,
-    .log-row:last-child {
-      border-bottom: 0;
-    }
-
-    .tool-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .tool-main {
+    .tool-summary {
       min-width: 0;
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 10px;
+      cursor: pointer;
+      user-select: none;
     }
 
     .tool-name {
-      font-family:
-        ui-monospace,
-        SFMono-Regular,
-        Consolas,
-        monospace;
-      font-size: 11px;
-      overflow-wrap: anywhere;
-    }
-
-    .tool-title {
-      margin-top: 2px;
-      color: var(--muted);
-      font-size: 11px;
-    }
-
-    .call-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 4px 10px;
-    }
-
-    .call-tool {
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -327,6 +280,40 @@
         Consolas,
         monospace;
       font-size: 11px;
+    }
+
+    .tool-count {
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .tool-calls {
+      border-top: 1px solid var(--border);
+    }
+
+    .call {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .call:last-child {
+      border-bottom: 0;
+    }
+
+    .call-head {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+    }
+
+    .call-index {
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
     }
 
     .call-time,
@@ -334,61 +321,102 @@
       color: var(--muted);
       font-size: 10px;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
-    .call-state {
+    .state {
       font-size: 10px;
-      font-weight: 600;
+      font-weight: 650;
+      justify-self: start;
     }
 
-    .call-state.succeeded {
+    .state.succeeded {
       color: var(--success);
     }
 
-    .call-state.failed {
+    .state.failed {
       color: var(--danger);
     }
 
-    .call-state.running {
+    .state.running {
       color: var(--running);
     }
 
-    .log-list {
-      max-height: calc(100vh - 130px);
+    .input {
+      margin: 0;
+      padding: 8px 9px;
       overflow: auto;
-      overscroll-behavior: contain;
+      border-radius: 7px;
+      background: var(--surface-2);
+      color: var(--text);
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      font-size: 10px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
 
-    .log-row {
+    .event-list {
       display: grid;
-      grid-template-columns: 58px minmax(0, 1fr);
-      gap: 4px 9px;
     }
 
-    .log-time {
+    .event {
+      display: grid;
+      grid-template-columns: 62px 8px minmax(0, 1fr);
+      gap: 8px;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      align-items: start;
+    }
+
+    .event:last-child {
+      border-bottom: 0;
+    }
+
+    .event-time {
       color: var(--muted);
       font-size: 10px;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
-    .log-main {
+    .event-dot {
+      width: 6px;
+      height: 6px;
+      margin-top: 4px;
+      border-radius: 999px;
+      background: var(--muted);
+    }
+
+    .event-dot.succeeded {
+      background: var(--success);
+    }
+
+    .event-dot.failed {
+      background: var(--danger);
+    }
+
+    .event-dot.started {
+      background: var(--running);
+    }
+
+    .event-main {
       min-width: 0;
     }
 
-    .log-line {
+    .event-line {
+      min-width: 0;
       display: flex;
-      align-items: center;
+      align-items: baseline;
       gap: 6px;
+    }
+
+    .event-tool {
       min-width: 0;
-    }
-
-    .log-category {
-      color: var(--muted);
-      font-size: 10px;
-      flex: 0 0 auto;
-    }
-
-    .log-action {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -400,61 +428,18 @@
       font-size: 11px;
     }
 
-    .log-status {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
+    .event-label {
       flex: 0 0 auto;
-      background: var(--muted);
-    }
-
-    .log-status.succeeded {
-      background: var(--success);
-    }
-
-    .log-status.failed,
-    .log-status.cancelled {
-      background: var(--danger);
-    }
-
-    .log-status.started {
-      background: var(--running);
-    }
-
-    .log-detail {
-      margin-top: 3px;
-      color: var(--muted);
-      line-height: 1.4;
-      overflow-wrap: anywhere;
-      font-size: 10px;
-    }
-
-    .empty {
-      padding: 18px 12px;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    details.debug {
-      margin-top: 8px;
       color: var(--muted);
       font-size: 10px;
     }
 
-    details.debug summary {
-      cursor: pointer;
-      user-select: none;
+    .event-input {
+      margin-top: 6px;
     }
 
-    .debug-value {
-      margin-top: 5px;
-      font-family:
-        ui-monospace,
-        SFMono-Regular,
-        Consolas,
-        monospace;
-      overflow-wrap: anywhere;
-      line-height: 1.5;
+    .fallback {
+      color: var(--running);
     }
   </style>
 </head>
@@ -469,50 +454,26 @@
         <span id="updated" class="updated">连接中</span>
       </div>
       <div class="tabs" role="tablist" aria-label="Junius 监控">
-        <button class="tab" id="toolsTab" role="tab" aria-selected="true" data-tab="tools">工具</button>
-        <button class="tab" id="logsTab" role="tab" aria-selected="false" data-tab="logs">日志</button>
+        <button class="tab" role="tab" aria-selected="true" data-tab="tools">工具</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="logs">日志</button>
       </div>
     </header>
 
-    <main class="content">
+    <main>
       <section id="toolsPanel" class="panel active" role="tabpanel">
-        <div class="section">
-          <div class="section-head">
-            <div class="section-title">轮次调用</div>
-            <div id="turnCount" class="counter">0</div>
-          </div>
-          <div id="turns"></div>
+        <div class="panel-head">
+          <div class="panel-title">Turns</div>
+          <div id="toolTurnCount" class="counter">0</div>
         </div>
-
-        <div class="section">
-          <div class="section-head">
-            <div class="section-title">最近调用</div>
-            <div id="callCount" class="counter">0</div>
-          </div>
-          <div id="calls" class="card"></div>
-        </div>
-
-        <div class="section">
-          <div class="section-head">
-            <div class="section-title">可用工具</div>
-            <div id="toolCount" class="counter">0</div>
-          </div>
-          <div id="tools" class="card"></div>
-          <details class="debug">
-            <summary>调用上下文</summary>
-            <div id="metaKeys" class="debug-value">暂无</div>
-          </details>
-        </div>
+        <div id="toolTurns" class="turn-list"></div>
       </section>
 
       <section id="logsPanel" class="panel" role="tabpanel">
-        <div class="section">
-          <div class="section-head">
-            <div class="section-title">Junius 日志</div>
-            <div id="logCount" class="counter">0</div>
-          </div>
-          <div id="logs" class="card log-list"></div>
+        <div class="panel-head">
+          <div class="panel-title">Turns</div>
+          <div id="logTurnCount" class="counter">0</div>
         </div>
+        <div id="logTurns" class="turn-list"></div>
       </section>
     </main>
   </div>
@@ -523,11 +484,8 @@
 
       const SNAPSHOT_TOOL = "junius_observability_snapshot";
       const POLL_MS = 1000;
-      const MAX_VISIBLE_CALLS = 80;
-      const MAX_VISIBLE_LOGS = 300;
 
       let activeTab = "tools";
-      let lastSnapshot = null;
       let closeRevision = null;
       let pollTimer = null;
       let busy = false;
@@ -610,8 +568,8 @@
           if (typeof message.id === "number") {
             const pending = pendingRequests.get(message.id);
             if (!pending) return;
-            pendingRequests.delete(message.id);
 
+            pendingRequests.delete(message.id);
             if (message.error) {
               pending.reject(message.error);
             } else {
@@ -639,12 +597,13 @@
           {
             appInfo: {
               name: "junius-observability",
-              version: "1",
+              version: "2",
             },
             appCapabilities: {},
             protocolVersion: "2026-01-26",
           },
         );
+
         rpcNotify(
           "ui/notifications/initialized",
           {},
@@ -684,30 +643,38 @@
       function time(value) {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "—";
-        return new Intl.DateTimeFormat(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }).format(date);
+
+        return new Intl.DateTimeFormat(
+          undefined,
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          },
+        ).format(date);
       }
 
       function duration(value) {
         if (!Number.isFinite(value)) return "";
         if (value < 1000) return value + " ms";
-        return (value / 1000).toFixed(value < 10000 ? 1 : 0) + " s";
+
+        return (value / 1000)
+          .toFixed(value < 10000 ? 1 : 0) + " s";
+      }
+
+      function pretty(value) {
+        try {
+          return JSON.stringify(value ?? {}, null, 2);
+        } catch {
+          return text(value);
+        }
       }
 
       function statusLabel(status) {
         if (status === "succeeded") return "完成";
         if (status === "failed") return "失败";
         if (status === "running") return "运行中";
-        if (status === "cancelled") return "取消";
-        if (status === "started") return "开始";
         return text(status);
-      }
-
-      function empty(label) {
-        return '<div class="empty">' + escapeHtml(label) + "</div>";
       }
 
       function setConnection(state, label) {
@@ -720,8 +687,10 @@
         activeTab = tab === "logs" ? "logs" : "tools";
 
         for (const button of document.querySelectorAll(".tab")) {
-          const selected = button.dataset.tab === activeTab;
-          button.setAttribute("aria-selected", selected ? "true" : "false");
+          button.setAttribute(
+            "aria-selected",
+            button.dataset.tab === activeTab ? "true" : "false",
+          );
         }
 
         byId("toolsPanel").classList.toggle("active", activeTab === "tools");
@@ -730,152 +699,204 @@
         try {
           window.openai?.setWidgetState?.({ tab: activeTab });
         } catch {
-          // Host state persistence is optional.
+          // Optional host state.
         }
       }
 
-      function renderTurns(snapshot) {
+      function openKeys(container) {
+        return new Set(
+          [...container.querySelectorAll("details[open][data-key]")]
+            .map((detail) => detail.dataset.key)
+            .filter(Boolean),
+        );
+      }
+
+      function openAttr(key, keys) {
+        return keys.has(key) ? " open" : "";
+      }
+
+      function turnSummary(turn) {
+        const meta = [
+          turn.status === "active" ? "进行中" : "已结束",
+          turn.totalCalls + " 次调用",
+          time(turn.startedAt),
+        ].join(" · ");
+
+        return (
+          '<summary class="turn-summary">' +
+            '<span class="chevron"></span>' +
+            '<span class="turn-title' + (turn.fallback ? " fallback" : "") + '" title="' +
+              escapeHtml(turn.title) + '">' +
+              escapeHtml(turn.title) +
+            "</span>" +
+            '<span class="turn-meta">' + escapeHtml(meta) + "</span>" +
+          "</summary>"
+        );
+      }
+
+      function renderToolTurns(snapshot) {
         const turns = Array.isArray(snapshot.turns) ? snapshot.turns : [];
-        const container = byId("turns");
-        byId("turnCount").textContent = String(turns.length);
+        const container = byId("toolTurns");
+        const opened = openKeys(container);
+
+        byId("toolTurnCount").textContent = String(turns.length);
 
         if (turns.length === 0) {
-          const ungrouped = Number(snapshot.ungroupedCalls ?? 0);
-
-          container.innerHTML =
-            '<div class="notice"><strong>尚未收到 ChatGPT turn 标识。</strong>' +
-            (ungrouped > 0
-              ? " 当前 conversation 已记录 " + ungrouped + " 次 Junius 工具调用，但不会用时间窗口伪造 turn。"
-              : " 当 ChatGPT 在工具调用元数据中提供明确 turn id 后，这里会自动按轮次聚合。") +
-            "</div>";
+          container.innerHTML = '<div class="empty">还没有 Junius turn</div>';
           return;
         }
 
-        container.className = "card";
-        container.innerHTML = turns.map((turn, index) => {
+        container.innerHTML = turns.map((turn) => {
+          const turnKey = "tools-turn:" + turn.id;
           const tools = Array.isArray(turn.tools) ? turn.tools : [];
-          const chips = tools.map((tool) =>
-            '<span class="chip"><span class="chip-name">' +
-            escapeHtml(tool.name) +
-            '</span><span class="chip-count">× ' +
-            escapeHtml(tool.count) +
-            "</span></span>"
-          ).join("");
 
-          return '<div class="turn' + (index === 0 ? " current" : "") + '">' +
-            '<div class="turn-top"><span class="turn-name">' +
-            (index === 0 ? "当前轮次" : "历史轮次") +
-            '</span><span class="turn-meta">' +
-            escapeHtml(time(turn.lastCallAt)) +
-            " · " +
-            escapeHtml(turn.totalCalls) +
-            " 次</span></div>" +
-            '<div class="chips">' + chips + "</div></div>";
+          const body = tools.length === 0
+            ? '<div class="turn-empty">这一 turn 没有工具调用</div>'
+            : '<div class="tool-list">' + tools.map((tool) => {
+                const toolKey = turnKey + ":tool:" + tool.name;
+                const calls = Array.isArray(tool.calls) ? tool.calls : [];
+
+                const callHtml = calls.map((call, index) =>
+                  '<div class="call">' +
+                    '<div class="call-head">' +
+                      '<span class="call-index">#' + (index + 1) + "</span>" +
+                      '<span class="state ' + escapeHtml(call.status) + '">' +
+                        escapeHtml(statusLabel(call.status)) +
+                      "</span>" +
+                      '<span class="call-time">' + escapeHtml(time(call.startedAt)) + "</span>" +
+                      '<span class="call-duration">' + escapeHtml(duration(call.durationMs)) + "</span>" +
+                    "</div>" +
+                    '<pre class="input">' + escapeHtml(pretty(call.input)) + "</pre>" +
+                  "</div>"
+                ).join("");
+
+                return (
+                  '<details class="tool-accordion" data-key="' + escapeHtml(toolKey) + '"' +
+                    openAttr(toolKey, opened) + ">" +
+                    '<summary class="tool-summary">' +
+                      '<span class="chevron"></span>' +
+                      '<span class="tool-name">' + escapeHtml(tool.name) + "</span>" +
+                      '<span class="tool-count">× ' + escapeHtml(tool.count) + "</span>" +
+                    "</summary>" +
+                    '<div class="tool-calls">' + callHtml + "</div>" +
+                  "</details>"
+                );
+              }).join("") + "</div>";
+
+          return (
+            '<details class="turn-accordion" data-key="' + escapeHtml(turnKey) + '"' +
+              openAttr(turnKey, opened) + ">" +
+              turnSummary(turn) +
+              '<div class="turn-body">' + body + "</div>" +
+            "</details>"
+          );
         }).join("");
       }
 
-      function renderCalls(snapshot) {
-        const calls = Array.isArray(snapshot.calls)
-          ? snapshot.calls.slice(0, MAX_VISIBLE_CALLS)
-          : [];
-        byId("callCount").textContent = String(
-          Array.isArray(snapshot.calls) ? snapshot.calls.length : 0
-        );
+      function eventLabel(event) {
+        if (event.kind === "turn_started") {
+          return {
+            dot: "started",
+            tool: "Turn",
+            label: "开始",
+          };
+        }
 
-        const container = byId("calls");
-        if (calls.length === 0) {
-          container.innerHTML = empty("当前 conversation 还没有 Junius 工具调用");
+        if (event.kind === "turn_completed") {
+          return {
+            dot: "succeeded",
+            tool: "Turn",
+            label: "结束",
+          };
+        }
+
+        if (event.kind === "tool_started") {
+          return {
+            dot: "started",
+            tool: event.tool || "—",
+            label: "调用开始",
+          };
+        }
+
+        if (event.kind === "tool_failed") {
+          return {
+            dot: "failed",
+            tool: event.tool || "—",
+            label: "调用失败" + (Number.isFinite(event.durationMs)
+              ? " · " + duration(event.durationMs)
+              : ""),
+          };
+        }
+
+        return {
+          dot: "succeeded",
+          tool: event.tool || "—",
+          label: "调用完成" + (Number.isFinite(event.durationMs)
+            ? " · " + duration(event.durationMs)
+            : ""),
+        };
+      }
+
+      function renderLogTurns(snapshot) {
+        const turns = Array.isArray(snapshot.turns) ? snapshot.turns : [];
+        const container = byId("logTurns");
+        const opened = openKeys(container);
+
+        byId("logTurnCount").textContent = String(turns.length);
+
+        if (turns.length === 0) {
+          container.innerHTML = '<div class="empty">还没有 Junius turn</div>';
           return;
         }
 
-        container.innerHTML = calls.map((call) =>
-          '<div class="call-row">' +
-            '<div class="call-tool">' + escapeHtml(call.tool) + "</div>" +
-            '<div class="call-state ' + escapeHtml(call.status) + '">' +
-              escapeHtml(statusLabel(call.status)) +
-            "</div>" +
-            '<div class="call-time">' + escapeHtml(time(call.startedAt)) + "</div>" +
-            '<div class="call-duration">' + escapeHtml(duration(call.durationMs)) + "</div>" +
-          "</div>"
-        ).join("");
-      }
+        container.innerHTML = turns.map((turn) => {
+          const turnKey = "logs-turn:" + turn.id;
+          const events = Array.isArray(turn.events) ? turn.events : [];
 
-      function renderTools(snapshot) {
-        const tools = Array.isArray(snapshot.tools) ? snapshot.tools : [];
-        byId("toolCount").textContent = String(tools.length);
+          const body = events.length === 0
+            ? '<div class="turn-empty">这一 turn 没有事件</div>'
+            : '<div class="event-list">' + events.map((event) => {
+                const view = eventLabel(event);
+                const input = event.kind === "tool_started"
+                  ? '<pre class="input event-input">' +
+                      escapeHtml(pretty(event.input)) +
+                    "</pre>"
+                  : "";
 
-        const container = byId("tools");
-        if (tools.length === 0) {
-          container.innerHTML = empty("暂无工具");
-        } else {
-          container.innerHTML = tools.map((tool) =>
-            '<div class="tool-row"><div class="tool-main">' +
-              '<div class="tool-name">' + escapeHtml(tool.name) + "</div>" +
-              (tool.title
-                ? '<div class="tool-title">' + escapeHtml(tool.title) + "</div>"
-                : "") +
-            "</div></div>"
-          ).join("");
-        }
+                return (
+                  '<div class="event">' +
+                    '<div class="event-time">' + escapeHtml(time(event.at)) + "</div>" +
+                    '<span class="event-dot ' + escapeHtml(view.dot) + '"></span>' +
+                    '<div class="event-main">' +
+                      '<div class="event-line">' +
+                        '<span class="event-tool">' + escapeHtml(view.tool) + "</span>" +
+                        '<span class="event-label">' + escapeHtml(view.label) + "</span>" +
+                      "</div>" +
+                      input +
+                    "</div>" +
+                  "</div>"
+                );
+              }).join("") + "</div>";
 
-        const keys = Array.isArray(snapshot.observedRequestMetaKeys)
-          ? snapshot.observedRequestMetaKeys
-          : [];
-        byId("metaKeys").textContent = keys.length > 0
-          ? keys.join(" · ")
-          : "暂无";
-      }
-
-      function renderLogs(snapshot) {
-        const logs = Array.isArray(snapshot.logs)
-          ? snapshot.logs.slice(0, MAX_VISIBLE_LOGS)
-          : [];
-        byId("logCount").textContent = String(
-          Array.isArray(snapshot.logs) ? snapshot.logs.length : 0
-        );
-
-        const container = byId("logs");
-        if (logs.length === 0) {
-          container.innerHTML = empty("暂无日志");
-          return;
-        }
-
-        container.innerHTML = logs.map((entry) => {
-          const details = [
-            entry.workspace ? "Workspace " + entry.workspace : "",
-            entry.subject ? entry.subject : "",
-            Number.isFinite(entry.durationMs) ? duration(entry.durationMs) : "",
-            entry.summary ? entry.summary : "",
-          ].filter(Boolean).join(" · ");
-
-          return '<div class="log-row">' +
-            '<div class="log-time">' + escapeHtml(time(entry.timestamp)) + "</div>" +
-            '<div class="log-main">' +
-              '<div class="log-line">' +
-                '<span class="log-status ' + escapeHtml(entry.status) + '"></span>' +
-                '<span class="log-category">' + escapeHtml(entry.category) + "</span>" +
-                '<span class="log-action">' + escapeHtml(entry.action) + "</span>" +
-              "</div>" +
-              (details
-                ? '<div class="log-detail">' + escapeHtml(details) + "</div>"
-                : "") +
-            "</div>" +
-          "</div>";
+          return (
+            '<details class="turn-accordion" data-key="' + escapeHtml(turnKey) + '"' +
+              openAttr(turnKey, opened) + ">" +
+              turnSummary(turn) +
+              '<div class="turn-body">' + body + "</div>" +
+            "</details>"
+          );
         }).join("");
       }
 
       function render(snapshot) {
-        lastSnapshot = snapshot;
-
         const nextCloseRevision =
-          Number(
-            snapshot.testWindowCloseRevision ?? 0,
-          );
+          Number(snapshot.testWindowCloseRevision ?? 0);
 
         if (closeRevision === null) {
           closeRevision = nextCloseRevision;
         } else if (nextCloseRevision !== closeRevision) {
           closeRevision = nextCloseRevision;
+
           try {
             void window.openai?.requestClose?.();
           } catch {
@@ -884,10 +905,8 @@
           return;
         }
 
-        renderTurns(snapshot);
-        renderCalls(snapshot);
-        renderTools(snapshot);
-        renderLogs(snapshot);
+        renderToolTurns(snapshot);
+        renderLogTurns(snapshot);
       }
 
       function payloadFromToolResult(result) {
@@ -923,6 +942,7 @@
         if (pollTimer !== null) {
           clearInterval(pollTimer);
         }
+
         pollTimer = setInterval(refresh, POLL_MS);
       }
 
