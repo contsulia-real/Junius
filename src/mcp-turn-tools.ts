@@ -6,7 +6,7 @@ import type {
   McpObservabilityStore,
 } from "./mcp-observability.js";
 import {
-  currentMcpSessionId,
+  observabilitySessionId,
 } from "./mcp-session-context.js";
 
 export const JUNIUS_TURN_BEGIN_TOOL =
@@ -86,10 +86,12 @@ export function registerMcpTurnTools(
       {
         parts,
       },
-      _context,
+      context,
     ) => {
       const sessionId =
-        currentMcpSessionId();
+        observabilitySessionId(
+          context.mcpReq._meta,
+        );
 
       if (
         sessionId ===
@@ -102,7 +104,7 @@ export function registerMcpTurnTools(
               type:
                 "text" as const,
               text:
-                "Cannot begin a Junius turn because the MCP session id is unavailable.",
+                "Cannot begin a Junius turn because no MCP transport session or ChatGPT conversation session is available.",
             },
           ],
         };
@@ -157,7 +159,9 @@ export function registerMcpTurnTools(
       context,
     ) => {
       const sessionId =
-        currentMcpSessionId();
+        observabilitySessionId(
+          context.mcpReq._meta,
+        );
 
       if (
         sessionId ===
@@ -170,7 +174,7 @@ export function registerMcpTurnTools(
               type:
                 "text" as const,
               text:
-                "Cannot end a Junius turn because the MCP session id is unavailable.",
+                "Cannot end a Junius turn because no MCP transport session or ChatGPT conversation session is available.",
             },
           ],
         };

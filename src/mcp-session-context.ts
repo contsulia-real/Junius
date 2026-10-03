@@ -30,3 +30,57 @@ export function currentMcpSessionId():
   return storage.getStore()
     ?.sessionId;
 }
+
+function metadataRecord(
+  value: unknown,
+): Readonly<Record<string, unknown>> {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return {};
+  }
+
+  return value as Readonly<
+    Record<string, unknown>
+  >;
+}
+
+function sessionString(
+  value: unknown,
+): string | undefined {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 512
+  )
+    ? value
+    : undefined;
+}
+
+export function observabilitySessionId(
+  metadata?: unknown,
+): string | undefined {
+  const transportSessionId =
+    currentMcpSessionId();
+
+  if (
+    transportSessionId !==
+    undefined
+  ) {
+    return transportSessionId;
+  }
+
+  const openAiSession =
+    sessionString(
+      metadataRecord(
+        metadata,
+      )["openai/session"],
+    );
+
+  return openAiSession ===
+    undefined
+    ? undefined
+    : `openai:${openAiSession}`;
+}

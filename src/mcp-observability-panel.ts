@@ -12,7 +12,7 @@ import type {
   McpObservabilityStore,
 } from "./mcp-observability.js";
 import {
-  currentMcpSessionId,
+  observabilitySessionId,
 } from "./mcp-session-context.js";
 import {
   JUNIUS_PANEL_SNAPSHOT_TOOL,
@@ -106,10 +106,13 @@ function modelOnlyToolMeta(): Record<string, unknown> {
 function panelSnapshot(
   observability:
     McpObservabilityStore,
+  metadata?: unknown,
 ): Record<string, unknown> {
   return {
     ...observability.snapshot(
-      currentMcpSessionId(),
+      observabilitySessionId(
+        metadata,
+      ),
     ),
   };
 }
@@ -176,6 +179,7 @@ export function registerMcpObservabilityPanel(
       structuredContent:
         panelSnapshot(
           observability,
+          context.mcpReq._meta,
         ),
     }),
   );
@@ -203,7 +207,9 @@ export function registerMcpObservabilityPanel(
     },
     async (_args, context) => {
       const sessionId =
-        currentMcpSessionId();
+        observabilitySessionId(
+          context.mcpReq._meta,
+        );
       if (sessionId === undefined) {
         return {
           isError: true,
@@ -211,7 +217,7 @@ export function registerMcpObservabilityPanel(
             {
               type: "text" as const,
               text:
-                "Cannot close the Junius test window because the MCP session id is unavailable.",
+                "Cannot close the Junius test window because no MCP transport session or ChatGPT conversation session is available.",
             },
           ],
         };
@@ -264,6 +270,7 @@ export function registerMcpObservabilityPanel(
       structuredContent:
         panelSnapshot(
           observability,
+          context.mcpReq._meta,
         ),
     }),
   );

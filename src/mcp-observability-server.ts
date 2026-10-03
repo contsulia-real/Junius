@@ -10,7 +10,7 @@ import type {
   ObservedToolDescriptor,
 } from "./mcp-observability.js";
 import {
-  currentMcpSessionId,
+  observabilitySessionId,
 } from "./mcp-session-context.js";
 import {
   JUNIUS_TURN_BEGIN_TOOL,
@@ -209,7 +209,9 @@ export function attachMcpObservability(
       }
 
       const sessionId =
-        currentMcpSessionId();
+        observabilitySessionId(
+          context.mcpReq._meta,
+        );
 
       if (sessionId === undefined) {
         return {
@@ -219,7 +221,7 @@ export function attachMcpObservability(
               type:
                 "text" as const,
               text:
-                "Junius MCP session is unavailable for observability.",
+                "Junius observability session is unavailable.",
             },
           ],
         };
