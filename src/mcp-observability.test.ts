@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
+import {
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
+import {
+  join,
+} from "node:path";
+import {
+  tmpdir,
+} from "node:os";
 import test from "node:test";
 import {
   McpObservabilityStore,
-  extractOpenAiRequestIdentity,
   renderTurnTitle,
 } from "./mcp-observability.js";
 
@@ -73,10 +83,7 @@ test("McpObservabilityStore owns turn boundaries, groups tools, preserves call d
           "status",
         ],
       },
-      {
-        "openai/session":
-          "conversation-a",
-      },
+      "conversation-a",
     );
   store.finishToolCall(
     first,
@@ -94,10 +101,7 @@ test("McpObservabilityStore owns turn boundaries, groups tools, preserves call d
           "--stat",
         ],
       },
-      {
-        "openai/session":
-          "conversation-a",
-      },
+      "conversation-a",
     );
   store.finishToolCall(
     second,
@@ -110,10 +114,7 @@ test("McpObservabilityStore owns turn boundaries, groups tools, preserves call d
       {
         recent_commits: 5,
       },
-      {
-        "openai/session":
-          "conversation-a",
-      },
+      "conversation-a",
     );
   store.finishToolCall(
     third,
@@ -140,10 +141,7 @@ test("McpObservabilityStore owns turn boundaries, groups tools, preserves call d
         executable:
           "echo",
       },
-      {
-        "openai/session":
-          "conversation-b",
-      },
+      "conversation-b",
     );
   store.finishToolCall(
     other,
@@ -283,10 +281,7 @@ test("McpObservabilityStore rejects tool calls before an explicit turn begins", 
           executable:
             "git",
         },
-        {
-          "openai/session":
-            "conversation-a",
-        },
+        "conversation-a",
       ),
     /junius_turn_not_started/u,
   );
@@ -316,10 +311,7 @@ test("beginTurn closes an unfinished prior turn in the same conversation", () =>
     store.beginToolCall(
       "run_command",
       {},
-      {
-        "openai/session":
-          "conversation-a",
-      },
+      "conversation-a",
     );
   store.finishToolCall(
     first,
@@ -339,10 +331,7 @@ test("beginTurn closes an unfinished prior turn in the same conversation", () =>
     store.beginToolCall(
       "git_snapshot",
       {},
-      {
-        "openai/session":
-          "conversation-a",
-      },
+      "conversation-a",
     );
   store.finishToolCall(
     second,
@@ -372,29 +361,7 @@ test("beginTurn closes an unfinished prior turn in the same conversation", () =>
   );
 });
 
-test("extractOpenAiRequestIdentity uses only the ChatGPT conversation session", () => {
-  assert.deepEqual(
-    extractOpenAiRequestIdentity({
-      "openai/session":
-        "conversation-a",
-      "openai/message_id":
-        "message-1",
-      "openai/turn_id":
-        "not-used",
-    }),
-    {
-      sessionId:
-        "conversation-a",
-      requestMetaKeys: [
-        "openai/message_id",
-        "openai/session",
-        "openai/turn_id",
-      ],
-    },
-  );
-});
-
-test("Junius test window close revisions remain conversation-scoped", () => {
+test("Junius test window close revisions remain MCP-session-scoped", () => {
   const store =
     new McpObservabilityStore();
 
@@ -416,4 +383,137 @@ test("Junius test window close revisions remain conversation-scoped", () => {
     ).testWindowCloseRevision,
     0,
   );
+});
+
+
+test("McpObservabilityStore persists MCP-session history, records successful Skill use, and deletes with the session", () => {
+  const root =
+    mkdtempSync(
+      join(
+        tmpdir(),
+        "junius-observability-",
+      ),
+    );
+
+  try {
+    const first =
+      new McpObservabilityStore({
+        rootPath: root,
+      });
+
+    first.replaceToolCatalog([
+      {
+        name: "read_skill",
+        title: "Read Skill",
+      },
+    ]);
+
+    first.ensureSession(
+      "session-a",
+    );
+    first.beginTurn(
+      "session-a",
+      [
+        {
+          type: "text",
+          text: "修这个代码",
+        },
+      ],
+    );
+
+    const callId =
+      first.beginToolCall(
+        "read_skill",
+        {
+          name: "ponytail",
+          scope: "global",
+        },
+        "session-a",
+      );
+
+    first.finishToolCall(
+      callId,
+      "succeeded",
+      {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              skill: {
+                name: "ponytail",
+                scope: "global",
+                path: "SKILL.md",
+              },
+            }),
+          },
+        ],
+      },
+    );
+    first.endTurn(
+      "session-a",
+    );
+
+    assert.equal(
+      readdirSync(root).length,
+      1,
+    );
+
+    const second =
+      new McpObservabilityStore({
+        rootPath: root,
+      });
+    const restored =
+      second.snapshot(
+        "session-a",
+      );
+    const turn =
+      restored.turns[0];
+
+    assert.ok(
+      restored.session,
+    );
+    assert.ok(turn);
+    assert.deepEqual(
+      turn.skills,
+      [
+        {
+          name: "ponytail",
+          scope: "global",
+          path: "SKILL.md",
+          usedAt:
+            turn.skills[0]
+              ?.usedAt,
+          callId,
+        },
+      ],
+    );
+    assert.equal(
+      turn.events.some(
+        (event) =>
+          event.kind ===
+            "skill_used" &&
+          event.skill ===
+            "ponytail",
+      ),
+      true,
+    );
+
+    second.deleteSession(
+      "session-a",
+    );
+
+    assert.deepEqual(
+      readdirSync(root),
+      [],
+    );
+  } finally {
+    rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
 });

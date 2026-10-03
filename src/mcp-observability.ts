@@ -2,6 +2,10 @@ import {
   createHash,
   randomUUID,
 } from "node:crypto";
+import {
+  McpObservabilityPersistence,
+  type SessionObservabilityMetadata,
+} from "./mcp-observability-persistence.js";
 
 export type ObservedToolCallStatus =
   | "running"
@@ -11,12 +15,6 @@ export type ObservedToolCallStatus =
 export interface ObservedToolDescriptor {
   readonly name: string;
   readonly title?: string;
-}
-
-export interface OpenAiRequestIdentity {
-  readonly sessionId?: string;
-  readonly requestMetaKeys:
-    readonly string[];
 }
 
 export type TurnPromptPart =
@@ -47,11 +45,21 @@ export interface ObservedTurnToolGroup {
     readonly ObservedToolCall[];
 }
 
+export interface ObservedSkillUse {
+  readonly name: string;
+  readonly scope?: string;
+  readonly workspace?: string;
+  readonly path?: string;
+  readonly usedAt: string;
+  readonly callId: string;
+}
+
 export type ObservedTurnEventKind =
   | "turn_started"
   | "tool_started"
   | "tool_succeeded"
   | "tool_failed"
+  | "skill_used"
   | "turn_completed";
 
 export interface ObservedTurnEvent {
@@ -63,6 +71,7 @@ export interface ObservedTurnEvent {
   readonly callId?: string;
   readonly input?: unknown;
   readonly durationMs?: number;
+  readonly skill?: string;
 }
 
 export interface ObservedTurn {
@@ -76,11 +85,15 @@ export interface ObservedTurn {
   readonly totalCalls: number;
   readonly tools:
     readonly ObservedTurnToolGroup[];
+  readonly skills:
+    readonly ObservedSkillUse[];
   readonly events:
     readonly ObservedTurnEvent[];
 }
 
 export interface McpObservabilitySnapshot {
+  readonly session?:
+    SessionObservabilityMetadata;
   readonly turns:
     readonly ObservedTurn[];
   readonly sessionIdentityAvailable:
@@ -94,9 +107,6 @@ const MAX_INPUT_STRING = 4_096;
 const MAX_INPUT_ARRAY = 48;
 const MAX_INPUT_KEYS = 64;
 const MAX_INPUT_DEPTH = 8;
-
-const OPENAI_SESSION_KEY =
-  "openai/session";
 
 function metaRecord(
   value: unknown,
@@ -126,29 +136,6 @@ function stringIdentity(
   }
 
   return value;
-}
-
-export function extractOpenAiRequestIdentity(
-  metadata: unknown,
-): OpenAiRequestIdentity {
-  const record =
-    metaRecord(metadata);
-  const requestMetaKeys =
-    Object.keys(record).sort();
-
-  const sessionId =
-    stringIdentity(
-      record[
-        OPENAI_SESSION_KEY
-      ],
-    );
-
-  return {
-    ...(sessionId === undefined
-      ? {}
-      : { sessionId }),
-    requestMetaKeys,
-  };
 }
 
 function compactWhitespace(
@@ -323,6 +310,16 @@ interface MutableObservedToolCall {
   turnId: string;
 }
 
+interface MutableObservedSkillUse {
+  name: string;
+  scope?: string;
+  workspace?: string;
+  path?: string;
+  usedAt: string;
+  sequence: number;
+  callId: string;
+}
+
 interface MutableObservedTurn {
   id: string;
   sessionId?: string;
@@ -335,9 +332,17 @@ interface MutableObservedTurn {
   completedSequence?: number;
   calls:
     MutableObservedToolCall[];
+  skills:
+    MutableObservedSkillUse[];
+}
+
+export interface McpObservabilityStoreOptions {
+  readonly rootPath?: string;
 }
 
 export class McpObservabilityStore {
+  readonly #persistence?:
+    McpObservabilityPersistence;
   readonly #tools =
     new Map<
       string,
@@ -365,7 +370,28 @@ export class McpObservabilityStore {
   readonly #testWindowCloseRevisions =
     new Map<string, number>();
 
+  readonly #sessionMetadata =
+    new Map<
+      string,
+      SessionObservabilityMetadata
+    >();
+
   #sequence = 0;
+
+  constructor(
+    options:
+      McpObservabilityStoreOptions = {},
+  ) {
+    if (
+      options.rootPath !==
+      undefined
+    ) {
+      this.#persistence =
+        new McpObservabilityPersistence(
+          options.rootPath,
+        );
+    }
+  }
 
   #nextSequence(): number {
     this.#sequence += 1;
@@ -378,16 +404,162 @@ export class McpObservabilityStore {
     return sessionId ?? "";
   }
 
+  ensureSession(
+    sessionId: string,
+  ): SessionObservabilityMetadata {
+    const known =
+      this.#sessionMetadata.get(
+        sessionId,
+      );
+
+    if (known !== undefined) {
+      return known;
+    }
+
+    const persisted =
+      this.#persistence?.read(
+        sessionId,
+      );
+
+    const metadata =
+      persisted === undefined
+        ? this.#persistence?.ensure(
+            sessionId,
+            this.#snapshotFromMemory(
+              sessionId,
+            ),
+          ) ?? {
+            createdAt:
+              new Date().toISOString(),
+            updatedAt:
+              new Date().toISOString(),
+          }
+        : {
+            createdAt:
+              persisted.createdAt,
+            updatedAt:
+              persisted.updatedAt,
+          };
+
+    this.#sessionMetadata.set(
+      sessionId,
+      metadata,
+    );
+
+    return metadata;
+  }
+
+  deleteSession(
+    sessionId: string,
+  ): void {
+    const turnIds =
+      new Set(
+        this.#turns
+          .filter(
+            (turn) =>
+              turn.sessionId ===
+              sessionId,
+          )
+          .map((turn) =>
+            turn.id,
+          ),
+      );
+
+    for (let index =
+      this.#turns.length - 1;
+      index >= 0;
+      index -= 1) {
+      if (
+        this.#turns[index]
+          ?.sessionId ===
+        sessionId
+      ) {
+        this.#turns.splice(
+          index,
+          1,
+        );
+      }
+    }
+
+    for (
+      const turnId of
+      turnIds
+    ) {
+      this.#turnsById.delete(
+        turnId,
+      );
+    }
+
+    for (
+      const [callId, call] of
+      this.#callsById
+    ) {
+      if (
+        turnIds.has(
+          call.turnId,
+        )
+      ) {
+        this.#callsById.delete(
+          callId,
+        );
+      }
+    }
+
+    this.#activeTurnBySession.delete(
+      sessionId,
+    );
+    this.#testWindowCloseRevisions.delete(
+      sessionId,
+    );
+    this.#sessionMetadata.delete(
+      sessionId,
+    );
+    this.#persistence?.delete(
+      sessionId,
+    );
+  }
+
+  #persistSession(
+    sessionId: string,
+  ): void {
+    if (
+      this.#persistence ===
+      undefined
+    ) {
+      return;
+    }
+
+    const metadata =
+      this.#persistence.write(
+        sessionId,
+        this.#mergedSnapshot(
+          sessionId,
+        ),
+      );
+
+    this.#sessionMetadata.set(
+      sessionId,
+      metadata,
+    );
+  }
+
   requestTestWindowClose(
     sessionId: string,
   ): number {
     const revision =
-      (this.#testWindowCloseRevisions
-        .get(sessionId) ?? 0) + 1;
+      this.testWindowCloseRevision(
+        sessionId,
+      ) + 1;
 
     this.#testWindowCloseRevisions.set(
       sessionId,
       revision,
+    );
+    this.ensureSession(
+      sessionId,
+    );
+    this.#persistSession(
+      sessionId,
     );
 
     return revision;
@@ -400,9 +572,16 @@ export class McpObservabilityStore {
       return 0;
     }
 
-    return this
-      .#testWindowCloseRevisions
-      .get(sessionId) ?? 0;
+    return Math.max(
+      this
+        .#testWindowCloseRevisions
+        .get(sessionId) ?? 0,
+      this.#persistence
+        ?.read(sessionId)
+        ?.snapshot
+        .testWindowCloseRevision ??
+        0,
+    );
   }
 
   replaceToolCatalog(
@@ -466,14 +645,22 @@ export class McpObservabilityStore {
     }
   }
 
-  #pruneTurns(): void {
+  #pruneTurns(
+    sessionId?: string,
+  ): void {
     while (
-      this.#turns.length >
+      this.#turns.filter(
+        (turn) =>
+          turn.sessionId ===
+          sessionId,
+      ).length >
       MAX_TURNS
     ) {
       const index =
         this.#turns.findIndex(
           (turn) =>
+            turn.sessionId ===
+              sessionId &&
             turn.completedAtMs !==
             undefined,
         );
@@ -555,6 +742,7 @@ export class McpObservabilityStore {
         startedSequence:
           this.#nextSequence(),
         calls: [],
+        skills: [],
       };
 
     this.#turns.push(turn);
@@ -566,7 +754,9 @@ export class McpObservabilityStore {
       key,
       turn.id,
     );
-    this.#pruneTurns();
+    this.#pruneTurns(
+      sessionId,
+    );
 
     return turn;
   }
@@ -576,12 +766,20 @@ export class McpObservabilityStore {
     parts:
       readonly TurnPromptPart[],
   ): string {
+    this.ensureSession(
+      sessionId,
+    );
+
     const turn =
       this.#createTurn(
         sessionId,
         renderTurnTitle(parts),
         Date.now(),
       );
+
+    this.#persistSession(
+      sessionId,
+    );
 
     return turn.id;
   }
@@ -614,6 +812,9 @@ export class McpObservabilityStore {
       turn,
       Date.now(),
     );
+    this.#persistSession(
+      sessionId,
+    );
 
     return turn.id;
   }
@@ -645,17 +846,13 @@ export class McpObservabilityStore {
   beginToolCall(
     tool: string,
     input: unknown,
-    metadata?: unknown,
+    sessionId: string,
   ): string {
-    const identity =
-      extractOpenAiRequestIdentity(
-        metadata,
-      );
     const startedAtMs =
       Date.now();
     const turn =
       this.#activeTurn(
-        identity.sessionId,
+        sessionId,
       );
 
     if (turn === undefined) {
@@ -691,6 +888,9 @@ export class McpObservabilityStore {
       id,
       call,
     );
+    this.#persistSession(
+      sessionId,
+    );
 
     return id;
   }
@@ -702,6 +902,7 @@ export class McpObservabilityStore {
         ObservedToolCallStatus,
         "running"
       >,
+    result?: unknown,
   ): void {
     const call =
       this.#callsById.get(id);
@@ -732,6 +933,126 @@ export class McpObservabilityStore {
         completedAtMs -
           call.startedAtMs,
       );
+
+    const turn =
+      this.#turnsById.get(
+        call.turnId,
+      );
+
+    if (
+      status === "succeeded" &&
+      turn !== undefined &&
+      call.tool === "read_skill"
+    ) {
+      const input =
+        metaRecord(call.input);
+      let name =
+        stringIdentity(
+          input.name,
+        );
+      let scope =
+        stringIdentity(
+          input.scope,
+        );
+      let path =
+        stringIdentity(
+          input.path,
+        );
+      const workspace =
+        stringIdentity(
+          input.workspace,
+        );
+
+      const content =
+        (
+          result as {
+            content?: unknown;
+          } | undefined
+        )?.content;
+
+      if (Array.isArray(content)) {
+        const text =
+          content.find(
+            (item) =>
+              item !== null &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              (item as {
+                type?: unknown;
+              }).type === "text" &&
+              typeof (
+                item as {
+                  text?: unknown;
+                }
+              ).text === "string",
+          ) as
+            | {
+                text: string;
+              }
+            | undefined;
+
+        if (text !== undefined) {
+          try {
+            const parsed =
+              JSON.parse(
+                text.text,
+              ) as {
+                skill?: {
+                  name?: unknown;
+                  scope?: unknown;
+                  path?: unknown;
+                };
+              };
+
+            name =
+              stringIdentity(
+                parsed.skill?.name,
+              ) ?? name;
+            scope =
+              stringIdentity(
+                parsed.skill?.scope,
+              ) ?? scope;
+            path =
+              stringIdentity(
+                parsed.skill?.path,
+              ) ?? path;
+          } catch {
+            // The read itself succeeded; input metadata is still sufficient.
+          }
+        }
+      }
+
+      if (name !== undefined) {
+        turn.skills.push({
+          name,
+          ...(scope === undefined
+            ? {}
+            : { scope }),
+          ...(workspace ===
+          undefined
+            ? {}
+            : { workspace }),
+          ...(path === undefined
+            ? {}
+            : { path }),
+          usedAt:
+            call.completedAt as string,
+          sequence:
+            this.#nextSequence(),
+          callId:
+            call.id,
+        });
+      }
+    }
+
+    if (
+      turn?.sessionId !==
+      undefined
+    ) {
+      this.#persistSession(
+        turn.sessionId,
+      );
+    }
   }
 
   #snapshotCall(
@@ -827,6 +1148,24 @@ export class McpObservabilityStore {
               }),
         });
       }
+    }
+
+    for (
+      const skill of
+      turn.skills
+    ) {
+      events.push({
+        kind:
+          "skill_used",
+        at:
+          skill.usedAt,
+        sequence:
+          skill.sequence,
+        callId:
+          skill.callId,
+        skill:
+          skill.name,
+      });
     }
 
     if (
@@ -926,12 +1265,44 @@ export class McpObservabilityStore {
       totalCalls:
         turn.calls.length,
       tools,
+      skills:
+        turn.skills.map(
+          (skill) => ({
+            name:
+              skill.name,
+            ...(skill.scope ===
+            undefined
+              ? {}
+              : {
+                  scope:
+                    skill.scope,
+                }),
+            ...(skill.workspace ===
+            undefined
+              ? {}
+              : {
+                  workspace:
+                    skill.workspace,
+                }),
+            ...(skill.path ===
+            undefined
+              ? {}
+              : {
+                  path:
+                    skill.path,
+                }),
+            usedAt:
+              skill.usedAt,
+            callId:
+              skill.callId,
+          }),
+        ),
       events:
         this.#turnEvents(turn),
     };
   }
 
-  snapshot(
+  #snapshotFromMemory(
     sessionId?: string,
   ): McpObservabilitySnapshot {
     const turns =
@@ -948,8 +1319,17 @@ export class McpObservabilityStore {
           ),
         )
         .reverse();
+    const session =
+      sessionId === undefined
+        ? undefined
+        : this.#sessionMetadata.get(
+            sessionId,
+          );
 
     return {
+      ...(session === undefined
+        ? {}
+        : { session }),
       turns,
       sessionIdentityAvailable:
         sessionId !== undefined,
@@ -958,5 +1338,109 @@ export class McpObservabilityStore {
           sessionId,
         ),
     };
+  }
+
+  #mergedSnapshot(
+    sessionId: string,
+  ): McpObservabilitySnapshot {
+    const memory =
+      this.#snapshotFromMemory(
+        sessionId,
+      );
+    const persisted =
+      this.#persistence?.read(
+        sessionId,
+      );
+    const turnsById =
+      new Map<
+        string,
+        ObservedTurn
+      >();
+
+    for (
+      const turn of
+      persisted?.snapshot.turns ??
+      []
+    ) {
+      turnsById.set(
+        turn.id,
+        turn,
+      );
+    }
+
+    for (
+      const turn of
+      memory.turns
+    ) {
+      turnsById.set(
+        turn.id,
+        turn,
+      );
+    }
+
+    const metadata =
+      this.#sessionMetadata.get(
+        sessionId,
+      ) ??
+      (persisted === undefined
+        ? undefined
+        : {
+            createdAt:
+              persisted.createdAt,
+            updatedAt:
+              persisted.updatedAt,
+          });
+
+    return {
+      ...(metadata === undefined
+        ? {}
+        : {
+            session:
+              metadata,
+          }),
+      turns:
+        [...turnsById.values()]
+          .sort(
+            (left, right) =>
+              Date.parse(
+                right.startedAt,
+              ) -
+              Date.parse(
+                left.startedAt,
+              ),
+          )
+          .slice(
+            0,
+            MAX_TURNS,
+          ),
+      sessionIdentityAvailable:
+        true,
+      testWindowCloseRevision:
+        Math.max(
+          memory
+            .testWindowCloseRevision,
+          persisted
+            ?.snapshot
+            .testWindowCloseRevision ??
+            0,
+        ),
+    };
+  }
+
+  snapshot(
+    sessionId?: string,
+  ): McpObservabilitySnapshot {
+    if (sessionId === undefined) {
+      return this
+        .#snapshotFromMemory();
+    }
+
+    this.ensureSession(
+      sessionId,
+    );
+
+    return this.#mergedSnapshot(
+      sessionId,
+    );
   }
 }

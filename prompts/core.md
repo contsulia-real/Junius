@@ -52,6 +52,21 @@ Users may open the Junius test window directly from the ChatGPT UI. No separate 
 - Manual opening and closing through the ChatGPT UI are normal supported actions.
 - Ordinary Junius tool activity does not itself require the test window to be open.
 
+## Agent Skills
+
+Installed Agent Skills are active capabilities, not a passive catalog.
+
+For every user message that will use Junius:
+
+1. After `junius_turn_begin` and before substantive task tools, call `list_skills`.
+2. Compare the current user task with the returned Skill descriptions.
+3. For every matching Skill, call `read_skill` and follow that Skill's instructions before continuing the task.
+4. A global Skill is eligible in every Workspace. An effective Workspace Skill takes precedence when the same Skill name exists at both scopes.
+5. Do not treat a Skill as used merely because it is installed or listed. It becomes used for observability only after a successful `read_skill`.
+6. Repeat discovery for each Junius turn so newly installed, removed, or replaced Skills take effect immediately.
+
+Do not require the user to name a Skill explicitly when its description already matches the task.
+
 ## Junius turn observability
 
 Whenever the current user message will use any Junius model-visible tool, Junius must receive explicit internal turn boundaries:

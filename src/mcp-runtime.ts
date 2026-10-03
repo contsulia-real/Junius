@@ -13,6 +13,9 @@ import { PlaywrightCliService } from "./playwright-cli.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
 import type { AuditStore } from "./audit-store.js";
 import type { McpObservabilityStore } from "./mcp-observability.js";
+import {
+  withMcpSessionContext,
+} from "./mcp-session-context.js";
 
 export interface McpRuntime {
   handle(request: Request): Promise<Response>;
@@ -67,9 +70,65 @@ export async function createMcpRuntime(
 
   return {
     async handle(request) {
-      return (await isLegacyRequest(request))
-        ? legacyTransport.handleRequest(request)
-        : modernHandler.fetch(request);
+      const requestSessionId =
+        request.headers.get(
+          "mcp-session-id",
+        ) ?? undefined;
+
+      if (
+        requestSessionId !==
+          undefined &&
+        request.method !==
+          "DELETE"
+      ) {
+        observability?.ensureSession(
+          requestSessionId,
+        );
+      }
+
+      return withMcpSessionContext(
+        requestSessionId,
+        async () => {
+          const response =
+            (await isLegacyRequest(
+              request,
+            ))
+              ? await legacyTransport
+                  .handleRequest(
+                    request,
+                  )
+              : await modernHandler
+                  .fetch(request);
+
+          const responseSessionId =
+            response.headers.get(
+              "mcp-session-id",
+            ) ?? undefined;
+
+          if (
+            responseSessionId !==
+            undefined
+          ) {
+            observability?.ensureSession(
+              responseSessionId,
+            );
+          }
+
+          if (
+            request.method ===
+              "DELETE" &&
+            requestSessionId !==
+              undefined &&
+            response.ok
+          ) {
+            observability?.deleteSession(
+              requestSessionId,
+            );
+          }
+
+          return response;
+        },
+      );
     },
 
     async close() {

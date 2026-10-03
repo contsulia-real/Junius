@@ -24,6 +24,9 @@ import {
   JUNIUS_TURN_END_TOOL,
   registerMcpTurnTools,
 } from "./mcp-turn-tools.js";
+import {
+  withMcpSessionContext,
+} from "./mcp-session-context.js";
 
 interface ServerInternals {
   readonly _registeredTools:
@@ -71,17 +74,33 @@ function internals(
     ServerInternals;
 }
 
-function fakeContext(
-  metadata:
-    Record<string, unknown> = {},
-): ServerContext {
+function fakeContext():
+  ServerContext {
   return {
     mcpReq: {
       id: 1,
       method: "tools/call",
-      _meta: metadata,
+      _meta: {},
     },
   } as unknown as ServerContext;
+}
+
+function executeTool(
+  view: ServerInternals,
+  tool: RegisteredTool,
+  args: unknown,
+  context: ServerContext,
+  sessionId = "conversation-1",
+): Promise<unknown> {
+  return withMcpSessionContext(
+    sessionId,
+    () =>
+      view.executeToolHandler(
+        tool,
+        args,
+        context,
+      ),
+  );
 }
 
 test("Junius observability panel registers a ChatGPT thread entrypoint and app-only helpers", async () => {
@@ -211,6 +230,18 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
     content?.text ?? "",
     /tool-accordion/u,
   );
+  assert.match(
+    content?.text ?? "",
+    /skill-chip/u,
+  );
+  assert.match(
+    content?.text ?? "",
+    /skill_used/u,
+  );
+  assert.match(
+    content?.text ?? "",
+    /Session ·/u,
+  );
   assert.doesNotMatch(
     content?.text ?? "",
     /最近调用/u,
@@ -265,13 +296,10 @@ test("MCP observability refuses ordinary tools until an explicit Junius turn beg
   const view =
     internals(server);
   const context =
-    fakeContext({
-      "openai/session":
-        "conversation-1",
-    });
+    fakeContext();
 
   const blocked =
-    await view.executeToolHandler(
+    await executeTool(view,
       view._registeredTools
         .ordinary_tool,
       {
@@ -306,7 +334,7 @@ test("MCP observability refuses ordinary tools until an explicit Junius turn beg
   );
 
   const begin =
-    await view.executeToolHandler(
+    await executeTool(view,
       view._registeredTools[
         JUNIUS_TURN_BEGIN_TOOL
       ],
@@ -332,7 +360,7 @@ test("MCP observability refuses ordinary tools until an explicit Junius turn beg
   );
 
   const allowed =
-    await view.executeToolHandler(
+    await executeTool(view,
       view._registeredTools
         .ordinary_tool,
       {
@@ -401,12 +429,9 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
   const view =
     internals(server);
   const context =
-    fakeContext({
-      "openai/session":
-        "conversation-1",
-    });
+    fakeContext();
 
-  await view.executeToolHandler(
+  await executeTool(view,
     view._registeredTools[
       JUNIUS_TURN_BEGIN_TOOL
     ],
@@ -428,7 +453,7 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
     context,
   );
 
-  await view.executeToolHandler(
+  await executeTool(view,
     view._registeredTools
       .ordinary_tool,
     {
@@ -437,7 +462,7 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
     context,
   );
 
-  await view.executeToolHandler(
+  await executeTool(view,
     view._registeredTools
       .ordinary_tool,
     {
@@ -446,7 +471,7 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
     context,
   );
 
-  await view.executeToolHandler(
+  await executeTool(view,
     view._registeredTools[
       JUNIUS_TURN_END_TOOL
     ],
@@ -511,7 +536,7 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
   );
 
   const panelResult =
-    await view.executeToolHandler(
+    await executeTool(view,
       view._registeredTools[
         JUNIUS_PANEL_TOOL
       ],
@@ -534,7 +559,7 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
   );
 });
 
-test("Junius panel opens without authorization and close signals are conversation-scoped", async () => {
+test("Junius panel opens without authorization and close signals are MCP-session-scoped", async () => {
   const server =
     new McpServer({
       name: "Junius Test",
@@ -563,13 +588,10 @@ test("Junius panel opens without authorization and close signals are conversatio
   assert.ok(panelTool);
 
   const manuallyOpened =
-    await view.executeToolHandler(
+    await executeTool(view,
       panelTool,
       {},
-      fakeContext({
-        "openai/session":
-          "conversation-1",
-      }),
+      fakeContext(),
     ) as {
       structuredContent?: {
         testWindowCloseRevision?: number;
@@ -597,13 +619,10 @@ test("Junius panel opens without authorization and close signals are conversatio
   );
 
   const closed =
-    await view.executeToolHandler(
+    await executeTool(view,
       closeTool,
       {},
-      fakeContext({
-        "openai/session":
-          "conversation-1",
-      }),
+      fakeContext(),
     ) as {
       structuredContent?: {
         testWindowCloseRevision?: number;
@@ -629,13 +648,10 @@ test("Junius panel opens without authorization and close signals are conversatio
   );
 
   const reopened =
-    await view.executeToolHandler(
+    await executeTool(view,
       panelTool,
       {},
-      fakeContext({
-        "openai/session":
-          "conversation-1",
-      }),
+      fakeContext(),
     ) as {
       structuredContent?: {
         testWindowCloseRevision?: number;

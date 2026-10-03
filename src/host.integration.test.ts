@@ -14,6 +14,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -259,10 +260,6 @@ async function callMcpTool(
         params: {
           name,
           arguments: args,
-          _meta: {
-            "openai/session":
-              "host-integration",
-          },
         },
       }),
     },
@@ -495,6 +492,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
           "workspace-state.json",
         ),
         JUNIUS_BROWSER_STATE_PATH: join(root, "browser"),
+        JUNIUS_RUNTIME_ROOT: join(root, "runtime"),
         JUNIUS_WORKER_ROLLBACK_MS: "10000",
       },
       windowsHide: true,
@@ -1766,6 +1764,52 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
     assert.equal(
       endedTurn.isError,
       false,
+    );
+
+    const sessionObservabilityPath =
+      join(
+        root,
+        "runtime",
+        "observability",
+        "sessions",
+      );
+    assert.equal(
+      (
+        await readdir(
+          sessionObservabilityPath,
+        )
+      ).length,
+      1,
+    );
+
+    assert.ok(
+      mcpSessionId,
+    );
+    const deletedSession =
+      await fetch(
+        mcpOrigin + "/mcp",
+        {
+          method: "DELETE",
+          headers: {
+            accept:
+              "application/json, text/event-stream",
+            "mcp-session-id":
+              mcpSessionId,
+          },
+        },
+      );
+    const deletedSessionBody =
+      await deletedSession.text();
+    assert.equal(
+      deletedSession.ok,
+      true,
+      deletedSessionBody,
+    );
+    assert.deepEqual(
+      await readdir(
+        sessionObservabilityPath,
+      ),
+      [],
     );
   } finally {
     child.kill();

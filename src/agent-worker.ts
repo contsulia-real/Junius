@@ -20,6 +20,9 @@ import {
 import { createMcpRuntime } from "./mcp-runtime.js";
 import { McpObservabilityStore } from "./mcp-observability.js";
 import {
+  resolveMcpObservabilitySessionsPath,
+} from "./mcp-observability-persistence.js";
+import {
   PlaywrightCliService,
   resolveBrowserStatePath,
 } from "./playwright-cli.js";
@@ -134,7 +137,10 @@ export async function startAgentWorker(
       resolveAuditRetention(),
     );
   const observability =
-    new McpObservabilityStore();
+    new McpObservabilityStore({
+      rootPath:
+        resolveMcpObservabilitySessionsPath(),
+    });
   const interrupt =
     new EscapeInterruptService();
   const browser =

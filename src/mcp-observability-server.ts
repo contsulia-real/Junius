@@ -5,11 +5,13 @@ import type {
   RegisteredTool,
   ServerContext,
 } from "@modelcontextprotocol/server";
-import {
-  extractOpenAiRequestIdentity,
-  type McpObservabilityStore,
-  type ObservedToolDescriptor,
+import type {
+  McpObservabilityStore,
+  ObservedToolDescriptor,
 } from "./mcp-observability.js";
+import {
+  currentMcpSessionId,
+} from "./mcp-session-context.js";
 import {
   JUNIUS_TURN_BEGIN_TOOL,
   JUNIUS_TURN_END_TOOL,
@@ -206,14 +208,26 @@ export function attachMcpObservability(
         );
       }
 
-      const identity =
-        extractOpenAiRequestIdentity(
-          context.mcpReq._meta,
-        );
+      const sessionId =
+        currentMcpSessionId();
+
+      if (sessionId === undefined) {
+        return {
+          isError: true,
+          content: [
+            {
+              type:
+                "text" as const,
+              text:
+                "Junius MCP session is unavailable for observability.",
+            },
+          ],
+        };
+      }
 
       if (
         !observability.hasActiveTurn(
-          identity.sessionId,
+          sessionId,
         )
       ) {
         return {
@@ -235,7 +249,7 @@ export function attachMcpObservability(
         observability.beginToolCall(
           name,
           args,
-          context.mcpReq._meta,
+          sessionId,
         );
 
       try {
@@ -257,6 +271,7 @@ export function attachMcpObservability(
           isError
             ? "failed"
             : "succeeded",
+          result,
         );
         return withTurnEndReminder(
           result,

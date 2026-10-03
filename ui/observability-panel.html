@@ -246,6 +246,50 @@
       text-align: center;
     }
 
+    .skill-block {
+      margin-bottom: 8px;
+    }
+
+    .section-label {
+      margin: 2px 2px 6px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .skill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .skill-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--bg);
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        monospace;
+      font-size: 10px;
+    }
+
+    .skill-scope {
+      color: var(--muted);
+      font-family:
+        ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+
     .tool-list {
       display: grid;
       gap: 6px;
@@ -745,10 +789,31 @@
         container.innerHTML = turns.map((turn) => {
           const turnKey = "tools-turn:" + turn.id;
           const tools = Array.isArray(turn.tools) ? turn.tools : [];
+          const skills = Array.isArray(turn.skills) ? turn.skills : [];
 
-          const body = tools.length === 0
+          const skillHtml = skills.length === 0
+            ? ""
+            : '<div class="skill-block">' +
+                '<div class="section-label">Skills</div>' +
+                '<div class="skill-list">' +
+                  skills.map((skill) =>
+                    '<span class="skill-chip" title="' +
+                      escapeHtml(skill.path || skill.name) + '">' +
+                      escapeHtml(skill.name) +
+                      (skill.scope
+                        ? '<span class="skill-scope">' +
+                            escapeHtml(skill.scope) +
+                          "</span>"
+                        : "") +
+                    "</span>"
+                  ).join("") +
+                "</div>" +
+              "</div>";
+
+          const toolHtml = tools.length === 0
             ? '<div class="turn-empty">这一 turn 没有工具调用</div>'
-            : '<div class="tool-list">' + tools.map((tool) => {
+            : '<div class="section-label">Tools</div>' +
+              '<div class="tool-list">' + tools.map((tool) => {
                 const toolKey = turnKey + ":tool:" + tool.name;
                 const calls = Array.isArray(tool.calls) ? tool.calls : [];
 
@@ -779,6 +844,10 @@
                 );
               }).join("") + "</div>";
 
+          const body =
+            skillHtml +
+            toolHtml;
+
           return (
             '<details class="turn-accordion" data-key="' + escapeHtml(turnKey) + '"' +
               openAttr(turnKey, opened) + ">" +
@@ -803,6 +872,14 @@
             dot: "succeeded",
             tool: "Turn",
             label: "结束",
+          };
+        }
+
+        if (event.kind === "skill_used") {
+          return {
+            dot: "succeeded",
+            tool: "Skill",
+            label: event.skill || "—",
           };
         }
 
@@ -925,7 +1002,12 @@
           }
 
           render(snapshot);
-          setConnection("online", "刚刚更新");
+          setConnection(
+            "online",
+            snapshot.session?.createdAt
+              ? "Session · " + time(snapshot.session.createdAt)
+              : "刚刚更新",
+          );
         } catch (error) {
           console.error("[Junius panel]", error);
           setConnection("error", "连接失败");

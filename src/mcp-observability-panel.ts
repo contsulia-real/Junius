@@ -1,6 +1,5 @@
 import type {
   McpServer,
-  ServerContext,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -9,10 +8,12 @@ import {
 import {
   fileURLToPath,
 } from "node:url";
-import {
-  extractOpenAiRequestIdentity,
-  type McpObservabilityStore,
+import type {
+  McpObservabilityStore,
 } from "./mcp-observability.js";
+import {
+  currentMcpSessionId,
+} from "./mcp-session-context.js";
 import {
   JUNIUS_PANEL_SNAPSHOT_TOOL,
   JUNIUS_PANEL_TOOL,
@@ -105,16 +106,10 @@ function modelOnlyToolMeta(): Record<string, unknown> {
 function panelSnapshot(
   observability:
     McpObservabilityStore,
-  context: ServerContext,
 ): Record<string, unknown> {
-  const identity =
-    extractOpenAiRequestIdentity(
-      context.mcpReq._meta,
-    );
-
   return {
     ...observability.snapshot(
-      identity.sessionId,
+      currentMcpSessionId(),
     ),
   };
 }
@@ -129,7 +124,7 @@ export function registerMcpObservabilityPanel(
     PANEL_RESOURCE_URI,
     {
       description:
-        "Junius turn-grouped tool activity and ordered tool-call events for the current ChatGPT conversation.",
+        "Persistent Junius turn, Skill, and tool activity for the current MCP session.",
       mimeType:
         MCP_APP_MIME_TYPE,
     },
@@ -148,7 +143,7 @@ export function registerMcpObservabilityPanel(
                 false,
             },
             "openai/widgetDescription":
-              "Junius turn、工具调用与事件日志面板。",
+              "Junius MCP session、turn、Skill、工具调用与事件日志面板。",
           },
         },
       ],
@@ -161,7 +156,7 @@ export function registerMcpObservabilityPanel(
       title:
         "Junius 监控",
       description:
-        "Open the Junius test window in the current ChatGPT conversation. Users may also open this thread panel manually from the ChatGPT UI.",
+        "Open the Junius observability panel for the current MCP session. Users may also open this thread panel manually from the ChatGPT UI.",
       inputSchema:
         z.object({}),
       _meta:
@@ -181,7 +176,6 @@ export function registerMcpObservabilityPanel(
       structuredContent:
         panelSnapshot(
           observability,
-          context,
         ),
     }),
   );
@@ -192,7 +186,7 @@ export function registerMcpObservabilityPanel(
       title:
         "关闭 Junius 测试窗口",
       description:
-        "Close the currently mounted Junius test window for this ChatGPT conversation.",
+        "Close the currently mounted Junius observability panel for this MCP session.",
       inputSchema:
         z.object({}),
       _meta:
@@ -208,18 +202,16 @@ export function registerMcpObservabilityPanel(
       },
     },
     async (_args, context) => {
-      const identity =
-        extractOpenAiRequestIdentity(
-          context.mcpReq._meta,
-        );
-      if (identity.sessionId === undefined) {
+      const sessionId =
+        currentMcpSessionId();
+      if (sessionId === undefined) {
         return {
           isError: true,
           content: [
             {
               type: "text" as const,
               text:
-                "Cannot close the Junius test window because ChatGPT did not provide a conversation session id.",
+                "Cannot close the Junius test window because the MCP session id is unavailable.",
             },
           ],
         };
@@ -227,7 +219,7 @@ export function registerMcpObservabilityPanel(
 
       const closeRevision =
         observability.requestTestWindowClose(
-          identity.sessionId,
+          sessionId,
         );
 
       return {
@@ -272,7 +264,6 @@ export function registerMcpObservabilityPanel(
       structuredContent:
         panelSnapshot(
           observability,
-          context,
         ),
     }),
   );

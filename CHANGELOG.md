@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added MCP-session-scoped persistent observability and Skill-use monitoring. Turn/tool/Skill history now follows real MCP session creation, use, and deletion; successful `read_skill` calls appear as Skill usage in Tools and Logs; each Junius turn now discovers installed Skills before substantive task tools.
+
 ## 0.1.3-alpha
 
 - Hardened Junius turn lifecycle tracking: ordinary tools are now refused until `junius_turn_begin` succeeds, fallback turns are no longer created for missing boundaries, ordinary tool results remind ChatGPT to call `junius_turn_end`, and a new begin still closes an unfinished prior turn as recovery.
