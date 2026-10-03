@@ -74,13 +74,15 @@ function internals(
     ServerInternals;
 }
 
-function fakeContext():
-  ServerContext {
+function fakeContext(
+  metadata:
+    Record<string, unknown> = {},
+): ServerContext {
   return {
     mcpReq: {
       id: 1,
       method: "tools/call",
-      _meta: {},
+      _meta: metadata,
     },
   } as unknown as ServerContext;
 }
