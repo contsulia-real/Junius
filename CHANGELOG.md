@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.4-alpha
+
 - Added MCP-session-scoped persistent observability and Skill-use monitoring. Turn/tool/Skill history now follows real MCP session creation, use, and deletion; successful `read_skill` calls appear as Skill usage in Tools and Logs; each Junius turn now discovers installed Skills before substantive task tools.
 
 ## 0.1.3-alpha
