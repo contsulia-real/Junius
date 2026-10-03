@@ -47,7 +47,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate Python helper syntax
-        run: python -m py_compile python/desktop_helper.py python/desktop_indicator.py
+        run: python -c "import ast, pathlib; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8'), filename=p) for p in ('python/desktop_helper.py', 'python/desktop_indicator.py')]"
 
       - name: Validate
         run: pnpm run check
