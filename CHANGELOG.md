@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed observability on modern ChatGPT MCP calls, which do not carry `Mcp-Session-Id`. Junius now prefers the transport session when present and otherwise uses ChatGPT's documented `openai/session` conversation id, so turn begin/end, tool monitoring, Skill usage, and the panel work on both protocol eras.
+
 ## 0.1.4-alpha
 
 - Added MCP-session-scoped persistent observability and Skill-use monitoring. Turn/tool/Skill history now follows real MCP session creation, use, and deletion; successful `read_skill` calls appear as Skill usage in Tools and Logs; each Junius turn now discovers installed Skills before substantive task tools.
