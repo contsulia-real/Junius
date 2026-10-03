@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1-alpha
+
 - Removed the Junius test-window authorization gate. The ChatGPT thread panel can now be opened directly by the user or from chat, while chat-driven close requests remain session-scoped one-shot signals.
 
 ## 0.1.0-alpha

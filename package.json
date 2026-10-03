@@ -1,6 +1,6 @@
 {
   "name": "junius",
-  "version": "0.1.0-alpha",
+  "version": "0.1.1-alpha",
   "private": true,
   "description": "Local MCP computer control service for ChatGPT",
   "bin": {
