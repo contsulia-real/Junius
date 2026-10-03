@@ -389,6 +389,127 @@ test("MCP observability refuses ordinary tools until an explicit Junius turn beg
   );
 });
 
+test("ChatGPT tool calls without MCP-Session-Id use openai/session for turn observability", async () => {
+  const server =
+    new McpServer({
+      name: "Junius Test",
+      version: "0",
+    });
+  const store =
+    new McpObservabilityStore();
+
+  server.registerTool(
+    "ordinary_tool",
+    {
+      inputSchema: {},
+    },
+    async () => ({
+      content: [],
+    }),
+  );
+
+  registerMcpTurnTools(
+    server,
+    store,
+  );
+  registerMcpObservabilityPanel(
+    server,
+    store,
+  );
+  attachMcpObservability(
+    server,
+    store,
+  );
+
+  const view =
+    internals(server);
+  const context =
+    fakeContext({
+      "openai/session":
+        "chat-session-a",
+    });
+
+  const begun =
+    await view.executeToolHandler(
+      view._registeredTools[
+        JUNIUS_TURN_BEGIN_TOOL
+      ],
+      {
+        parts: [
+          {
+            type: "text",
+            text: "现代 ChatGPT 请求",
+          },
+        ],
+      },
+      context,
+    ) as {
+      isError?: boolean;
+    };
+
+  assert.notEqual(
+    begun.isError,
+    true,
+  );
+
+  const called =
+    await view.executeToolHandler(
+      view._registeredTools
+        .ordinary_tool,
+      {},
+      context,
+    ) as {
+      isError?: boolean;
+    };
+
+  assert.notEqual(
+    called.isError,
+    true,
+  );
+
+  await view.executeToolHandler(
+    view._registeredTools[
+      JUNIUS_TURN_END_TOOL
+    ],
+    {},
+    context,
+  );
+
+  const panel =
+    await view.executeToolHandler(
+      view._registeredTools[
+        JUNIUS_PANEL_TOOL
+      ],
+      {},
+      context,
+    ) as {
+      structuredContent?: {
+        turns?: readonly {
+          title?: string;
+          status?: string;
+        }[];
+      };
+    };
+
+  assert.deepEqual(
+    panel.structuredContent
+      ?.turns?.map(
+        (turn) => ({
+          title: turn.title,
+          status: turn.status,
+        }),
+      ),
+    [
+      {
+        title:
+          "现代 ChatGPT 请求",
+        status:
+          "completed",
+      },
+    ],
+  );
+});
+
 test("MCP observability records ordinary tools inside Junius-owned turns and excludes turn plumbing", async () => {
   const server =
     new McpServer({
