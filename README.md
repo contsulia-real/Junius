@@ -12,6 +12,8 @@ Junius brings local execution to ChatGPT Chat on Windows through MCP. When ChatG
 
 **ChatGPT decides. Junius executes locally.**
 
+<a href="https://www.producthunt.com/products/junius?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-junius" target="_blank" rel="noopener noreferrer"><img alt="Junius - Keep working in ChatGPT Chat after Work runs out | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1270641&amp;theme=neutral&amp;t=1791214371048"></a>
+
 > **Junius is an execution service, not a policy engine.**
 >
 > Decisions about whether an operation is appropriate, destructive, or intended belong to the user and the calling assistant. Junius does not maintain a second command-authorization system.

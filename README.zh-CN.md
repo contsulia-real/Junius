@@ -12,6 +12,8 @@ Junius 通过 MCP 为 Windows 上的 ChatGPT Chat 提供本地执行能力。当
 
 **ChatGPT 负责决策，Junius 负责在本机执行。**
 
+<a href="https://www.producthunt.com/products/junius?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-junius" target="_blank" rel="noopener noreferrer"><img alt="Junius - Keep working in ChatGPT Chat after Work runs out | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1270641&amp;theme=neutral&amp;t=1791214371048"></a>
+
 > **Junius 是执行服务，不是策略引擎。**
 >
 > 某项操作是否合适、是否具有破坏性、是否符合用户意图，由用户和调用 Junius 的助手决定。Junius 不维护第二套命令授权系统。
