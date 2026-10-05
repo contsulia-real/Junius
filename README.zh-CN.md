@@ -6,9 +6,11 @@
 
 [English](README.md) | **简体中文**
 
-**通过 MCP 为 ChatGPT 提供本地计算机控制能力。**
+**Work 额度用完后，继续在 ChatGPT Chat 里工作。**
 
-Junius 是一个面向 ChatGPT 对话的本地 MCP 执行服务。它让调用它的助手能够直接访问本地 Workspace 文件、本地进程、后台 Job、浏览器自动化，以及 Windows 桌面交互能力。
+Junius 通过 MCP 为 Windows 上的 ChatGPT Chat 提供本地执行能力。当 ChatGPT Work 使用额度耗尽时，你仍可切回 Chat，继续访问本地 Workspace 文件、本地进程、后台 Job、Git、浏览器自动化、Windows 桌面以及本地 Agent Skills。
+
+**ChatGPT 负责决策，Junius 负责在本机执行。**
 
 > **Junius 是执行服务，不是策略引擎。**
 >

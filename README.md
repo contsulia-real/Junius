@@ -6,9 +6,11 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**Local computer control for ChatGPT over MCP.**
+**Keep working in ChatGPT Chat after Work runs out.**
 
-Junius is a local MCP execution service designed for ChatGPT chat. It gives the calling assistant direct access to local Workspace files, local processes, background Jobs, browser automation, and Windows desktop interaction.
+Junius brings local execution to ChatGPT Chat on Windows through MCP. When ChatGPT Work usage is exhausted, you can continue in Chat with access to local Workspace files, local processes, background Jobs, Git, browser automation, Windows desktop interaction, and local Agent Skills.
+
+**ChatGPT decides. Junius executes locally.**
 
 > **Junius is an execution service, not a policy engine.**
 >
