@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { IconBrandGithub, IconCheck, IconCopy } from '@tabler/icons-react'
 import { ThemeProvider, createThemeFromColorSeed } from '@contsulia/weave'
 import { AppBar } from '@contsulia/weave/components/AppBar'
-import { Avatar } from '@contsulia/weave/components/Avatar'
 import { Button } from '@contsulia/weave/components/Button'
 import { Card } from '@contsulia/weave/components/Card'
 import { Code } from '@contsulia/weave/components/Code'
@@ -13,6 +12,7 @@ import { Image } from '@contsulia/weave/components/Image'
 import { Link } from '@contsulia/weave/components/Link'
 import { Row } from '@contsulia/weave/components/Row'
 import { Text } from '@contsulia/weave/components/Text'
+import { Icon } from '@contsulia/weave/components/Icon'
 
 const GITHUB_URL = 'https://github.com/contsulia-real/Junius'
 const INSTALL_COMMAND =
@@ -69,39 +69,31 @@ function App() {
 
   return (
     <ThemeProvider theme={theme} mode="system">
-      <Column height="100vh" overflowY="auto">
-        <AppBar
+
+      <Column width='100vw' height='100vh'>
+            <AppBar
           elevated
+          sticky
+          mode='floating'
           size="small"
           title={<Text>Junius</Text>}
-          leading={<Avatar src="/icon.svg" name="Junius" />}
+          leading={<Image viewProps={{width: '24px'}} src="/icon.svg" alt="Junius" />}
           trailing={
-            <Row gap={1.25} align="center">
-              <Link
-                href="#capabilities"
-                text="Capabilities"
-                hideUnderline
-              />
-              <Link
-                href="#observability"
-                text="Observability"
-                hideUnderline
-              />
               <Link
                 href={GITHUB_URL}
-                text={<IconBrandGithub aria-label="GitHub" />}
+                text={<Row gap={0.5} align='center'><Icon icon={IconBrandGithub}></Icon><Text>Github</Text></Row>}
                 target="_blank"
                 hideUnderline
                 hideIcon
+                viewProps={{"aria-label": "GitHub"}}
               />
-            </Row>
           }
         />
 
+      <Column overflow="auto">
         <Column role="main" width="fill">
           <Column
             width="fill"
-            background="surfaceHover"
           >
             <Grid
               columns={1}
@@ -166,6 +158,7 @@ function App() {
                   href={GITHUB_URL}
                   text="View source on GitHub"
                   target="_blank"
+                  viewProps={{width: 'content'}}
                 />
               </Column>
 
@@ -248,6 +241,7 @@ function App() {
               md={{ columns: 3 }}
               gap={0}
               paddingY={4}
+              width={'fill'}
             >
               <Column padding={1.5} gap={0.5}>
                 <Text typo="title-large">Work usage can end.</Text>
@@ -281,12 +275,10 @@ function App() {
               </Column>
             </Grid>
 
-            <Divider />
           </Column>
 
           <Column
             id="capabilities"
-            width="fill"
             maxWidth={76}
             marginX="auto"
             paddingX={1.5}
@@ -339,7 +331,7 @@ function App() {
             </Grid>
           </Column>
 
-          <Column width="fill" background="surfaceHover">
+          <Column background="surfaceHover">
             <Grid
               columns={1}
               md={{ columns: 2 }}
@@ -500,6 +492,7 @@ function App() {
             Free · Open source · User-owned · Community-funded
           </Text>
         </Row>
+      </Column>
       </Column>
     </ThemeProvider>
   )
