@@ -39,7 +39,7 @@ function App() {
 
   return (
     <ThemeProvider theme={theme} mode="system">
-      <Column height="100vh" overflowX="hidden" overflowY="auto">
+      <Column height="100vh" overflowY="auto">
         <AppBar
           size="small"
           title={<Text>Junius</Text>}
@@ -186,7 +186,7 @@ function App() {
                 <Text typo="title-large">Install Junius</Text>
                 <Code
                   language="powershell"
-                  viewProps={{ width: 'fill' }}
+                  viewProps={{ width: 'fill', overflow: 'auto' }}
                 >
                   {INSTALL_COMMAND}
                 </Code>
