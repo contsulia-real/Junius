@@ -11,7 +11,6 @@ import { Row } from '@contsulia/weave/components/Row'
 import { Text } from '@contsulia/weave/components/Text'
 
 const GITHUB_URL = 'https://github.com/contsulia-real/Junius'
-const RELEASES_URL = 'https://github.com/contsulia-real/Junius/releases'
 const INSTALL_COMMAND =
   'irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex'
 
@@ -79,12 +78,19 @@ function App() {
               stop when Work usage is exhausted.
             </Text>
 
+            <Code
+              language="powershell"
+              viewProps={{
+                width: 'fill',
+                maxWidth: 48,
+                overflow: 'auto',
+                scrollbar: { outside: true },
+              }}
+            >
+              {INSTALL_COMMAND}
+            </Code>
+
             <Row gap={1.25} wrap justify="center">
-              <Link
-                href={RELEASES_URL}
-                text="Download for Windows"
-                target="_blank"
-              />
               <Link
                 href={GITHUB_URL}
                 text="View source"
@@ -167,35 +173,14 @@ function App() {
 
             <Divider />
 
-            <Grid
-              columns={1}
-              md={{ columns: 2 }}
-              gap={4}
-              paddingY={6}
-            >
-              <Column gap={1.25}>
-                <Text typo="headline-large">The whole idea is simple.</Text>
-                <Text typo="body-large" color="secondary" wrap="balance">
-                  ChatGPT decides. Junius executes locally. When Work runs out,
-                  move back to Chat and keep going instead of moving the
-                  project into another tool.
-                </Text>
-              </Column>
-
-              <Column gap={1.25}>
-                <Text typo="title-large">Install Junius</Text>
-                <Code
-                  language="powershell"
-                  viewProps={{ width: 'fill', overflow: 'auto' }}
-                >
-                  {INSTALL_COMMAND}
-                </Code>
-                <Text typo="body-small" color="secondary">
-                  Distributed through GitHub Releases. The ChatGPT connection
-                  remains your personal MCP connection.
-                </Text>
-              </Column>
-            </Grid>
+            <Column paddingY={6} gap={1.25} maxWidth={43}>
+              <Text typo="headline-large">The whole idea is simple.</Text>
+              <Text typo="body-large" color="secondary" wrap="balance">
+                ChatGPT decides. Junius executes locally. When Work runs out,
+                move back to Chat and keep going instead of moving the
+                project into another tool.
+              </Text>
+            </Column>
 
             <Divider />
           </Column>
