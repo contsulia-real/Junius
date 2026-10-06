@@ -210,6 +210,22 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
   );
   assert.match(
     content?.text ?? "",
+    /window\.openai\?\.locale/u,
+  );
+  assert.match(
+    content?.text ?? "",
+    /navigator\.language/u,
+  );
+  assert.match(
+    content?.text ?? "",
+    /Junius Observability/u,
+  );
+  assert.match(
+    content?.text ?? "",
+    /Junius 监控/u,
+  );
+  assert.match(
+    content?.text ?? "",
     /ui\/initialize/u,
   );
   assert.match(

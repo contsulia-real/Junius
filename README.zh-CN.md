@@ -438,7 +438,7 @@ Desktop 任务有显式控制生命周期：
 
 整个任务必须使用同一个 session。
 
-只要至少存在一个活动 Desktop 控制作用域，Junius 就会在本机顶部中央显示：
+只要至少存在一个活动 Desktop 控制作用域，Junius 就会根据当前 Windows UI 语言在本机顶部中央显示提示，例如中文环境下：
 
     ChatGPT 正通过 Junius 操作电脑
 

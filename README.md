@@ -437,9 +437,9 @@ Desktop tasks have an explicit control lifecycle:
 
 The same session must be used for the whole task.
 
-While at least one Desktop control scope is active, Junius shows a top-center local disclosure:
+While at least one Desktop control scope is active, Junius shows a top-center local disclosure localized to the current Windows UI language, for example:
 
-    ChatGPT 正通过 Junius 操作电脑
+    ChatGPT is controlling your computer through Junius
 
 Four click-through topmost edge windows provide the breathing-light effect. Top and bottom edges own the corner pixels; left and right edges exclude the corner thickness so alpha does not overlap.
 

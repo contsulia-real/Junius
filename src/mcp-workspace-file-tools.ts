@@ -111,7 +111,7 @@ export function registerWorkspaceFileTools(
     {
       title: "Search Workspace Text",
       description:
-        "Search text inside one registered Junius Workspace using ripgrep. Paths are Workspace-relative and ripgrep configuration files are disabled. AGENTS.md files applicable to or nested inside the recursive search scope are returned so the agent must apply their directory-scoped instructions.",
+        "Search text inside one registered Junius Workspace. Junius prefers ripgrep and falls back to `pwsh`, then `cmd` on Windows when earlier backends are unavailable. Paths are Workspace-relative, ripgrep configuration files are disabled, and protected Workspace paths remain excluded. AGENTS.md files applicable to or nested inside the recursive search scope are returned so the agent must apply their directory-scoped instructions.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         query: z.string().min(1).max(4_096),

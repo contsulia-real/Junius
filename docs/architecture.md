@@ -493,7 +493,7 @@ The disclosure is therefore task-scoped, not action-scoped.
 
 The persistent helper owns the user-visible native windows:
 
-- a top-center banner saying ChatGPT 正通过 Junius 操作电脑;
+- a top-center banner localized to the current Windows UI language, indicating that ChatGPT is controlling the computer through Junius;
 - four topmost click-through edge windows;
 - breathing alpha animation on the edge windows.
 
@@ -522,7 +522,7 @@ This is best-effort transactional behavior and is not described as filesystem-le
 
 write parent chains are revalidated around commit to narrow path-replacement races.
 
-rg applies user globs before Junius protection globs so a user include rule cannot re-enable reserved paths.
+rg prefers ripgrep when available, then falls back to `pwsh` and finally `cmd` on Windows. Every backend keeps Workspace target validation and protected-path exclusion authoritative, so user globs cannot re-enable reserved paths.
 
 ### AGENTS.md instruction preflight
 

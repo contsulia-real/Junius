@@ -149,6 +149,7 @@ function compactWhitespace(
 export function renderTurnTitle(
   parts:
     readonly TurnPromptPart[],
+  locale?: string,
 ): string {
   const title =
     compactWhitespace(
@@ -165,9 +166,19 @@ export function renderTurnTitle(
         .join(" "),
     );
 
+  const language =
+    locale ??
+    Intl.DateTimeFormat()
+      .resolvedOptions()
+      .locale;
+
   return title.length > 0
     ? title
-    : "（空白输入）";
+    : language
+        .toLowerCase()
+        .startsWith("zh")
+      ? "（空白输入）"
+      : "(empty input)";
 }
 
 function longStringSummary(
@@ -765,6 +776,7 @@ export class McpObservabilityStore {
     sessionId: string,
     parts:
       readonly TurnPromptPart[],
+    locale?: string,
   ): string {
     this.ensureSession(
       sessionId,
@@ -773,7 +785,10 @@ export class McpObservabilityStore {
     const turn =
       this.#createTurn(
         sessionId,
-        renderTurnTitle(parts),
+        renderTurnTitle(
+          parts,
+          locale,
+        ),
         Date.now(),
       );
 

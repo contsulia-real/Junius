@@ -110,10 +110,20 @@ export function registerMcpTurnTools(
         };
       }
 
+      const locale =
+        (
+          context.mcpReq._meta as
+            | Record<string, unknown>
+            | undefined
+        )?.["openai/locale"];
+
       const turnId =
         observability.beginTurn(
           sessionId,
           parts,
+          typeof locale === "string"
+            ? locale
+            : undefined,
         );
 
       return {

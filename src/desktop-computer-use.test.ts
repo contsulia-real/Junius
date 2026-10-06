@@ -1239,12 +1239,19 @@ test("desktop real Python helper supports screenshot-only perception when explic
           ) ?? [],
       );
 
-    assert.equal(
-      indicatorWindows.has(
-        "ChatGPT 正通过 Junius 操作电脑",
-      ),
-      true,
-      "Expected visible top-center desktop activity banner.",
+    const bannerTitles = [
+      "ChatGPT 正通过 Junius 操作电脑",
+      "ChatGPT is controlling your computer through Junius",
+    ];
+    const bannerTitle =
+      bannerTitles.find((title) =>
+        indicatorWindows.has(title),
+      );
+
+    assert.notEqual(
+      bannerTitle,
+      undefined,
+      "Expected visible localized top-center desktop activity banner.",
     );
 
     assert.notEqual(
@@ -1253,9 +1260,11 @@ test("desktop real Python helper supports screenshot-only perception when explic
     );
 
     const banner =
-      indicatorWindows.get(
-        "ChatGPT 正通过 Junius 操作电脑",
-      );
+      bannerTitle === undefined
+        ? undefined
+        : indicatorWindows.get(
+            bannerTitle,
+          );
 
     const glowWindows =
       listedWindows?.filter(

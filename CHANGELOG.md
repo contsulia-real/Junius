@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Localized the Junius observability UI, turn fallback text, and Desktop control disclosure instead of assuming Chinese text; ChatGPT locale is used when available and Windows UI language drives the native Desktop disclosure.
+- Kept a single `rg` Workspace tool while adding backend fallback: ripgrep first, then `pwsh`, then `cmd` on Windows, preserving Workspace path protections across all backends.
+
 ## 0.1.5-alpha
 
 - Fixed observability on modern ChatGPT MCP calls, which do not carry `Mcp-Session-Id`. Junius now prefers the transport session when present and otherwise uses ChatGPT's documented `openai/session` conversation id, so turn begin/end, tool monitoring, Skill usage, and the panel work on both protocol eras.

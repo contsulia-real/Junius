@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
-import { WorkspaceFilesService, WorkspaceFileError } from "./workspace-files.js";
+import { WorkspaceFilesService, WorkspaceFileError, WorkspacePathResolver } from "./workspace-files.js";
+import { runRg } from "./workspace-rg.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { WorkspaceProfile } from "./workspace-profile.js";
 
@@ -739,4 +740,167 @@ test("Workspace file tools reject unregistered Workspaces", async () => {
       error instanceof WorkspaceFileError &&
       error.code === "workspace_not_registered",
   );
+});
+
+
+test("rg falls back to pwsh when ripgrep is unavailable", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const f = await fixture();
+  const pwsh = join(
+    process.env.ProgramFiles ?? "C:\\Program Files",
+    "PowerShell",
+    "7",
+    "pwsh.exe",
+  );
+
+  try {
+    await access(pwsh);
+  } catch {
+    t.skip("pwsh is not installed");
+    await f.dispose();
+    return;
+  }
+
+  try {
+    await writeFile(
+      join(f.root, "src", "fallback.txt"),
+      "é NEEDLE\nnone\n",
+      "utf8",
+    );
+
+    const matches = await runRg(
+      new WorkspacePathResolver(f.root),
+      {
+        query: "needle",
+        path: ".",
+        globs: ["**/*.txt"],
+        caseSensitive: false,
+        fixedStrings: true,
+        hidden: false,
+        maxResults: 20,
+      },
+      {
+        ...process.env,
+        PATH: dirname(pwsh),
+        Path: dirname(pwsh),
+      },
+    );
+
+    const match = matches.find(
+      (entry) =>
+        entry.path
+          .replaceAll("\\", "/") ===
+        "src/fallback.txt",
+    );
+    assert.equal(match?.line, 1);
+    assert.equal(match?.text, "é NEEDLE");
+    assert.deepEqual(
+      match?.submatches,
+      [{
+        start: 3,
+        end: 9,
+        text: "NEEDLE",
+      }],
+    );
+  } finally {
+    await f.dispose();
+  }
+});
+
+test("rg falls back to cmd when ripgrep and pwsh are unavailable", {
+  skip: process.platform !== "win32",
+}, async () => {
+  const f = await fixture();
+  const cmd =
+    process.env.ComSpec ??
+    join(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "System32",
+      "cmd.exe",
+    );
+
+  try {
+    await mkdir(
+      join(f.root, ".junius"),
+      { recursive: true },
+    );
+    await writeFile(
+      join(f.root, ".junius", "secret.txt"),
+      "needle\n",
+      "utf8",
+    );
+    await writeFile(
+      join(f.root, "src", "fallback.txt"),
+      "needle\n",
+      "utf8",
+    );
+    await writeFile(
+      join(f.root, "src", "regex.txt"),
+      "value 123\n",
+      "utf8",
+    );
+    await writeFile(
+      join(f.root, "src", "ignored.log"),
+      "needle\n",
+      "utf8",
+    );
+
+    const matches = await runRg(
+      new WorkspacePathResolver(f.root),
+      {
+        query: "needle",
+        path: ".",
+        globs: ["**/*.txt"],
+        caseSensitive: true,
+        fixedStrings: true,
+        hidden: true,
+        maxResults: 20,
+      },
+      {
+        ...process.env,
+        PATH: dirname(cmd),
+        Path: dirname(cmd),
+        ComSpec: cmd,
+        COMSPEC: cmd,
+      },
+    );
+
+    assert.deepEqual(
+      matches.map((match) =>
+        match.path.replaceAll("\\", "/"),
+      ),
+      ["src/fallback.txt"],
+    );
+
+    const regexMatches = await runRg(
+      new WorkspacePathResolver(f.root),
+      {
+        query: "\\d+",
+        path: ".",
+        globs: ["**/*.txt"],
+        caseSensitive: true,
+        fixedStrings: false,
+        hidden: true,
+        maxResults: 20,
+      },
+      {
+        ...process.env,
+        PATH: dirname(cmd),
+        Path: dirname(cmd),
+        ComSpec: cmd,
+        COMSPEC: cmd,
+      },
+    );
+
+    assert.deepEqual(
+      regexMatches.map((match) => [
+        match.path.replaceAll("\\", "/"),
+        match.text,
+      ]),
+      [["src/regex.txt", "value 123"]],
+    );
+  } finally {
+    await f.dispose();
+  }
 });

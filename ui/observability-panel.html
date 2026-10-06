@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Junius 监控</title>
+  <title>Junius Observability</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -491,11 +491,11 @@
           <span id="statusDot" class="status-dot"></span>
           <span>Junius</span>
         </div>
-        <span id="updated" class="updated">连接中</span>
+        <span id="updated" class="updated">Connecting</span>
       </div>
-      <div class="tabs" role="tablist" aria-label="Junius 监控">
-        <button class="tab" role="tab" aria-selected="true" data-tab="tools">工具</button>
-        <button class="tab" role="tab" aria-selected="false" data-tab="logs">日志</button>
+      <div class="tabs" role="tablist" aria-label="Junius Observability">
+        <button class="tab" role="tab" aria-selected="true" data-tab="tools">Tools</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="logs">Logs</button>
       </div>
     </header>
 
@@ -524,6 +524,75 @@
 
       const SNAPSHOT_TOOL = "junius_observability_snapshot";
       const POLL_MS = 1000;
+      const LANGUAGE =
+        (window.openai?.locale || navigator.language || "en")
+          .toLowerCase()
+          .startsWith("zh")
+          ? "zh"
+          : "en";
+      const COPY = {
+        en: {
+          title: "Junius Observability",
+          connecting: "Connecting",
+          tools: "Tools",
+          logs: "Logs",
+          turns: "Turns",
+          skills: "Skills",
+          active: "Active",
+          ended: "Ended",
+          calls: "calls",
+          noTurns: "No Junius turns yet",
+          noToolCalls: "No tool calls in this turn",
+          noEvents: "No events in this turn",
+          started: "Started",
+          endedEvent: "Ended",
+          callStarted: "Call started",
+          callFailed: "Call failed",
+          callCompleted: "Call completed",
+          succeeded: "Succeeded",
+          failed: "Failed",
+          running: "Running",
+          justUpdated: "Just updated",
+          connectionFailed: "Connection failed",
+        },
+        zh: {
+          title: "Junius 监控",
+          connecting: "连接中",
+          tools: "工具",
+          logs: "日志",
+          turns: "轮次",
+          skills: "技能",
+          active: "进行中",
+          ended: "已结束",
+          calls: "次调用",
+          noTurns: "还没有 Junius turn",
+          noToolCalls: "这一 turn 没有工具调用",
+          noEvents: "这一 turn 没有事件",
+          started: "开始",
+          endedEvent: "结束",
+          callStarted: "调用开始",
+          callFailed: "调用失败",
+          callCompleted: "调用完成",
+          succeeded: "完成",
+          failed: "失败",
+          running: "运行中",
+          justUpdated: "刚刚更新",
+          connectionFailed: "连接失败",
+        },
+      }[LANGUAGE];
+
+      document.documentElement.lang = LANGUAGE === "zh" ? "zh-CN" : "en";
+      document.title = COPY.title;
+      document.querySelector(".tabs")?.setAttribute("aria-label", COPY.title);
+      const toolsTab = document.querySelector('[data-tab="tools"]');
+      const logsTab = document.querySelector('[data-tab="logs"]');
+      if (toolsTab) toolsTab.textContent = COPY.tools;
+      if (logsTab) logsTab.textContent = COPY.logs;
+      for (const title of document.querySelectorAll(".panel-title")) {
+        title.textContent = COPY.turns;
+      }
+      document.getElementById("updated").textContent = COPY.connecting;
+
 
       let activeTab = "tools";
       let closeRevision = null;
@@ -622,7 +691,7 @@
             const snapshot = payloadFromToolResult(message.params);
             if (snapshot && typeof snapshot === "object") {
               render(snapshot);
-              setConnection("online", "刚刚更新");
+              setConnection("online", COPY.justUpdated);
             } else {
               void refresh();
             }
@@ -711,9 +780,9 @@
       }
 
       function statusLabel(status) {
-        if (status === "succeeded") return "完成";
-        if (status === "failed") return "失败";
-        if (status === "running") return "运行中";
+        if (status === "succeeded") return COPY.succeeded;
+        if (status === "failed") return COPY.failed;
+        if (status === "running") return COPY.running;
         return text(status);
       }
 
@@ -757,8 +826,8 @@
 
       function turnSummary(turn) {
         const meta = [
-          turn.status === "active" ? "进行中" : "已结束",
-          turn.totalCalls + " 次调用",
+          turn.status === "active" ? COPY.active : COPY.ended,
+          turn.totalCalls + " " + COPY.calls,
           time(turn.startedAt),
         ].join(" · ");
 
@@ -782,7 +851,7 @@
         byId("toolTurnCount").textContent = String(turns.length);
 
         if (turns.length === 0) {
-          container.innerHTML = '<div class="empty">还没有 Junius turn</div>';
+          container.innerHTML = '<div class="empty">' + escapeHtml(COPY.noTurns) + "</div>";
           return;
         }
 
@@ -794,7 +863,7 @@
           const skillHtml = skills.length === 0
             ? ""
             : '<div class="skill-block">' +
-                '<div class="section-label">Skills</div>' +
+                '<div class="section-label">' + escapeHtml(COPY.skills) + "</div>" +
                 '<div class="skill-list">' +
                   skills.map((skill) =>
                     '<span class="skill-chip" title="' +
@@ -811,8 +880,8 @@
               "</div>";
 
           const toolHtml = tools.length === 0
-            ? '<div class="turn-empty">这一 turn 没有工具调用</div>'
-            : '<div class="section-label">Tools</div>' +
+            ? '<div class="turn-empty">' + escapeHtml(COPY.noToolCalls) + "</div>"
+            : '<div class="section-label">' + escapeHtml(COPY.tools) + "</div>" +
               '<div class="tool-list">' + tools.map((tool) => {
                 const toolKey = turnKey + ":tool:" + tool.name;
                 const calls = Array.isArray(tool.calls) ? tool.calls : [];
@@ -863,7 +932,7 @@
           return {
             dot: "started",
             tool: "Turn",
-            label: "开始",
+            label: COPY.started,
           };
         }
 
@@ -871,7 +940,7 @@
           return {
             dot: "succeeded",
             tool: "Turn",
-            label: "结束",
+            label: COPY.endedEvent,
           };
         }
 
@@ -887,7 +956,7 @@
           return {
             dot: "started",
             tool: event.tool || "—",
-            label: "调用开始",
+            label: COPY.callStarted,
           };
         }
 
@@ -895,7 +964,7 @@
           return {
             dot: "failed",
             tool: event.tool || "—",
-            label: "调用失败" + (Number.isFinite(event.durationMs)
+            label: COPY.callFailed + (Number.isFinite(event.durationMs)
               ? " · " + duration(event.durationMs)
               : ""),
           };
@@ -904,7 +973,7 @@
         return {
           dot: "succeeded",
           tool: event.tool || "—",
-          label: "调用完成" + (Number.isFinite(event.durationMs)
+          label: COPY.callCompleted + (Number.isFinite(event.durationMs)
             ? " · " + duration(event.durationMs)
             : ""),
         };
@@ -918,7 +987,7 @@
         byId("logTurnCount").textContent = String(turns.length);
 
         if (turns.length === 0) {
-          container.innerHTML = '<div class="empty">还没有 Junius turn</div>';
+          container.innerHTML = '<div class="empty">' + escapeHtml(COPY.noTurns) + "</div>";
           return;
         }
 
@@ -927,7 +996,7 @@
           const events = Array.isArray(turn.events) ? turn.events : [];
 
           const body = events.length === 0
-            ? '<div class="turn-empty">这一 turn 没有事件</div>'
+            ? '<div class="turn-empty">' + escapeHtml(COPY.noEvents) + "</div>"
             : '<div class="event-list">' + events.map((event) => {
                 const view = eventLabel(event);
                 const input = event.kind === "tool_started"
@@ -1006,11 +1075,11 @@
             "online",
             snapshot.session?.createdAt
               ? "Session · " + time(snapshot.session.createdAt)
-              : "刚刚更新",
+              : COPY.justUpdated,
           );
         } catch (error) {
           console.error("[Junius panel]", error);
-          setConnection("error", "连接失败");
+          setConnection("error", COPY.connectionFailed);
         } finally {
           busy = false;
         }

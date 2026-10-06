@@ -34,6 +34,25 @@ const PANEL_PATH =
     ),
   );
 
+const PANEL_COPY =
+  Intl.DateTimeFormat()
+    .resolvedOptions()
+    .locale
+    .toLowerCase()
+    .startsWith("zh")
+    ? {
+        title: "Junius 监控",
+        closeTitle: "关闭 Junius 监控",
+        widgetDescription:
+          "Junius MCP session、turn、Skill、工具调用与事件日志面板。",
+      }
+    : {
+        title: "Junius Observability",
+        closeTitle: "Close Junius observability",
+        widgetDescription:
+          "Junius MCP session, turn, Skill, tool-call, and event-log observability panel.",
+      };
+
 async function panelHtml():
   Promise<string> {
   return readFile(
@@ -146,7 +165,7 @@ export function registerMcpObservabilityPanel(
                 false,
             },
             "openai/widgetDescription":
-              "Junius MCP session、turn、Skill、工具调用与事件日志面板。",
+              PANEL_COPY.widgetDescription,
           },
         },
       ],
@@ -157,7 +176,7 @@ export function registerMcpObservabilityPanel(
     JUNIUS_PANEL_TOOL,
     {
       title:
-        "Junius 监控",
+        PANEL_COPY.title,
       description:
         "Open the Junius observability panel for the current MCP session. Users may also open this thread panel manually from the ChatGPT UI.",
       inputSchema:
@@ -188,7 +207,7 @@ export function registerMcpObservabilityPanel(
     JUNIUS_TEST_WINDOW_CLOSE_TOOL,
     {
       title:
-        "关闭 Junius 测试窗口",
+        PANEL_COPY.closeTitle,
       description:
         "Close the currently mounted Junius observability panel for this MCP session.",
       inputSchema:

@@ -6,9 +6,25 @@ import threading
 import time
 from ctypes import wintypes
 
-ACTIVITY_INDICATOR_TEXT = (
-    "ChatGPT 正通过 Junius 操作电脑"
-)
+def activity_indicator_text(
+    language_id: int | None = None,
+) -> str:
+    if language_id is None:
+        try:
+            language_id = int(
+                ctypes.windll.kernel32.GetUserDefaultUILanguage()
+            )
+        except Exception:
+            language_id = 0
+
+    return (
+        "ChatGPT 正通过 Junius 操作电脑"
+        if (language_id & 0x03FF) == 0x0004
+        else "ChatGPT is controlling your computer through Junius"
+    )
+
+
+ACTIVITY_INDICATOR_TEXT = activity_indicator_text()
 WS_POPUP = 0x80000000
 WS_BORDER = 0x00800000
 SS_CENTER = 0x00000001

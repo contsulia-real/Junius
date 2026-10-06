@@ -38,6 +38,30 @@ test("renderTurnTitle keeps user text and renders every file input as [File]", (
   );
 });
 
+test("renderTurnTitle localizes empty input from the request locale", () => {
+  const parts = [
+    {
+      type: "text" as const,
+      text: "   ",
+    },
+  ];
+
+  assert.equal(
+    renderTurnTitle(
+      parts,
+      "zh-CN",
+    ),
+    "（空白输入）",
+  );
+  assert.equal(
+    renderTurnTitle(
+      parts,
+      "en-US",
+    ),
+    "(empty input)",
+  );
+});
+
 test("McpObservabilityStore owns turn boundaries, groups tools, preserves call differences, and orders events", () => {
   const store =
     new McpObservabilityStore();
