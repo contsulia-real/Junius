@@ -39,7 +39,7 @@ function App() {
 
   return (
     <ThemeProvider theme={theme} mode="system">
-      <Column minHeight="100vh">
+      <Column height="100vh" overflowY="auto">
         <AppBar
           size="small"
           title={<Text>Junius</Text>}
