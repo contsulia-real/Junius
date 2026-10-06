@@ -15,6 +15,7 @@ import { Text } from '@contsulia/weave/components/Text'
 import { Icon } from '@contsulia/weave/components/Icon'
 
 const GITHUB_URL = 'https://github.com/contsulia-real/Junius'
+const ICON_URL = `${import.meta.env.BASE_URL}icon.svg`
 const INSTALL_COMMAND =
   'irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex'
 
@@ -77,7 +78,7 @@ function App() {
           mode='floating'
           size="small"
           title={<Text>Junius</Text>}
-          leading={<Image viewProps={{width: '24px'}} src="/icon.svg" alt="Junius" />}
+          leading={<Image viewProps={{width: '24px'}} src={ICON_URL} alt="Junius" />}
           trailing={
               <Link
                 href={GITHUB_URL}
@@ -108,7 +109,7 @@ function App() {
             >
               <Column gap={2} maxWidth={40}>
                 <Image
-                  src="/icon.svg"
+                  src={ICON_URL}
                   alt="Junius"
                   fit="contain"
                   viewProps={{
