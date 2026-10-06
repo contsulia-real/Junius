@@ -1,0 +1,26 @@
+{
+  "name": "@contsulia/junius-website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26"
+  },
+  "dependencies": {
+    "@contsulia/weave": "github:contsulia-real/Weave#8fbd734fecdbcfa5053184c08315667c549049e7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.0"
+  }
+}

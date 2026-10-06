@@ -1,0 +1,108 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  viewBox="0 0 256 256"
+  width="256"
+  height="256"
+  role="img"
+  aria-label="Junius"
+>
+  <defs>
+
+    <path
+      id="up"
+      d="
+        M 128 24
+        L 218.067 180
+        L 37.933 180
+        Z
+      "
+    />
+
+    <path
+      id="down"
+      d="
+        M 128 232
+        L 37.933 76
+        L 218.067 76
+        Z
+      "
+    />
+
+    <style>
+      .outer {
+        fill: none;
+        stroke: #ff4fa3;
+        stroke-width: 28;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+
+      .inner {
+        fill: none;
+        stroke: #ffb6d4;
+        stroke-width: 17;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+
+      .over-outer {
+        fill: none;
+        stroke: #ff4fa3;
+        stroke-width: 28;
+        stroke-linecap: butt;
+      }
+
+      .over-inner {
+        fill: none;
+        stroke: #ffb6d4;
+        stroke-width: 17;
+        stroke-linecap: butt;
+      }
+    </style>
+  </defs>
+
+  <use href="#down" xlink:href="#down" class="outer" />
+  <use href="#down" xlink:href="#down" class="inner" />
+  <use href="#up" xlink:href="#up" class="outer" />
+  <use href="#up" xlink:href="#up" class="inner" />
+
+  <path
+    d="M 73 76 L 123 76"
+    class="over-outer"
+  />
+  <path
+    d="M 73 76 L 123 76"
+    class="over-inner"
+  />
+
+  <path
+    d="
+      M 200.544 106.349
+      L 175.544 149.651
+    "
+    class="over-outer"
+  />
+  <path
+    d="
+      M 200.544 106.349
+      L 175.544 149.651
+    "
+    class="over-inner"
+  />
+
+  <path
+    d="
+      M 85.478 158.349
+      L 110.478 201.651
+    "
+    class="over-outer"
+  />
+  <path
+    d="
+      M 85.478 158.349
+      L 110.478 201.651
+    "
+    class="over-inner"
+  />
+</svg>

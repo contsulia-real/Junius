@@ -1,3 +1,7 @@
+packages:
+  - website
+
 allowBuilds:
+  '@contsulia/weave@https://codeload.github.com/contsulia-real/Weave/tar.gz/8fbd734fecdbcfa5053184c08315667c549049e7': true
   esbuild: true
   node-pty: true

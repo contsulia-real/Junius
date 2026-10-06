@@ -44,7 +44,9 @@
     "check:release": "npm run test:release",
     "release:build": "node scripts/build-release.mjs",
     "release:notes": "node scripts/release-notes.mjs",
-    "prepublishOnly": "node scripts/block-npm-publish.mjs"
+    "prepublishOnly": "node scripts/block-npm-publish.mjs",
+    "website:dev": "pnpm --dir website dev",
+    "website:build": "pnpm --dir website build"
   },
   "keywords": [
     "mcp",

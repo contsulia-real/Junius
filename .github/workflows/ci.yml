@@ -52,6 +52,10 @@ jobs:
       - name: Validate
         run: pnpm run check
 
+      - name: Validate website
+        if: matrix.node-version == '24'
+        run: pnpm run website:build
+
       - name: Validate GitHub release distribution
         run: npm run check:release
 
