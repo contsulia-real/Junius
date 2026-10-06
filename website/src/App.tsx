@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ThemeProvider, createThemeFromColorSeed } from '@contsulia/weave'
 import { AppBar } from '@contsulia/weave/components/AppBar'
 import { Avatar } from '@contsulia/weave/components/Avatar'
+import { Button } from '@contsulia/weave/components/Button'
 import { Code } from '@contsulia/weave/components/Code'
 import { Column } from '@contsulia/weave/components/Column'
 import { Divider } from '@contsulia/weave/components/Divider'
@@ -16,96 +17,131 @@ const INSTALL_COMMAND =
 
 const capabilities = [
   [
-    'Workspace',
-    'Read, search, edit, and organize the files that make up the project you are already working on.',
+    'Keep working in Chat',
+    'When Work usage is exhausted, stay in the same ChatGPT conversation instead of moving the project into another agent or IDE.',
   ],
   [
-    'Execution',
-    'Run local processes and keep long-running work alive as persistent Jobs across turns.',
+    'Use the machine you already have',
+    'Chat can work with Workspace files, local processes, persistent Jobs, Git, browser automation, Windows desktop control, and local Agent Skills.',
   ],
   [
-    'Computer',
-    'Use Git, browser automation, Windows desktop control, and local Agent Skills from the same ChatGPT conversation.',
-  ],
-  [
-    'Observability',
-    'Inspect turns, tools, Skills, and execution events in the native Junius panel inside ChatGPT.',
+    'See what actually ran',
+    'Junius exposes turns, tool calls, Skills, and execution events in its native ChatGPT observability panel.',
   ],
 ] as const
 
 function App() {
   const theme = useMemo(() => createThemeFromColorSeed('#ff4fa3'), [])
+  const [copied, setCopied] = useState(false)
+
+  const copyInstallCommand = async () => {
+    await navigator.clipboard.writeText(INSTALL_COMMAND)
+    setCopied(true)
+  }
 
   return (
     <ThemeProvider theme={theme} mode="system">
       <Column height="100vh" overflowY="auto">
         <AppBar
+          elevated
           size="small"
           title={<Text>Junius</Text>}
           leading={<Avatar src="/icon.svg" name="Junius" />}
           trailing={
-            <Link href={GITHUB_URL} text="GitHub" target="_blank" />
+            <Link
+              href={GITHUB_URL}
+              text="GitHub"
+              target="_blank"
+              hideUnderline
+            />
           }
         />
 
         <Column role="main" width="fill">
-          <Column
+          <Grid
+            columns={1}
+            md={{ columns: 2 }}
+            gap={5}
             width="fill"
-            maxWidth={66}
+            maxWidth={72}
             marginX="auto"
             paddingX={1.5}
             paddingY={7}
-            gap={2.25}
             align="center"
           >
-            <Text
-              typo="display-medium"
-              align="center"
-              wrap="balance"
+            <Column gap={1.75}>
+              <Text typo="display-medium" wrap="balance">
+                Keep working in ChatGPT Chat after Work runs out.
+              </Text>
+
+              <Text
+                typo="body-large"
+                color="secondary"
+                wrap="balance"
+                viewProps={{ maxWidth: 37 }}
+              >
+                Junius gives ChatGPT Chat local execution on your Windows
+                machine through MCP. Your conversation keeps the context;
+                Junius keeps the work connected to the real machine.
+              </Text>
+
+              <Row gap={1.25} wrap align="center">
+                <Link
+                  href={GITHUB_URL}
+                  text="View source on GitHub"
+                  target="_blank"
+                />
+                <Text typo="body-small" color="secondary">
+                  Free · Open source · Windows-only alpha
+                </Text>
+              </Row>
+            </Column>
+
+            <Column
+              gap={1.25}
+              padding={1.5}
+              radius="large"
+              background="surfaceHover"
+              border={0.0625}
+              borderColor="outline"
+              minWidth={0}
             >
-              Keep working in ChatGPT Chat after Work runs out.
-            </Text>
+              <Column gap={0.35}>
+                <Text typo="title-large">Install with PowerShell</Text>
+                <Text typo="body-small" color="secondary">
+                  Windows · Node.js 20+ · Python 3.10+ · no administrator
+                  elevation required
+                </Text>
+              </Column>
 
-            <Text
-              typo="body-large"
-              color="secondary"
-              align="center"
-              wrap="balance"
-              viewProps={{ maxWidth: 43 }}
-            >
-              Junius gives ChatGPT Chat local execution on your Windows
-              machine through MCP, so an unfinished project does not have to
-              stop when Work usage is exhausted.
-            </Text>
+              <Code
+                language="powershell"
+                viewProps={{
+                  width: 'fill',
+                  overflow: 'auto',
+                  scrollbar: { outside: true },
+                }}
+              >
+                {INSTALL_COMMAND}
+              </Code>
 
-            <Code
-              language="powershell"
-              viewProps={{
-                width: 'fill',
-                maxWidth: 48,
-                overflow: 'auto',
-                scrollbar: { outside: true },
-              }}
-            >
-              {INSTALL_COMMAND}
-            </Code>
-
-            <Row gap={1.25} wrap justify="center">
-              <Link
-                href={GITHUB_URL}
-                text="View source"
-                target="_blank"
-              />
-            </Row>
-
-            <Text typo="body-small" color="secondary" align="center">
-              Free and open source · Windows-only alpha · ChatGPT Plus or higher
-            </Text>
-          </Column>
+              <Row gap={1} wrap align="center">
+                <Button
+                  text={copied ? 'Copied' : 'Copy command'}
+                  variant="primary"
+                  viewProps={{ onClick: copyInstallCommand }}
+                />
+                <Text typo="body-small" color="secondary">
+                  Installs Junius for the current Windows user and starts it
+                  immediately.
+                </Text>
+              </Row>
+            </Column>
+          </Grid>
 
           <Column
             width="fill"
-            maxWidth={66}
+            maxWidth={72}
             marginX="auto"
             paddingX={1.5}
           >
@@ -114,40 +150,40 @@ function App() {
             <Grid
               columns={1}
               md={{ columns: 2 }}
-              gap={4}
+              gap={5}
               paddingY={6}
             >
-              <Column gap={1.25}>
+              <Column gap={1}>
                 <Text typo="headline-large" wrap="balance">
-                  Stay in the conversation.
+                  Why Junius exists
                 </Text>
                 <Text typo="body-large" color="secondary" wrap="balance">
-                  Junius is not another local agent interface. ChatGPT keeps
-                  the reasoning, context, and conversation. Junius stays on
-                  your PC and executes the actions ChatGPT has decided to take.
+                  ChatGPT Work is useful because it can act, not just answer.
+                  The problem is that Work usage can end while the project is
+                  still unfinished.
                 </Text>
               </Column>
 
-              <Column gap={1.25}>
+              <Column gap={1}>
                 <Text typo="headline-large" wrap="balance">
-                  Keep the real working context local.
+                  The execution layer stays with you
                 </Text>
                 <Text typo="body-large" color="secondary" wrap="balance">
-                  Your files, processes, repositories, browser sessions,
-                  desktop, and local Skills remain on your Windows machine
-                  while Chat keeps directing the work.
+                  Junius keeps local execution available from Chat, so hitting
+                  the Work limit does not force you to abandon the conversation
+                  or hand the project to a different local agent interface.
                 </Text>
               </Column>
             </Grid>
 
             <Divider />
 
-            <Column paddingY={6} gap={3}>
-              <Column gap={0.75}>
-                <Text typo="headline-large">What Chat can use through Junius</Text>
+            <Column paddingY={6} gap={2.5}>
+              <Column gap={0.6} maxWidth={42}>
+                <Text typo="headline-large">What changes after install</Text>
                 <Text typo="body-large" color="secondary" wrap="balance">
-                  A small execution layer for the things that make local work
-                  real.
+                  Junius turns Chat into a place where real local work can
+                  continue.
                 </Text>
               </Column>
 
@@ -157,11 +193,11 @@ function App() {
                     <Grid
                       columns={1}
                       md={{ columns: 2 }}
-                      gap={2}
-                      paddingY={2}
+                      gap={3}
+                      paddingY={2.25}
                     >
                       <Text typo="title-large">{title}</Text>
-                      <Text typo="body-large" color="secondary">
+                      <Text typo="body-large" color="secondary" wrap="balance">
                         {description}
                       </Text>
                     </Grid>
@@ -173,14 +209,35 @@ function App() {
 
             <Divider />
 
-            <Column paddingY={6} gap={1.25} maxWidth={43}>
-              <Text typo="headline-large">The whole idea is simple.</Text>
-              <Text typo="body-large" color="secondary" wrap="balance">
-                ChatGPT decides. Junius executes locally. When Work runs out,
-                move back to Chat and keep going instead of moving the
-                project into another tool.
-              </Text>
-            </Column>
+            <Grid
+              columns={1}
+              md={{ columns: 2 }}
+              gap={5}
+              paddingY={6}
+            >
+              <Column gap={1}>
+                <Text typo="headline-large">The model is intentionally simple</Text>
+                <Text typo="body-large" color="secondary" wrap="balance">
+                  ChatGPT decides what to do. Junius executes that work locally.
+                  Your Windows machine keeps the files, processes, browser
+                  sessions, desktop state, and installed Skills.
+                </Text>
+              </Column>
+
+              <Column gap={1.25}>
+                <Text typo="title-large">One product, one local runtime</Text>
+                <Text typo="body-large" color="secondary" wrap="balance">
+                  No second agent UI. No separate cloud workspace. No
+                  subscription for Junius itself. Install it, connect your
+                  personal MCP endpoint, and keep working from Chat.
+                </Text>
+                <Link
+                  href={GITHUB_URL}
+                  text="Read the setup and source on GitHub"
+                  target="_blank"
+                />
+              </Column>
+            </Grid>
 
             <Divider />
           </Column>
@@ -189,7 +246,7 @@ function App() {
         <Row
           role="contentinfo"
           width="fill"
-          maxWidth={66}
+          maxWidth={72}
           marginX="auto"
           paddingX={1.5}
           paddingY={2.5}
