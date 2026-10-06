@@ -15,6 +15,8 @@ import { Text } from '@contsulia/weave/components/Text'
 import { Icon } from '@contsulia/weave/components/Icon'
 
 const GITHUB_URL = 'https://github.com/contsulia-real/Junius'
+const OPENAI_TUNNEL_DOC_URL = 'https://developers.openai.com/api/docs/guides/secure-mcp-tunnels'
+const MCP_URL = 'http://127.0.0.1:8787/mcp'
 const ICON_URL = `${import.meta.env.BASE_URL}icon.svg`
 const INSTALL_COMMAND =
   'irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex'
@@ -214,21 +216,157 @@ function App() {
                       </Text>
                     </Column>
                     <Column gap={0.3}>
-                      <Text typo="label-large">2 · Connect</Text>
+                      <Text typo="label-large">2 · Tunnel</Text>
                       <Text typo="body-small" color="secondary">
-                        Add your personal MCP connection
+                        Bridge only the local /mcp endpoint
                       </Text>
                     </Column>
                     <Column gap={0.3}>
-                      <Text typo="label-large">3 · Continue</Text>
+                      <Text typo="label-large">3 · Connect ChatGPT</Text>
                       <Text typo="body-small" color="secondary">
-                        Keep working from Chat
+                        Create your personal MCP/plugin connection
                       </Text>
                     </Column>
                   </Grid>
                 </Column>
               </Card>
             </Grid>
+          </Column>
+
+          <Column
+            id="connect"
+            width="fill"
+            background="surfaceHover"
+          >
+            <Column
+              width="fill"
+              maxWidth={76}
+              marginX="auto"
+              paddingX={1.5}
+              paddingY={6}
+              gap={3}
+            >
+              <Grid columns={1} md={{ columns: 2 }} gap={5}>
+                <Column gap={1}>
+                  <Text typo="display-small" wrap="balance">
+                    Connect ChatGPT without making Junius public.
+                  </Text>
+                  <Text typo="body-large" color="secondary" wrap="balance">
+                    Junius listens only on your own machine. ChatGPT cannot
+                    reach that loopback server directly, so the supported path
+                    is OpenAI Secure MCP Tunnel. The tunnel client connects
+                    outward to OpenAI and forwards MCP requests back to the
+                    exact local Junius endpoint.
+                  </Text>
+                  <Text typo="body-medium" color="secondary" wrap="balance">
+                    The installer does not create the tunnel or store your
+                    OpenAI tunnel ID, runtime API key, or ChatGPT workspace
+                    credentials. Those remain user-managed OpenAI resources.
+                    The OpenAI account also needs the tunnel permissions and
+                    ChatGPT developer-mode access required to create and use
+                    the connection.
+                  </Text>
+                  <Row gap={1.25} wrap>
+                    <Link
+                      href={OPENAI_TUNNEL_DOC_URL}
+                      text="Open Secure MCP Tunnel docs"
+                      target="_blank"
+                    />
+                    <Link
+                      href={GITHUB_URL}
+                      text="Read the full Junius setup"
+                      target="_blank"
+                    />
+                  </Row>
+                </Column>
+
+                <Card
+                  viewProps={{
+                    padding: 2,
+                    radius: 'large',
+                    background: 'surface',
+                  }}
+                >
+                  <Column gap={1.5}>
+                    <Column gap={0.4}>
+                      <Text typo="title-large">1 · Point the tunnel at Junius</Text>
+                      <Text typo="body-medium" color="secondary">
+                        Create or select a tunnel in OpenAI Platform, install
+                        tunnel-client on this Windows PC, and configure its
+                        HTTP MCP target to the exact URL below.
+                      </Text>
+                    </Column>
+
+                    <Code
+                      language="powershell"
+                      viewProps={{
+                        width: 'fill',
+                        overflow: 'auto',
+                        scrollbar: { outside: true },
+                      }}
+                    >
+                      {MCP_URL}
+                    </Code>
+
+                    <Text typo="body-small" color="secondary">
+                      Do not use the bare http://127.0.0.1:8787 origin. Junius
+                      keeps its local diagnostics outside the tunneled MCP
+                      surface.
+                    </Text>
+
+                    <Divider />
+
+                    <Column gap={0.4}>
+                      <Text typo="title-large">2 · Verify the tunnel</Text>
+                      <Text typo="body-medium" color="secondary">
+                        Run tunnel-client doctor for the profile, then keep
+                        tunnel-client run healthy while you use Junius.
+                      </Text>
+                    </Column>
+
+                    <Divider />
+
+                    <Column gap={0.4}>
+                      <Text typo="title-large">3 · Add Junius in ChatGPT</Text>
+                      <Text typo="body-medium" color="secondary">
+                        In ChatGPT Plugins, choose the plus button and create a
+                        custom MCP server. Under Connection choose Tunnel,
+                        select the matching Secure MCP Tunnel, review the
+                        discovered Junius tools, and create the personal
+                        plugin connection.
+                      </Text>
+                    </Column>
+                  </Column>
+                </Card>
+              </Grid>
+
+              <Grid columns={1} md={{ columns: 3 }} gap={1.25}>
+                <Card viewProps={{ padding: 1.5, radius: 'large' }}>
+                  <Column gap={0.5}>
+                    <Text typo="title-medium">Local Junius</Text>
+                    <Text typo="body-small" color="secondary">
+                      127.0.0.1:8787/mcp stays on your Windows machine.
+                    </Text>
+                  </Column>
+                </Card>
+                <Card viewProps={{ padding: 1.5, radius: 'large' }}>
+                  <Column gap={0.5}>
+                    <Text typo="title-medium">Secure MCP Tunnel</Text>
+                    <Text typo="body-small" color="secondary">
+                      Outbound HTTPS transport to the OpenAI-managed tunnel.
+                    </Text>
+                  </Column>
+                </Card>
+                <Card viewProps={{ padding: 1.5, radius: 'large' }}>
+                  <Column gap={0.5}>
+                    <Text typo="title-medium">ChatGPT</Text>
+                    <Text typo="body-small" color="secondary">
+                      Your personal developer-mode MCP/plugin connection.
+                    </Text>
+                  </Column>
+                </Card>
+              </Grid>
+            </Column>
           </Column>
 
           <Column
@@ -451,8 +589,9 @@ function App() {
                 </Text>
                 <Text typo="body-large" color="secondary" wrap="balance">
                   No second agent UI. No separate cloud workspace. Install
-                  Junius, connect your personal MCP endpoint, and keep the work
-                  moving from Chat.
+                  Junius, bridge its local /mcp endpoint through your own OpenAI
+                  Secure MCP Tunnel, create the personal ChatGPT connection,
+                  and keep the work moving from Chat.
                 </Text>
               </Column>
 
