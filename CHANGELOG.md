@@ -4,7 +4,7 @@
 
 ## 0.1.6-alpha
 
-- Localized the Junius observability UI, turn fallback text, and Desktop control disclosure instead of assuming Chinese text; ChatGPT locale is used when available and Windows UI language drives the native Desktop disclosure.
+- Localized the Junius observability UI, turn fallback text, and Desktop control disclosure while keeping the ChatGPT sidebar entry name simply `Junius`; ChatGPT locale is used when available and Windows UI language drives the native Desktop disclosure.
 - Kept a single `rg` Workspace tool while adding backend fallback: ripgrep first, then `pwsh`, then `cmd` on Windows, preserving Workspace path protections across all backends.
 
 ## 0.1.5-alpha

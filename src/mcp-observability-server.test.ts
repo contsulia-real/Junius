@@ -131,6 +131,10 @@ test("Junius observability panel registers a ChatGPT thread entrypoint and app-o
     ];
 
   assert.ok(panel);
+  assert.equal(
+    panel.title,
+    "Junius",
+  );
   assert.ok(snapshot);
   assert.deepEqual(
     panel._meta?.["openai/ui"],

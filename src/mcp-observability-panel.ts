@@ -41,13 +41,13 @@ const PANEL_COPY =
     .toLowerCase()
     .startsWith("zh")
     ? {
-        title: "Junius 监控",
+        title: "Junius",
         closeTitle: "关闭 Junius 监控",
         widgetDescription:
           "Junius MCP session、turn、Skill、工具调用与事件日志面板。",
       }
     : {
-        title: "Junius Observability",
+        title: "Junius",
         closeTitle: "Close Junius observability",
         widgetDescription:
           "Junius MCP session, turn, Skill, tool-call, and event-log observability panel.",
