@@ -31,7 +31,7 @@ Junius **只支持 Windows**。Linux、macOS 和其他所有操作系统都属�
 
 在 Windows 上通过一条 PowerShell 命令安装 Junius：
 
-    irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex
+    irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' | iex
 
 GitHub Releases 是 Junius 的公开分发渠道。Bootstrap 脚本会：
 

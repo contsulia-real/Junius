@@ -27,7 +27,7 @@ function usage() {
       "  junius restart",
       "",
       "One-command install:",
-      "  irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex",
+      "  irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' | iex",
     ].join("\n"),
   );
 }

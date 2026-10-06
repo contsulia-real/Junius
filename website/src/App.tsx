@@ -19,7 +19,7 @@ const OPENAI_TUNNEL_DOC_URL = 'https://developers.openai.com/api/docs/guides/sec
 const MCP_URL = 'http://127.0.0.1:8787/mcp'
 const ICON_URL = `${import.meta.env.BASE_URL}icon.svg`
 const INSTALL_COMMAND =
-  'irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex'
+  "irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' | iex"
 
 const capabilities = [
   {

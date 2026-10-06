@@ -26,7 +26,7 @@ Junius is distributed publicly through GitHub Releases.
 
 A Windows user installs or updates Junius with:
 
-    irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex
+    irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' | iex
 
 The bootstrap resolves the newest published GitHub Release, including prereleases, downloads `junius-windows.tgz` plus `SHA256SUMS.txt`, verifies the package SHA-256, extracts the verified package, and invokes the packaged Junius CLI.
 

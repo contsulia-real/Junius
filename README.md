@@ -31,7 +31,7 @@ Prerequisites already present on the user's computer:
 
 Install Junius on Windows with one PowerShell command:
 
-    irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex
+    irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' | iex
 
 GitHub Releases is the public Junius distribution channel. The bootstrap script:
 
