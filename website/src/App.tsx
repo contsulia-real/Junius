@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import { ThemeProvider, createThemeFromColorSeed } from '@contsulia/weave'
 import { AppBar } from '@contsulia/weave/components/AppBar'
+import { Avatar } from '@contsulia/weave/components/Avatar'
 import { Card } from '@contsulia/weave/components/Card'
 import { Column } from '@contsulia/weave/components/Column'
 import { Grid } from '@contsulia/weave/components/Grid'
-import { Image } from '@contsulia/weave/components/Image'
 import { Link } from '@contsulia/weave/components/Link'
 import { Row } from '@contsulia/weave/components/Row'
 import { Text } from '@contsulia/weave/components/Text'
@@ -27,77 +27,25 @@ const steps = [
   ['3', 'You keep working in Chat', 'When Work usage is exhausted, the project can continue from Chat instead of stopping.'],
 ] as const
 
-function CtaLink({
-  href,
-  text,
-  primary = false,
-  target,
-}: {
-  href: string
-  text: string
-  primary?: boolean
-  target?: '_blank'
-}) {
-  return (
-    <Link
-      href={href}
-      text={text}
-      target={target}
-      hideUnderline
-      hideIcon={!target}
-      viewProps={{
-        background: primary ? 'primary' : 'surfaceHover',
-        color: primary ? 'onPrimary' : 'tertiary',
-        border: primary ? 0 : 0.0625,
-        borderColor: primary ? undefined : 'outline',
-        paddingX: 1.25,
-        paddingY: 0.8,
-        radius: 'full',
-        transition: {
-          properties: ['transform', 'background'],
-          duration: 'fast',
-        },
-        hover: {
-          translateY: -0.125,
-        },
-        active: {
-          translateY: 0,
-          scale: 0.98,
-        },
-      }}
-    />
-  )
-}
-
 function App() {
   const theme = useMemo(() => createThemeFromColorSeed('#ff4fa3'), [])
 
   return (
     <ThemeProvider theme={theme} mode="system">
-      <Column minHeight="100vh" background="surface" color="tertiary">
+      <Column minHeight="100vh">
         <AppBar
           size="small"
           title={<Text>Junius</Text>}
           leading={
-            <Image
-              src="/icon.svg"
-              alt="Junius logo"
-              fit="contain"
-              viewProps={{ width: 2, height: 2 }}
-            />
+            <Avatar src="/icon.svg" name="Junius" />
           }
           trailing={
             <Link
               href={GITHUB_URL}
               text="GitHub"
               target="_blank"
-              hideUnderline
             />
           }
-          viewProps={{
-            borderBottom: 0.0625,
-            borderBottomColor: 'outline',
-          }}
         />
 
         <Column role="main" width="fill">
@@ -116,7 +64,6 @@ function App() {
               <Text
                 typo="display-large"
                 wrap="balance"
-                viewProps={{ maxWidth: 38 }}
               >
                 Work runs out. The work doesn&apos;t have to stop.
               </Text>
@@ -125,7 +72,6 @@ function App() {
                 typo="body-large"
                 color="secondary"
                 wrap="balance"
-                viewProps={{ maxWidth: 36 }}
               >
                 Junius keeps ChatGPT Chat connected to your Windows machine
                 through MCP, so you can continue working locally after Work
@@ -133,16 +79,12 @@ function App() {
               </Text>
 
               <Row gap={1} wrap align="center">
-                <CtaLink
+                <Link
                   href={RELEASES_URL}
                   text="Get Junius"
                   target="_blank"
-                  primary
                 />
-                <CtaLink
-                  href="#how-it-works"
-                  text="How it works"
-                />
+                <Link href="#how-it-works" text="How it works" />
               </Row>
 
               <Text typo="body-small" color="secondary">
@@ -153,17 +95,9 @@ function App() {
               </Text>
             </Column>
 
-            <Card
-              viewProps={{
-                padding: 1.5,
-                radius: 'large',
-                background: 'surfaceHover',
-                border: 0.0625,
-                borderColor: 'outline',
-              }}
-            >
+            <Card>
               <Column gap={1}>
-                <Card viewProps={{ padding: 1.25, radius: 'medium' }}>
+                <Card>
                   <Column gap={0.35}>
                     <Text typo="label-large" color="secondary">
                       CHATGPT CHAT
@@ -182,14 +116,9 @@ function App() {
                   ↓
                 </Text>
 
-                <Card viewProps={{ padding: 1.25, radius: 'medium' }}>
+                <Card>
                   <Row gap={1} align="center">
-                    <Image
-                      src="/icon.svg"
-                      alt=""
-                      fit="contain"
-                      viewProps={{ width: 2.5, height: 2.5 }}
-                    />
+                    <Avatar src="/icon.svg" name="Junius" />
                     <Column gap={0.25}>
                       <Text typo="label-large" color="secondary">
                         JUNIUS
@@ -209,7 +138,7 @@ function App() {
                   ↓
                 </Text>
 
-                <Card viewProps={{ padding: 1.25, radius: 'medium' }}>
+                <Card>
                   <Column gap={0.35}>
                     <Text typo="label-large" color="secondary">
                       YOUR WINDOWS PC
@@ -249,22 +178,7 @@ function App() {
               gap={1}
             >
               {capabilities.map(([title, description]) => (
-                <Card
-                  key={title}
-                  viewProps={{
-                    padding: 1.5,
-                    radius: 'large',
-                    minHeight: 11,
-                    transition: {
-                      properties: ['transform', 'background'],
-                      duration: 'fast',
-                    },
-                    hover: {
-                      background: 'surfaceHover',
-                      translateY: -0.2,
-                    },
-                  }}
-                >
+                <Card key={title}>
                   <Column gap={0.75}>
                     <Text typo="title-large">{title}</Text>
                     <Text typo="body-medium" color="secondary">
@@ -279,7 +193,6 @@ function App() {
           <Column
             id="how-it-works"
             width="fill"
-            background="surfaceHover"
             paddingY={6}
           >
             <Column
@@ -299,14 +212,7 @@ function App() {
 
               <Grid columns={1} md={{ columns: 3 }} gap={1}>
                 {steps.map(([number, title, description]) => (
-                  <Card
-                    key={number}
-                    viewProps={{
-                      padding: 1.5,
-                      radius: 'large',
-                      minHeight: 12,
-                    }}
-                  >
+                  <Card key={number}>
                     <Column gap={1}>
                       <Text typo="headline-small" color="primary">
                         {number}
@@ -334,7 +240,6 @@ function App() {
             <Text
               typo="display-small"
               wrap="balance"
-              viewProps={{ maxWidth: 42 }}
             >
               ChatGPT decides. Junius executes locally.
             </Text>
@@ -342,19 +247,17 @@ function App() {
               typo="body-large"
               color="secondary"
               wrap="balance"
-              viewProps={{ maxWidth: 38 }}
             >
               Install Junius from GitHub Releases, connect your personal MCP
               endpoint, and keep the work moving from Chat.
             </Text>
             <Row gap={1} wrap>
-              <CtaLink
+              <Link
                 href={RELEASES_URL}
                 text="Download Junius"
                 target="_blank"
-                primary
               />
-              <CtaLink
+              <Link
                 href={GITHUB_URL}
                 text="View source"
                 target="_blank"
@@ -374,8 +277,6 @@ function App() {
           justify="space-between"
           align="center"
           wrap
-          borderTop={0.0625}
-          borderTopColor="outline"
         >
           <Text typo="body-small" color="secondary">
             Junius — local execution for ChatGPT Chat on Windows.
@@ -384,7 +285,6 @@ function App() {
             href={GITHUB_URL}
             text="Open source on GitHub"
             target="_blank"
-            hideUnderline
           />
         </Row>
       </Column>
