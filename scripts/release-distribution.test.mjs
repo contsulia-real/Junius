@@ -138,7 +138,11 @@ test(
     );
     assert.match(
       workflow,
-      /gh release view "\$env:GITHUB_REF_NAME" --json databaseId,isDraft,tagName/u,
+      /gh release upload "\$env:GITHUB_REF_NAME" @assets --clobber/u,
+    );
+    assert.match(
+      workflow,
+      /gh release view "\$env:GITHUB_REF_NAME" --json databaseId,tagName/u,
     );
     assert.doesNotMatch(
       workflow,

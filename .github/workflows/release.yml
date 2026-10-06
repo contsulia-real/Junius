@@ -61,7 +61,7 @@ jobs:
       - name: Build release changelog
         run: npm run release:notes
 
-      - name: Create draft release
+      - name: Create or update release candidate
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,24 +72,37 @@ jobs:
             "dist/install.ps1",
             "dist/release.json"
           )
-          gh release create "$env:GITHUB_REF_NAME" @assets --draft --verify-tag --title "$env:GITHUB_REF_NAME" --notes-file "dist/release-notes.md"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to create draft GitHub Release."
+          gh release view "$env:GITHUB_REF_NAME" --json databaseId *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "$env:GITHUB_REF_NAME" @assets --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to replace GitHub Release assets."
+            }
+            gh release edit "$env:GITHUB_REF_NAME" --verify-tag --title "$env:GITHUB_REF_NAME" --notes-file "dist/release-notes.md"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to update GitHub Release metadata."
+            }
+          }
+          else {
+            gh release create "$env:GITHUB_REF_NAME" @assets --draft --verify-tag --title "$env:GITHUB_REF_NAME" --notes-file "dist/release-notes.md"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create draft GitHub Release."
+            }
           }
 
-      - name: Install from draft release
+      - name: Install from release candidate
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $releaseJson = gh release view "$env:GITHUB_REF_NAME" --json databaseId,isDraft,tagName
+          $releaseJson = gh release view "$env:GITHUB_REF_NAME" --json databaseId,tagName
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to read draft GitHub Release for $env:GITHUB_REF_NAME."
+            throw "Failed to read GitHub Release for $env:GITHUB_REF_NAME."
           }
           $release = $releaseJson | ConvertFrom-Json
-          if ($release.tagName -cne $env:GITHUB_REF_NAME -or $release.isDraft -ne $true) {
-            throw "Expected draft release for $env:GITHUB_REF_NAME."
+          if ($release.tagName -cne $env:GITHUB_REF_NAME) {
+            throw "Release tag does not match $env:GITHUB_REF_NAME."
           }
           & .\install.ps1 -ReleaseId ([long]$release.databaseId)
 
