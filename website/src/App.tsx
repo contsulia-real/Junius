@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { IconBrandGithub, IconCheck, IconCopy } from '@tabler/icons-react'
 import { ThemeProvider, createThemeFromColorSeed } from '@contsulia/weave'
 import { AppBar } from '@contsulia/weave/components/AppBar'
 import { Avatar } from '@contsulia/weave/components/Avatar'
@@ -88,9 +89,10 @@ function App() {
               />
               <Link
                 href={GITHUB_URL}
-                text="GitHub"
+                text={<IconBrandGithub aria-label="GitHub" />}
                 target="_blank"
                 hideUnderline
+                hideIcon
               />
             </Row>
           }
@@ -198,6 +200,7 @@ function App() {
                   <Row gap={1} wrap align="center">
                     <Button
                       text={copied ? 'Copied' : 'Copy install command'}
+                      icon={copied ? IconCheck : IconCopy}
                       variant="primary"
                       size="large"
                       viewProps={{ onClick: copyInstallCommand }}
@@ -463,6 +466,7 @@ function App() {
               <Row gap={1.25} wrap justify="end">
                 <Button
                   text={copied ? 'Install command copied' : 'Copy install command'}
+                  icon={copied ? IconCheck : IconCopy}
                   variant="primary"
                   size="large"
                   viewProps={{ onClick: copyInstallCommand }}

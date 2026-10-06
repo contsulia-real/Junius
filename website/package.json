@@ -13,8 +13,10 @@
   },
   "dependencies": {
     "@contsulia/weave": "github:contsulia-real/Weave#8fbd734fecdbcfa5053184c08315667c549049e7",
+    "@tabler/icons-react": "3.48.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "shiki": "4.5.0"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
