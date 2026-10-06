@@ -3,10 +3,12 @@ import { ThemeProvider, createThemeFromColorSeed } from '@contsulia/weave'
 import { AppBar } from '@contsulia/weave/components/AppBar'
 import { Avatar } from '@contsulia/weave/components/Avatar'
 import { Button } from '@contsulia/weave/components/Button'
+import { Card } from '@contsulia/weave/components/Card'
 import { Code } from '@contsulia/weave/components/Code'
 import { Column } from '@contsulia/weave/components/Column'
 import { Divider } from '@contsulia/weave/components/Divider'
 import { Grid } from '@contsulia/weave/components/Grid'
+import { Image } from '@contsulia/weave/components/Image'
 import { Link } from '@contsulia/weave/components/Link'
 import { Row } from '@contsulia/weave/components/Row'
 import { Text } from '@contsulia/weave/components/Text'
@@ -16,18 +18,43 @@ const INSTALL_COMMAND =
   'irm https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1 | iex'
 
 const capabilities = [
-  [
-    'Keep working in Chat',
-    'When Work usage is exhausted, stay in the same ChatGPT conversation instead of moving the project into another agent or IDE.',
-  ],
-  [
-    'Use the machine you already have',
-    'Chat can work with Workspace files, local processes, persistent Jobs, Git, browser automation, Windows desktop control, and local Agent Skills.',
-  ],
-  [
-    'See what actually ran',
-    'Junius exposes turns, tool calls, Skills, and execution events in its native ChatGPT observability panel.',
-  ],
+  {
+    title: 'Files and repositories',
+    description:
+      'Read, search, edit, and organize Workspace files, then inspect and change the Git repository around them.',
+    detail: 'Workspace · search · edits · Git',
+  },
+  {
+    title: 'Processes and Jobs',
+    description:
+      'Run local commands and keep long-running work alive as persistent Jobs instead of losing execution state between turns.',
+    detail: 'commands · processes · persistent Jobs',
+  },
+  {
+    title: 'Browser and desktop',
+    description:
+      'Use browser automation and Windows desktop control from Chat when you explicitly authorize those capabilities.',
+    detail: 'browser automation · Windows desktop',
+  },
+  {
+    title: 'Skills and observability',
+    description:
+      'Use local Agent Skills and inspect turns, tool calls, Skill usage, and execution events in the native Junius panel.',
+    detail: 'Agent Skills · turns · tools · events',
+  },
+] as const
+
+const prompts = [
+  'Fix the failing tests in this repo, run them again, and commit the verified change.',
+  'Open the site, reproduce this browser bug, patch it locally, and verify the fix.',
+  'Keep this job running, inspect the logs, and tell me what changed since the last turn.',
+] as const
+
+const observability = [
+  ['Turn lifecycle', 'See the work grouped by the actual ChatGPT turn that triggered it.'],
+  ['Tool calls', 'Inspect which local operation ran instead of guessing from the final answer.'],
+  ['Skill usage', 'See when a local Agent Skill participates in the execution path.'],
+  ['Event log', 'Follow the execution events that connect the conversation to the local runtime.'],
 ] as const
 
 function App() {
@@ -48,205 +75,412 @@ function App() {
           title={<Text>Junius</Text>}
           leading={<Avatar src="/icon.svg" name="Junius" />}
           trailing={
-            <Link
-              href={GITHUB_URL}
-              text="GitHub"
-              target="_blank"
-              hideUnderline
-            />
+            <Row gap={1.25} align="center">
+              <Link
+                href="#capabilities"
+                text="Capabilities"
+                hideUnderline
+              />
+              <Link
+                href="#observability"
+                text="Observability"
+                hideUnderline
+              />
+              <Link
+                href={GITHUB_URL}
+                text="GitHub"
+                target="_blank"
+                hideUnderline
+              />
+            </Row>
           }
         />
 
         <Column role="main" width="fill">
-          <Grid
-            columns={1}
-            md={{ columns: 2 }}
-            gap={5}
+          <Column
             width="fill"
-            maxWidth={72}
-            marginX="auto"
-            paddingX={1.5}
-            paddingY={7}
-            align="center"
+            background="surfaceHover"
           >
-            <Column gap={1.75}>
-              <Text typo="display-medium" wrap="balance">
-                Keep working in ChatGPT Chat after Work runs out.
-              </Text>
+            <Grid
+              columns={1}
+              md={{ columns: 2 }}
+              gap={5}
+              width="fill"
+              maxWidth={76}
+              marginX="auto"
+              paddingX={1.5}
+              paddingY={7}
+              align="center"
+            >
+              <Column gap={2} maxWidth={40}>
+                <Image
+                  src="/icon.svg"
+                  alt="Junius"
+                  fit="contain"
+                  viewProps={{
+                    width: 5,
+                    height: 5,
+                  }}
+                />
 
-              <Text
-                typo="body-large"
-                color="secondary"
-                wrap="balance"
-                viewProps={{ maxWidth: 37 }}
-              >
-                Junius gives ChatGPT Chat local execution on your Windows
-                machine through MCP. Your conversation keeps the context;
-                Junius keeps the work connected to the real machine.
-              </Text>
+                <Text typo="display-medium" wrap="balance">
+                  Keep working in ChatGPT Chat after Work runs out.
+                </Text>
 
-              <Row gap={1.25} wrap align="center">
+                <Text
+                  typo="body-large"
+                  color="secondary"
+                  wrap="balance"
+                  viewProps={{ maxWidth: 38 }}
+                >
+                  Junius gives ChatGPT Chat local execution on your Windows
+                  machine through MCP. The conversation keeps the context;
+                  Junius keeps it connected to the machine where the real work
+                  lives.
+                </Text>
+
+                <Grid columns={3} gap={1.5} width="fill">
+                  <Column gap={0.25}>
+                    <Text typo="label-large">Local</Text>
+                    <Text typo="body-small" color="secondary">
+                      Runs on your PC
+                    </Text>
+                  </Column>
+                  <Column gap={0.25}>
+                    <Text typo="label-large">Open source</Text>
+                    <Text typo="body-small" color="secondary">
+                      User-owned
+                    </Text>
+                  </Column>
+                  <Column gap={0.25}>
+                    <Text typo="label-large">Windows</Text>
+                    <Text typo="body-small" color="secondary">
+                      Alpha
+                    </Text>
+                  </Column>
+                </Grid>
+
                 <Link
                   href={GITHUB_URL}
                   text="View source on GitHub"
                   target="_blank"
                 />
-                <Text typo="body-small" color="secondary">
-                  Free · Open source · Windows-only alpha
-                </Text>
-              </Row>
-            </Column>
-
-            <Column
-              gap={1.25}
-              padding={1.5}
-              radius="large"
-              background="surfaceHover"
-              border={0.0625}
-              borderColor="outline"
-              minWidth={0}
-            >
-              <Column gap={0.35}>
-                <Text typo="title-large">Install with PowerShell</Text>
-                <Text typo="body-small" color="secondary">
-                  Windows · Node.js 20+ · Python 3.10+ · no administrator
-                  elevation required
-                </Text>
               </Column>
 
-              <Code
-                language="powershell"
+              <Card
                 viewProps={{
-                  width: 'fill',
-                  overflow: 'auto',
-                  scrollbar: { outside: true },
+                  padding: 2,
+                  radius: 'large',
+                  minWidth: 0,
+                  background: 'surface',
                 }}
               >
-                {INSTALL_COMMAND}
-              </Code>
+                <Column gap={1.5}>
+                  <Column gap={0.4}>
+                    <Text typo="headline-small">Install Junius</Text>
+                    <Text typo="body-medium" color="secondary">
+                      One PowerShell command. Installs for the current Windows
+                      user and starts the local runtime immediately.
+                    </Text>
+                  </Column>
 
-              <Row gap={1} wrap align="center">
-                <Button
-                  text={copied ? 'Copied' : 'Copy command'}
-                  variant="primary"
-                  viewProps={{ onClick: copyInstallCommand }}
-                />
-                <Text typo="body-small" color="secondary">
-                  Installs Junius for the current Windows user and starts it
-                  immediately.
-                </Text>
-              </Row>
-            </Column>
-          </Grid>
+                  <Code
+                    language="powershell"
+                    viewProps={{
+                      width: 'fill',
+                      overflow: 'auto',
+                      scrollbar: { outside: true },
+                    }}
+                  >
+                    {INSTALL_COMMAND}
+                  </Code>
+
+                  <Row gap={1} wrap align="center">
+                    <Button
+                      text={copied ? 'Copied' : 'Copy install command'}
+                      variant="primary"
+                      size="large"
+                      viewProps={{ onClick: copyInstallCommand }}
+                    />
+                    <Text typo="body-small" color="secondary">
+                      No administrator elevation required.
+                    </Text>
+                  </Row>
+
+                  <Divider />
+
+                  <Grid columns={1} sm={{ columns: 3 }} gap={1.5}>
+                    <Column gap={0.3}>
+                      <Text typo="label-large">1 · Install</Text>
+                      <Text typo="body-small" color="secondary">
+                        Node.js 20+ and Python 3.10+
+                      </Text>
+                    </Column>
+                    <Column gap={0.3}>
+                      <Text typo="label-large">2 · Connect</Text>
+                      <Text typo="body-small" color="secondary">
+                        Add your personal MCP connection
+                      </Text>
+                    </Column>
+                    <Column gap={0.3}>
+                      <Text typo="label-large">3 · Continue</Text>
+                      <Text typo="body-small" color="secondary">
+                        Keep working from Chat
+                      </Text>
+                    </Column>
+                  </Grid>
+                </Column>
+              </Card>
+            </Grid>
+          </Column>
 
           <Column
             width="fill"
-            maxWidth={72}
+            maxWidth={76}
             marginX="auto"
             paddingX={1.5}
           >
-            <Divider />
-
             <Grid
               columns={1}
-              md={{ columns: 2 }}
-              gap={5}
-              paddingY={6}
+              md={{ columns: 3 }}
+              gap={0}
+              paddingY={4}
             >
-              <Column gap={1}>
-                <Text typo="headline-large" wrap="balance">
-                  Why Junius exists
-                </Text>
-                <Text typo="body-large" color="secondary" wrap="balance">
-                  ChatGPT Work is useful because it can act, not just answer.
-                  The problem is that Work usage can end while the project is
-                  still unfinished.
+              <Column padding={1.5} gap={0.5}>
+                <Text typo="title-large">Work usage can end.</Text>
+                <Text typo="body-medium" color="secondary">
+                  The project often has not.
                 </Text>
               </Column>
 
-              <Column gap={1}>
-                <Text typo="headline-large" wrap="balance">
-                  The execution layer stays with you
+              <Column
+                padding={1.5}
+                gap={0.5}
+                borderLeft={0.0625}
+                borderLeftColor="outline"
+              >
+                <Text typo="title-large">The Chat can stay.</Text>
+                <Text typo="body-medium" color="secondary">
+                  Context and reasoning remain in the same conversation.
                 </Text>
-                <Text typo="body-large" color="secondary" wrap="balance">
-                  Junius keeps local execution available from Chat, so hitting
-                  the Work limit does not force you to abandon the conversation
-                  or hand the project to a different local agent interface.
+              </Column>
+
+              <Column
+                padding={1.5}
+                gap={0.5}
+                borderLeft={0.0625}
+                borderLeftColor="outline"
+              >
+                <Text typo="title-large">Execution continues locally.</Text>
+                <Text typo="body-medium" color="secondary">
+                  Junius keeps the Windows machine available to Chat.
                 </Text>
               </Column>
             </Grid>
 
             <Divider />
+          </Column>
 
-            <Column paddingY={6} gap={2.5}>
-              <Column gap={0.6} maxWidth={42}>
-                <Text typo="headline-large">What changes after install</Text>
+          <Column
+            id="capabilities"
+            width="fill"
+            maxWidth={76}
+            marginX="auto"
+            paddingX={1.5}
+            paddingY={6}
+            gap={3}
+          >
+            <Grid columns={1} md={{ columns: 2 }} gap={4} align="end">
+              <Column gap={0.75}>
+                <Text typo="display-small" wrap="balance">
+                  Real local work, not another chat wrapper.
+                </Text>
+              </Column>
+              <Text typo="body-large" color="secondary" wrap="balance">
+                Junius is the execution layer between the conversation and the
+                Windows environment you are already using.
+              </Text>
+            </Grid>
+
+            <Grid columns={1} md={{ columns: 2 }} gap={1.25}>
+              {capabilities.map((capability) => (
+                <Card
+                  key={capability.title}
+                  viewProps={{
+                    padding: 2,
+                    radius: 'large',
+                    minHeight: 14,
+                    transition: {
+                      properties: ['transform', 'background'],
+                      duration: 'fast',
+                    },
+                    hover: {
+                      background: 'surfaceHover',
+                      translateY: -0.15,
+                    },
+                  }}
+                >
+                  <Column height="fill" gap={1} justify="space-between">
+                    <Column gap={0.65}>
+                      <Text typo="headline-small">{capability.title}</Text>
+                      <Text typo="body-medium" color="secondary" wrap="balance">
+                        {capability.description}
+                      </Text>
+                    </Column>
+                    <Text typo="body-small" color="primary">
+                      {capability.detail}
+                    </Text>
+                  </Column>
+                </Card>
+              ))}
+            </Grid>
+          </Column>
+
+          <Column width="fill" background="surfaceHover">
+            <Grid
+              columns={1}
+              md={{ columns: 2 }}
+              gap={5}
+              width="fill"
+              maxWidth={76}
+              marginX="auto"
+              paddingX={1.5}
+              paddingY={6}
+            >
+              <Column gap={1.25}>
+                <Text typo="display-small" wrap="balance">
+                  Ask Chat to do the work, not just describe it.
+                </Text>
                 <Text typo="body-large" color="secondary" wrap="balance">
-                  Junius turns Chat into a place where real local work can
-                  continue.
+                  The useful unit is the complete action you wanted done on the
+                  machine.
                 </Text>
               </Column>
 
-              <Column gap={0}>
-                {capabilities.map(([title, description], index) => (
-                  <Column key={title}>
-                    <Grid
-                      columns={1}
-                      md={{ columns: 2 }}
-                      gap={3}
-                      paddingY={2.25}
-                    >
-                      <Text typo="title-large">{title}</Text>
-                      <Text typo="body-large" color="secondary" wrap="balance">
-                        {description}
+              <Column gap={1}>
+                {prompts.map((prompt, index) => (
+                  <Card
+                    key={prompt}
+                    viewProps={{
+                      padding: 1.5,
+                      radius: 'large',
+                      background: index === 0 ? 'surface' : 'surfaceHover',
+                    }}
+                  >
+                    <Row gap={1.25} align="start">
+                      <Text typo="title-large" color="primary">
+                        {String(index + 1).padStart(2, '0')}
                       </Text>
-                    </Grid>
-                    {index < capabilities.length - 1 ? <Divider /> : null}
-                  </Column>
+                      <Text typo="title-medium" wrap="balance">
+                        “{prompt}”
+                      </Text>
+                    </Row>
+                  </Card>
                 ))}
               </Column>
-            </Column>
+            </Grid>
+          </Column>
 
-            <Divider />
+          <Column
+            id="observability"
+            width="fill"
+            maxWidth={76}
+            marginX="auto"
+            paddingX={1.5}
+            paddingY={6}
+            gap={3}
+          >
+            <Grid columns={1} md={{ columns: 2 }} gap={5}>
+              <Column gap={1}>
+                <Text typo="display-small" wrap="balance">
+                  See what Junius is actually doing.
+                </Text>
+                <Text typo="body-large" color="secondary" wrap="balance">
+                  Junius includes native observability inside ChatGPT, so the
+                  local execution path is visible instead of hidden behind a
+                  generic “working” state.
+                </Text>
+                <Text typo="body-medium">
+                  ChatGPT decides. Junius executes locally.
+                </Text>
+              </Column>
 
+              <Card
+                viewProps={{
+                  padding: 1.75,
+                  radius: 'large',
+                  background: 'surfaceHover',
+                }}
+              >
+                <Column gap={0}>
+                  {observability.map(([title, description], index) => (
+                    <Column key={title}>
+                      <Grid
+                        columns={1}
+                        sm={{ columns: 2 }}
+                        gap={1.5}
+                        paddingY={1.35}
+                      >
+                        <Text typo="title-medium">{title}</Text>
+                        <Text typo="body-small" color="secondary">
+                          {description}
+                        </Text>
+                      </Grid>
+                      {index < observability.length - 1 ? <Divider /> : null}
+                    </Column>
+                  ))}
+                </Column>
+              </Card>
+            </Grid>
+          </Column>
+
+          <Column
+            width="fill"
+            background="surfaceHover"
+          >
             <Grid
               columns={1}
               md={{ columns: 2 }}
               gap={5}
+              width="fill"
+              maxWidth={76}
+              marginX="auto"
+              paddingX={1.5}
               paddingY={6}
+              align="center"
             >
               <Column gap={1}>
-                <Text typo="headline-large">The model is intentionally simple</Text>
+                <Text typo="display-small" wrap="balance">
+                  One local runtime. Your existing ChatGPT workflow.
+                </Text>
                 <Text typo="body-large" color="secondary" wrap="balance">
-                  ChatGPT decides what to do. Junius executes that work locally.
-                  Your Windows machine keeps the files, processes, browser
-                  sessions, desktop state, and installed Skills.
+                  No second agent UI. No separate cloud workspace. Install
+                  Junius, connect your personal MCP endpoint, and keep the work
+                  moving from Chat.
                 </Text>
               </Column>
 
-              <Column gap={1.25}>
-                <Text typo="title-large">One product, one local runtime</Text>
-                <Text typo="body-large" color="secondary" wrap="balance">
-                  No second agent UI. No separate cloud workspace. No
-                  subscription for Junius itself. Install it, connect your
-                  personal MCP endpoint, and keep working from Chat.
-                </Text>
+              <Row gap={1.25} wrap justify="end">
+                <Button
+                  text={copied ? 'Install command copied' : 'Copy install command'}
+                  variant="primary"
+                  size="large"
+                  viewProps={{ onClick: copyInstallCommand }}
+                />
                 <Link
                   href={GITHUB_URL}
-                  text="Read the setup and source on GitHub"
+                  text="Read setup on GitHub"
                   target="_blank"
                 />
-              </Column>
+              </Row>
             </Grid>
-
-            <Divider />
           </Column>
         </Column>
 
         <Row
           role="contentinfo"
           width="fill"
-          maxWidth={72}
+          maxWidth={76}
           marginX="auto"
           paddingX={1.5}
           paddingY={2.5}
@@ -259,7 +493,7 @@ function App() {
             Junius — local execution for ChatGPT Chat on Windows.
           </Text>
           <Text typo="body-small" color="secondary">
-            User-owned · Community-funded
+            Free · Open source · User-owned · Community-funded
           </Text>
         </Row>
       </Column>
