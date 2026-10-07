@@ -6,3 +6,4 @@ __pycache__/
 .playwright-cli/
 junius-*.tgz
 dist/
+.vscode/
