@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   request as httpRequest,
   type IncomingMessage,
@@ -30,46 +29,10 @@ export async function proxyModernMcp(
   req: IncomingMessage,
   res: ServerResponse,
   supervisor: WorkerSupervisor,
-  traces?: HostLatencyTraceStore,
-  requestSessionId?: string,
+  traces: HostLatencyTraceStore | undefined,
+  requestSessionId: string | undefined,
+  traceId: string,
 ): Promise<void> {
-  const startedAt = performance.now();
-  const traceId = randomUUID();
-  let toolName: string | undefined;
-  let traceWorkerId: string | undefined;
-  let workerDurationMs: number | undefined;
-  let traceRecorded = false;
-
-  const recordTrace = (statusCode: number) => {
-    if (traceRecorded) return;
-    traceRecorded = true;
-
-    const hostTotalMs = Math.round(
-      performance.now() - startedAt,
-    );
-
-    traces?.record({
-      traceId,
-      ...(toolName === undefined
-        ? {}
-        : { tool: toolName }),
-      ...(traceWorkerId === undefined
-        ? {}
-        : { workerId: traceWorkerId }),
-      statusCode,
-      hostTotalMs,
-      ...(workerDurationMs === undefined
-        ? {}
-        : {
-            workerDurationMs,
-            proxyOverheadMs: Math.max(
-              0,
-              hostTotalMs - workerDurationMs,
-            ),
-          }),
-      completedAt: new Date().toISOString(),
-    });
-  };
 
   let body: Buffer;
 
@@ -81,19 +44,30 @@ export async function proxyModernMcp(
       error.message === "mcp_request_too_large"
         ? 413
         : 400;
+    const message =
+      error instanceof Error
+        ? error.message
+        : "invalid_mcp_request";
 
+    traces?.event(traceId, "request_rejected", message);
+    traces?.finish(
+      traceId,
+      "request_rejected",
+      statusCode,
+      message,
+    );
     sendHostJson(res, statusCode, {
-      error:
-        error instanceof Error
-          ? error.message
-          : "invalid_mcp_request",
+      error: message,
     });
-    recordTrace(statusCode);
     return;
   }
 
   const call = parseToolCall(body);
-  toolName = call?.name;
+  traces?.annotate(traceId, {
+    ...(call?.name === undefined
+      ? {}
+      : { tool: call.name }),
+  });
   const routeKey = routeKeyForTool(call);
 
   let lease;
@@ -103,17 +77,31 @@ export async function proxyModernMcp(
       routeKey,
     );
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+    traces?.event(
+      traceId,
+      "worker_acquire_failed",
+      message,
+    );
+    traces?.finish(
+      traceId,
+      "no_active_worker",
+      503,
+      message,
+    );
     sendHostJson(res, 503, {
       error: "no_active_worker",
-      message:
-        error instanceof Error ? error.message : String(error),
+      message,
     });
-    recordTrace(503);
     return;
   }
 
   const worker = lease.worker;
-  traceWorkerId = worker.id;
+  traces?.annotate(traceId, {
+    workerId: worker.id,
+  });
+  traces?.event(traceId, "worker_acquired", worker.id);
   bindBeforeForward(supervisor, call, worker.id);
 
   const captureStartJob = call?.name === "start_job";
@@ -152,10 +140,22 @@ export async function proxyModernMcp(
       const statusCode =
         upstreamResponse.statusCode ?? 502;
       res.statusCode = statusCode;
-      workerDurationMs = headerDurationMs(
+      const workerDurationMs = headerDurationMs(
         upstreamResponse.headers[
           "x-junius-worker-duration-ms"
         ],
+      );
+      traces?.annotate(traceId, {
+        statusCode,
+        responseStartedAt: new Date().toISOString(),
+        ...(workerDurationMs === undefined
+          ? {}
+          : { workerDurationMs }),
+      });
+      traces?.event(
+        traceId,
+        "worker_response_started",
+        String(statusCode),
       );
       copyResponseHeaders(upstreamResponse.headers, res);
       res.setHeader("x-junius-trace-id", traceId);
@@ -174,12 +174,22 @@ export async function proxyModernMcp(
       if (!captureToolResponse) {
         upstreamResponse.pipe(res);
         upstreamResponse.once("end", () => {
+          traces?.event(traceId, "worker_response_ended");
           releaseAfterForward(supervisor, call);
-          recordTrace(statusCode);
           lease.release();
         });
         upstreamResponse.once("error", (error) => {
-          recordTrace(502);
+          traces?.event(
+            traceId,
+            "worker_response_error",
+            error.message,
+          );
+          traces?.finish(
+            traceId,
+            "upstream_error",
+            502,
+            error.message,
+          );
           res.destroy(error);
           lease.release();
         });
@@ -203,12 +213,21 @@ export async function proxyModernMcp(
           MAX_CAPTURED_TOOL_RESPONSE_BYTES
         ) {
           captureExceeded = true;
+          traces?.event(
+            traceId,
+            "worker_response_too_large",
+          );
+          traces?.finish(
+            traceId,
+            "host_error",
+            502,
+            "worker_response_too_large",
+          );
           upstreamResponse.destroy();
           res.removeHeader("content-length");
           sendHostJson(res, 502, {
             error: "worker_response_too_large",
           });
-          recordTrace(502);
           lease.release();
           return;
         }
@@ -216,6 +235,7 @@ export async function proxyModernMcp(
         chunks.push(buffer);
       });
       upstreamResponse.once("end", () => {
+        traces?.event(traceId, "worker_response_ended");
         if (captureExceeded) return;
         const responseBody = Buffer.concat(chunks);
         const responseText =
@@ -276,8 +296,22 @@ export async function proxyModernMcp(
             if (!res.destroyed) {
               res.end(responseBody);
             }
-            recordTrace(statusCode);
           } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : String(error);
+            traces?.event(
+              traceId,
+              "host_postprocess_error",
+              message,
+            );
+            traces?.finish(
+              traceId,
+              "host_error",
+              503,
+              message,
+            );
             if (!res.destroyed) {
               res.removeHeader(
                 "content-length",
@@ -288,14 +322,10 @@ export async function proxyModernMcp(
                 {
                   error:
                     "configuration_sync_failed",
-                  message:
-                    error instanceof Error
-                      ? error.message
-                      : String(error),
+                  message,
                 },
               );
             }
-            recordTrace(503);
           } finally {
             lease.release();
           }
@@ -303,7 +333,17 @@ export async function proxyModernMcp(
       });
       upstreamResponse.once("error", (error) => {
         if (captureExceeded) return;
-        recordTrace(502);
+        traces?.event(
+          traceId,
+          "worker_response_error",
+          error.message,
+        );
+        traces?.finish(
+          traceId,
+          "upstream_error",
+          502,
+          error.message,
+        );
         res.destroy(error);
         lease.release();
       });
@@ -311,6 +351,17 @@ export async function proxyModernMcp(
   );
 
   upstream.once("error", (error) => {
+    traces?.event(
+      traceId,
+      "worker_request_error",
+      error.message,
+    );
+    traces?.finish(
+      traceId,
+      "upstream_error",
+      502,
+      error.message,
+    );
     if (!res.headersSent) {
       sendHostJson(res, 502, {
         error: "worker_proxy_failed",
@@ -319,9 +370,9 @@ export async function proxyModernMcp(
     } else {
       res.destroy(error);
     }
-    recordTrace(502);
     lease.release();
   });
 
+  traces?.event(traceId, "worker_request_sent");
   upstream.end(body);
 }

@@ -25,6 +25,7 @@ import {
   HostLatencyTraceStore,
   proxyToActiveWorker,
 } from "./reverse-proxy.js";
+import { TunnelHealthMonitor } from "./tunnel-health.js";
 import { WorkerSupervisor } from "./worker-supervisor.js";
 import {
   assertWindowsPlatform,
@@ -136,7 +137,12 @@ const supervisor = new WorkerSupervisor({
 
 await supervisor.startInitial();
 
-const latencyTraces = new HostLatencyTraceStore(64);
+const tunnelHealth = new TunnelHealthMonitor();
+tunnelHealth.start();
+const latencyTraces = new HostLatencyTraceStore(
+  64,
+  () => tunnelHealth.latest(),
+);
 
 function markHostRestartRequired(
   reason: string,
@@ -331,6 +337,8 @@ const hostHttpServer = createHttpServer((req, res) => {
         supervisor.state(),
       latencyTraces:
         latencyTraces.list(),
+      tunnelHealth:
+        tunnelHealth.latest() ?? null,
     });
     return;
   }
@@ -376,6 +384,7 @@ try {
     config.mcpHost,
   );
 } catch (error) {
+  tunnelHealth.stop();
   for (const watcher of watchers) watcher.close();
   await Promise.allSettled([
     closeServer(hostHttpServer),
@@ -411,6 +420,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   for (const watcher of watchers) watcher.close();
+  tunnelHealth.stop();
 
   await Promise.allSettled([
     closeServer(hostHttpServer),

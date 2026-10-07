@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter, once } from "node:events";
 import {
   createServer,
+  request as httpRequest,
   type Server,
 } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -311,18 +312,50 @@ test("HostLatencyTraceStore keeps the newest bounded traces", () => {
   const traces = new HostLatencyTraceStore(2);
 
   for (const traceId of ["a", "b", "c"]) {
-    traces.record({
-      traceId,
-      statusCode: 200,
-      hostTotalMs: 1,
-      completedAt: "2026-09-27T00:00:00.000Z",
+    traces.start(traceId, {
+      method: "POST",
+      path: "/mcp",
     });
+    traces.finish(
+      traceId,
+      "completed",
+      200,
+    );
   }
 
   assert.deepEqual(
     traces.list().map((trace) => trace.traceId),
     ["c", "b"],
   );
+});
+
+test("HostLatencyTraceStore correlates tunnel health snapshots", () => {
+  let ready = true;
+  const traces = new HostLatencyTraceStore(
+    2,
+    () => ({
+      checkedAt: new Date().toISOString(),
+      url: "http://127.0.0.1:18080/health?details=true",
+      reachable: true,
+      live: true,
+      ready,
+    }),
+  );
+
+  traces.start("trace-a", {
+    method: "POST",
+    path: "/mcp",
+  });
+  ready = false;
+  traces.finish(
+    "trace-a",
+    "completed",
+    200,
+  );
+
+  const [trace] = traces.list();
+  assert.equal(trace?.tunnelHealthAtStart?.ready, true);
+  assert.equal(trace?.tunnelHealthAtEnd?.ready, false);
 });
 
 test("reverse proxy records layered modern MCP latency", async () => {
@@ -375,6 +408,23 @@ test("reverse proxy records layered modern MCP latency", async () => {
     );
 
     const [trace] = traces.list();
+    assert.equal(trace?.state, "finished");
+    assert.equal(trace?.outcome, "completed");
+    assert.equal(typeof trace?.startedAt, "string");
+    assert.equal(
+      trace?.timeline?.some(
+        (event) =>
+          event.type === "request_started",
+      ),
+      true,
+    );
+    assert.equal(
+      trace?.timeline?.some(
+        (event) =>
+          event.type === "response_finished",
+      ),
+      true,
+    );
     assert.equal(trace?.tool, "list_workspaces");
     assert.equal(trace?.workerId, "worker-a");
     assert.equal(trace?.statusCode, 200);
@@ -391,6 +441,117 @@ test("reverse proxy records layered modern MCP latency", async () => {
     await closeServer(proxy);
     await supervisor.close();
     await closeServer(target.server);
+  }
+});
+
+test("reverse proxy records downstream disconnect before worker response", async () => {
+  const child =
+    new EventEmitter() as unknown as ChildProcess;
+  let exited = false;
+
+  const workerServer = createServer(
+    async (req, res) => {
+      for await (const _chunk of req) {
+        // Consume the request before delaying the response.
+      }
+
+      await new Promise((resolvePromise) =>
+        setTimeout(resolvePromise, 150),
+      );
+      if (res.destroyed) return;
+
+      res.setHeader(
+        "content-type",
+        "application/json",
+      );
+      res.end(toolResult({ ok: true }));
+    },
+  );
+  const workerPort = await listen(workerServer);
+  const worker: ManagedWorker = {
+    id: "worker-a",
+    child,
+    pid: 101,
+    mcpPort: workerPort,
+    controlPort: workerPort,
+    internalToken:
+      "token-worker-a-012345678901234567890123456789",
+    startedAt: new Date().toISOString(),
+    stdout: () => "",
+    stderr: () => "",
+    exited: () => exited,
+    async close() {
+      if (exited) return;
+      exited = true;
+      await closeServer(workerServer);
+      child.emit("exit", 0, null);
+    },
+  };
+  const supervisor = new WorkerSupervisor({
+    cwd: process.cwd(),
+    publicMcpOrigin: "http://127.0.0.1:8787",
+    rollbackWindowMs: 10_000,
+    validate: async () => successfulCheck(),
+    spawnWorker: async () => worker,
+  });
+  const traces = new HostLatencyTraceStore(8);
+  const proxy = createServer((req, res) => {
+    proxyToActiveWorker(
+      req,
+      res,
+      supervisor,
+      traces,
+    );
+  });
+
+  try {
+    await supervisor.startInitial();
+    const proxyPort = await listen(proxy);
+    const client = httpRequest({
+      host: "127.0.0.1",
+      port: proxyPort,
+      path: "/mcp",
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+    client.on("error", () => {
+      // Expected after intentionally destroying the downstream connection.
+    });
+    client.end(
+      toolCall("list_workspaces", {}),
+    );
+
+    await new Promise((resolvePromise) =>
+      setTimeout(resolvePromise, 40),
+    );
+    client.destroy();
+    await new Promise((resolvePromise) =>
+      setTimeout(resolvePromise, 60),
+    );
+
+    const [trace] = traces.list();
+    assert.equal(trace?.state, "finished");
+    assert.equal(
+      trace?.outcome,
+      "client_disconnected",
+    );
+    assert.equal(
+      typeof trace?.clientDisconnectedAt,
+      "string",
+    );
+    assert.equal(
+      trace?.timeline?.some(
+        (event) =>
+          event.type === "response_closed",
+      ),
+      true,
+    );
+  } finally {
+    await closeServer(proxy);
+    await supervisor.close();
+    await closeServer(workerServer);
   }
 });
 

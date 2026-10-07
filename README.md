@@ -117,7 +117,7 @@ ChatGPT cannot connect directly to a loopback-only MCP server. For a local Juniu
 
        http://127.0.0.1:8787/mcp
 
-4. Run `tunnel-client doctor` for the profile and confirm it is healthy.
+4. Enable or check the tunnel client's health listener (`--health.listen-addr`; the current client defaults to `127.0.0.1:8080`) and confirm `/health?details=true` reports `live: true` and `ready: true`. Junius samples `127.0.0.1:18080` and `127.0.0.1:8080` by default; set `JUNIUS_TUNNEL_HEALTH_URL` to the full health URL when the listener is elsewhere.
 5. Keep `tunnel-client run` running while Junius is used.
 6. In ChatGPT, open **Plugins**, select the plus button, and add the MCP connection in Developer mode.
 7. Choose **Tunnel** as the connection type and select the corresponding Secure MCP Tunnel.

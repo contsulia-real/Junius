@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added MCP request lifecycle diagnostics that distinguish completed responses from client/request disconnects and Worker/Host failures, correlate each request with local Secure MCP Tunnel health and delivery-failure counters, and expose the bounded timelines through the local supervisor diagnostic.
+
 ## 0.1.6-alpha
 
 - Localized the Junius observability UI, turn fallback text, and Desktop control disclosure while keeping the ChatGPT sidebar entry name simply `Junius`; ChatGPT locale is used when available and Windows UI language drives the native Desktop disclosure.
