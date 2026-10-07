@@ -16,6 +16,7 @@ import {
   resolveJobHistoryRetention,
 } from "./job-history-store.js";
 import { sendHostJson } from "./host-http.js";
+import { configureMcpHttpServer } from "./mcp-http-tuning.js";
 import { hostRequestRejection } from "./host-request-security.js";
 import {
   sourceChangeDisposition,
@@ -376,6 +377,7 @@ const hostHttpServer = createHttpServer((req, res) => {
     latencyTraces,
   );
 });
+configureMcpHttpServer(hostHttpServer);
 
 try {
   await listen(

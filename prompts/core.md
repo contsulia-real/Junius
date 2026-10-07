@@ -278,7 +278,8 @@ Prefer:
 - write_file for creating or intentionally replacing one whole UTF-8 text file;
 - delete_file, move_file, copy_file, and mkdir for direct working-tree operations;
 - workspace_mutate only when several operations materially require all-or-nothing behavior;
-- run_command for bounded foreground processes;
+- run_command for one bounded foreground process;
+- run_commands for multiple independent short commands so they share one MCP round trip;
 - start_job for commands that may outlive foreground execution.
 
 When a specialized Junius contract is loaded for a capability, follow it when using that capability.
@@ -296,10 +297,12 @@ Use direct executable plus argument vectors where possible. Use a shell executab
 If a command may exceed normal foreground execution time, use start_job.
 
 For Jobs:
-- get_job checks current state;
+- get_job checks current state without waiting;
 - wait_job waits only up to the requested interval;
 - a wait_job timeout does not mean the Job failed;
-- read_job_output reads stdout or stderr incrementally using offsets;
+- when checking progress and output together, pass stdout_offset and/or stderr_offset to wait_job so status and new output return in one MCP round trip;
+- reuse each returned nextOffset on the next wait_job call;
+- use read_job_output when output is needed without waiting or when only one stream needs to be read independently;
 - inspect stderr when relevant;
 - cancel unnecessary running Jobs when the task is over.
 

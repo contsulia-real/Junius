@@ -1,7 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { WorkspaceFilesService } from "./workspace-files.js";
-import { runWorkspaceReadBatch } from "./workspace-batch.js";
+import {
+  MAX_WORKSPACE_BATCH_OPERATIONS,
+  runWorkspaceReadBatch,
+} from "./workspace-batch.js";
 import {
   fileToolError,
   stableIdSchema,
@@ -17,7 +20,7 @@ export function registerWorkspaceReadBatchTool(
     {
       title: "Batch Workspace Reads",
       description:
-        "Execute up to 16 independent read-only Workspace operations in one MCP round trip. Supports ls, read, and rg. Each operation automatically returns applicable AGENTS.md instructions for its path or recursive scan scope. Operations run concurrently, expected file errors are isolated per operation, and response sizes are bounded.",
+        "Execute up to 32 independent read-only Workspace operations in one MCP round trip. Prefer this over repeated ls/read/rg calls when exploring several files or searches. Junius bounds local concurrency and total response size so short bursts do not fan out into many Secure MCP Tunnel requests. Each operation still returns applicable AGENTS.md instructions and isolates expected file errors.",
       inputSchema: z.object({
         workspace: stableIdSchema,
         operations: z
@@ -65,7 +68,7 @@ export function registerWorkspaceReadBatchTool(
             ]),
           )
           .min(1)
-          .max(16),
+          .max(MAX_WORKSPACE_BATCH_OPERATIONS),
       }),
       _meta: {
         securitySchemes: [{ type: "noauth" }],

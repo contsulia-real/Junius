@@ -8,6 +8,7 @@ import {
   writeWebResponse,
 } from "./http-bridge.js";
 import type { McpRuntime } from "./mcp-runtime.js";
+import { configureMcpHttpServer } from "./mcp-http-tuning.js";
 import {
   workerRequestAuthorized,
 } from "./worker-auth.js";
@@ -171,6 +172,7 @@ export function createAgentWorkerHttpServers(
         );
       },
     );
+  configureMcpHttpServer(mcpHttpServer);
 
   const controlHttpServer =
     createHttpServer(

@@ -12,8 +12,8 @@ import {
   type WorkspaceState,
 } from "./workspace-manager.js";
 
-const DEFAULT_TIMEOUT_MS =
-  30_000;
+export const FOREGROUND_COMMAND_TIMEOUT_MS =
+  15_000;
 const DEFAULT_MAX_OUTPUT_BYTES =
   4 * 1024 * 1024;
 
@@ -70,7 +70,7 @@ export class RunCommandService {
     private readonly audit?:
       AuditStore,
     private readonly timeoutMs =
-      DEFAULT_TIMEOUT_MS,
+      FOREGROUND_COMMAND_TIMEOUT_MS,
     private readonly maxOutputBytes =
       DEFAULT_MAX_OUTPUT_BYTES,
   ) {}

@@ -232,6 +232,10 @@ Junius is split into a stable Host and replaceable Workers.
 
 The Host owns one fixed loopback HTTP listener and the routing state. Only /mcp is intended for the supported ChatGPT tunnel; /__junius/* remains local diagnostics.
 
+Junius optimizes the two MCP traffic shapes separately. Bursty short work is collapsed into bounded server-side batches (`workspace_batch` and `run_commands`) and the Host/Worker MCP HTTP servers keep idle connections alive for reuse. Long-running process work is detached into Jobs: foreground commands are intentionally short, `start_job` returns immediately, and `wait_job` uses short polls that can return incremental stdout/stderr with cursors in the same response. The HTTP servers do not impose a response socket timeout, so protocol requests that legitimately take time are not killed by Junius itself.
+
+Junius does not add a parallel WebSocket MCP transport. ChatGPT's supported remote MCP path is Streamable HTTP; OpenAI's WebSocket mode is a separate Responses API client transport, not a replacement transport for a ChatGPT custom MCP connection. A Host-to-Worker WebSocket would therefore leave the Secure MCP Tunnel hop unchanged while duplicating the local transport path.
+
 The local supervisor diagnostic keeps a bounded per-request timeline for traffic that reaches `/mcp`. Each entry has one Host trace ID and records request/body handling, Worker acquisition and response timing, downstream response completion or premature close, the terminal outcome, and layered Host/Worker latency when available. The same trace captures the nearest local Secure MCP Tunnel health snapshots at request start and completion. This can distinguish a healthy local Host from a downstream disconnect or Worker/Host failure; a downstream close alone does not identify whether ChatGPT or the tunnel initiated it.
 
 Each Worker listens on random loopback ports.

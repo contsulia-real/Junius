@@ -7,6 +7,9 @@ export type CommandBatchMode =
   | "parallel"
   | "serial";
 
+export const MAX_COMMAND_BATCH_SIZE = 32;
+export const COMMAND_BATCH_PARALLELISM = 4;
+
 export interface CommandBatchSpec {
   readonly executable: string;
   readonly args: readonly string[];
@@ -57,23 +60,40 @@ export async function runCommandBatch(
 ): Promise<CommandBatchResult> {
   if (mode === "parallel") {
     const results =
-      await Promise.all(
-        specs.map(
-          async (
-            spec,
-            index,
-          ): Promise<CommandBatchItem> => ({
-            index,
-            skipped: false,
-            result:
-              await commands.run(
-                workspace,
-                spec.executable,
-                spec.args,
-              ),
-          }),
-        ),
-      );
+      new Array<CommandBatchItem>(specs.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= specs.length) return;
+
+        const spec = specs[index]!;
+        results[index] = {
+          index,
+          skipped: false,
+          result:
+            await commands.run(
+              workspace,
+              spec.executable,
+              spec.args,
+            ),
+        };
+      }
+    };
+
+    await Promise.all(
+      Array.from(
+        {
+          length: Math.min(
+            COMMAND_BATCH_PARALLELISM,
+            specs.length,
+          ),
+        },
+        worker,
+      ),
+    );
 
     return {
       ok:

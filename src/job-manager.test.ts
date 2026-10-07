@@ -435,3 +435,38 @@ test(
     }
   },
 );
+
+
+test(
+  "JobManager can wait and return incremental stdout and stderr together",
+  async () => {
+    const f = await fixture();
+
+    try {
+      const started = await f.jobs.start(
+        "demo",
+        process.execPath,
+        [
+          "-e",
+          "process.stdout.write('out'); process.stderr.write('err'); setTimeout(() => {}, 30)",
+        ],
+      );
+
+      const result = await f.jobs.waitWithOutput(
+        started.id,
+        2_000,
+        0,
+        0,
+        64,
+      );
+
+      assert.equal(result.job.status, "succeeded");
+      assert.equal(result.stdout?.content, "out");
+      assert.equal(result.stderr?.content, "err");
+      assert.equal(result.stdout?.nextOffset, 3);
+      assert.equal(result.stderr?.nextOffset, 3);
+    } finally {
+      await f.dispose();
+    }
+  },
+);

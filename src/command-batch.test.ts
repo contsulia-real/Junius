@@ -206,3 +206,58 @@ test(
     }
   },
 );
+
+
+test(
+  "runCommandBatch bounds parallel fan-out for large short-command batches",
+  async () => {
+    let active = 0;
+    let peakActive = 0;
+    const specs = Array.from(
+      { length: 32 },
+      (_, index) => ({
+        executable: `command-${index}`,
+        args: [] as string[],
+      }),
+    );
+
+    const batch = await runCommandBatch(
+      {
+        async run(workspace, executable, args) {
+          active += 1;
+          peakActive = Math.max(peakActive, active);
+          await new Promise((resolvePromise) =>
+            setTimeout(resolvePromise, 10),
+          );
+          active -= 1;
+
+          return {
+            ok: true as const,
+            workspace,
+            executable,
+            args: [...args],
+            execution: {
+              ok: true as const,
+              exitCode: 0,
+              stdout: executable,
+              stderr: "",
+              durationMs: 10,
+            },
+          };
+        },
+      },
+      "demo",
+      specs,
+      "parallel",
+      true,
+    );
+
+    assert.equal(batch.ok, true);
+    assert.equal(batch.items.length, 32);
+    assert.equal(batch.items[31]?.skipped, false);
+    assert.ok(
+      peakActive <= 8,
+      `parallel fan-out was ${peakActive}`,
+    );
+  },
+);

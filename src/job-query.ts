@@ -12,8 +12,8 @@ import type { JobPersistenceCoordinator } from "./job-persistence.js";
 
 const DEFAULT_READ_CHARS = 64 * 1024;
 const MAX_READ_CHARS = 256 * 1024;
-const DEFAULT_WAIT_MS = 30_000;
-const MAX_WAIT_MS = 60_000;
+export const DEFAULT_JOB_WAIT_MS = 5_000;
+export const MAX_JOB_WAIT_MS = 10_000;
 
 export interface JobOutputSlice {
   readonly job: JobSnapshot;
@@ -134,7 +134,7 @@ export class JobQueryService {
 
   async wait(
     id: string,
-    timeoutMs = DEFAULT_WAIT_MS,
+    timeoutMs = DEFAULT_JOB_WAIT_MS,
   ): Promise<JobSnapshot> {
     const record = this.jobs.get(id);
     if (record === undefined) {
@@ -152,7 +152,7 @@ export class JobQueryService {
       0,
       Math.min(
         timeoutMs,
-        MAX_WAIT_MS,
+        MAX_JOB_WAIT_MS,
       ),
     );
 

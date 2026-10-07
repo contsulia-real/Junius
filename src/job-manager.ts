@@ -310,6 +310,43 @@ export class JobManager {
     );
   }
 
+  async waitWithOutput(
+    id: string,
+    timeoutMs?: number,
+    stdoutOffset?: number,
+    stderrOffset?: number,
+    limit?: number,
+  ) {
+    const job = await this.wait(
+      id,
+      timeoutMs,
+    );
+    const [stdout, stderr] = await Promise.all([
+      stdoutOffset === undefined
+        ? Promise.resolve(undefined)
+        : this.readOutput(
+            id,
+            "stdout",
+            stdoutOffset,
+            limit,
+          ),
+      stderrOffset === undefined
+        ? Promise.resolve(undefined)
+        : this.readOutput(
+            id,
+            "stderr",
+            stderrOffset,
+            limit,
+          ),
+    ]);
+
+    return {
+      job,
+      ...(stdout === undefined ? {} : { stdout }),
+      ...(stderr === undefined ? {} : { stderr }),
+    };
+  }
+
   async readOutput(
     id: string,
     stream: "stdout" | "stderr",

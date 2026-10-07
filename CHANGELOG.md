@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Optimized both MCP traffic shapes: bursty short work now uses larger bounded batches plus HTTP keep-alive, while long-running process work uses shorter foreground limits, detached Jobs, bounded polling, and combined incremental output cursors to avoid holding one Secure MCP Tunnel request open for the full task.
+
 - Added MCP request lifecycle diagnostics that distinguish completed responses from client/request disconnects and Worker/Host failures, correlate each request with local Secure MCP Tunnel health and delivery-failure counters, and expose the bounded timelines through the local supervisor diagnostic.
 
 ## 0.1.6-alpha

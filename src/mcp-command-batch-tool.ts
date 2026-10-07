@@ -3,10 +3,12 @@ import type {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  MAX_COMMAND_BATCH_SIZE,
   runCommandBatch,
 } from "./command-batch.js";
-import type {
-  RunCommandService,
+import {
+  FOREGROUND_COMMAND_TIMEOUT_MS,
+  type RunCommandService,
 } from "./run-command.js";
 import {
   runCommandResultPayload,
@@ -40,7 +42,7 @@ export function registerRunCommandsTool(
       title:
         "Run Local Commands",
       description:
-        "Run up to 16 executable/argument-vector commands in one registered Workspace, either in parallel or serially. This is the high-level batching form of run_command and uses the same unrestricted execution path. Use parallel mode for independent short commands and serial mode for ordered steps. Long-running work should still use Jobs.",
+        `Run up to 32 short executable/argument-vector commands in one MCP round trip. Parallel mode preserves input order while limiting local concurrency, which reduces Secure MCP Tunnel request fan-out; serial mode is for ordered steps. Each command is capped at ${FOREGROUND_COMMAND_TIMEOUT_MS / 1_000} seconds. Use this instead of repeated run_command calls; use start_job for anything longer.`,
       inputSchema:
         z.object({
           workspace:
@@ -50,7 +52,7 @@ export function registerRunCommandsTool(
               commandSpecSchema,
             )
               .min(1)
-              .max(16),
+              .max(MAX_COMMAND_BATCH_SIZE),
           mode:
             z.enum([
               "parallel",

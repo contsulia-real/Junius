@@ -1,5 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
-import type { RunCommandService } from "./run-command.js";
+import {
+  FOREGROUND_COMMAND_TIMEOUT_MS,
+  type RunCommandService,
+} from "./run-command.js";
 import {
   formatRunCommandResult,
   runCommandInputSchema,
@@ -16,7 +19,7 @@ export function registerRunCommandTool(
       title:
         "Run Local Command",
       description:
-        "Launch any executable with any argument vector in one registered Junius Workspace. The Workspace selects cwd only; Junius does not pre-register executables or restrict argument vectors. For software engineering work, load the engineering contract with load_junius_contracts before substantive engineering execution unless it is already loaded.",
+        `Run one short foreground command in a registered Workspace. It is capped at ${FOREGROUND_COMMAND_TIMEOUT_MS / 1_000} seconds so one Secure MCP Tunnel request cannot be held by long work. Use run_commands for multiple short commands and start_job for anything that may take longer. Junius does not restrict executable names or argument vectors.`,
       inputSchema:
         runCommandInputSchema,
       _meta: {

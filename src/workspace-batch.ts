@@ -4,7 +4,8 @@ import {
   type ReadRequest,
 } from "./workspace-files.js";
 
-const MAX_BATCH_OPERATIONS = 16;
+export const MAX_WORKSPACE_BATCH_OPERATIONS = 32;
+export const WORKSPACE_BATCH_PARALLELISM = 8;
 const MAX_RESULT_BYTES = 512 * 1024;
 const MAX_TOTAL_BYTES = 2 * 1024 * 1024;
 
@@ -211,17 +212,42 @@ export async function runWorkspaceReadBatch(
 ): Promise<WorkspaceReadBatchResult> {
   if (
     operations.length < 1 ||
-    operations.length > MAX_BATCH_OPERATIONS
+    operations.length > MAX_WORKSPACE_BATCH_OPERATIONS
   ) {
     throw new Error(
-      `workspace_batch accepts 1-${MAX_BATCH_OPERATIONS} operations.`,
+      `workspace_batch accepts 1-${MAX_WORKSPACE_BATCH_OPERATIONS} operations.`,
     );
   }
 
   const startedAt = performance.now();
-  const rawResults = await Promise.all(
-    operations.map((operation, index) =>
-      executeOperation(files, workspace, operation, index),
+  const rawResults =
+    new Array<Record<string, unknown>>(operations.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= operations.length) return;
+
+      rawResults[index] = await executeOperation(
+        files,
+        workspace,
+        operations[index]!,
+        index,
+      );
+    }
+  };
+
+  await Promise.all(
+    Array.from(
+      {
+        length: Math.min(
+          WORKSPACE_BATCH_PARALLELISM,
+          operations.length,
+        ),
+      },
+      worker,
     ),
   );
 

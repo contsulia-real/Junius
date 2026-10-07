@@ -256,9 +256,10 @@ These tools are execution conveniences, not policy. They do not decide what to r
 If a build, test, or check may exceed foreground execution limits, use start_job.
 
 Then:
-- use wait_job in bounded intervals;
+- use wait_job in short bounded intervals rather than holding one MCP request for the process lifetime;
+- when progress output matters, pass stdout_offset and/or stderr_offset to wait_job and reuse the returned nextOffset values so status and incremental output share one round trip;
 - remember that a wait timeout is not a Job failure;
-- read output incrementally using returned offsets;
+- use read_job_output when output is needed without waiting;
 - inspect stderr when relevant;
 - use get_job when state is unclear;
 - cancel only Jobs that should no longer continue.
