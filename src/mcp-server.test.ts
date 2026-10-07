@@ -22,7 +22,7 @@ test(
 
     assert.equal(
       packageJson.version,
-      "0.1.6-alpha",
+      "0.1.7-alpha",
     );
     assert.equal(
       JUNIUS_VERSION,
