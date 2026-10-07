@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Windows installation so the packaged `junius` CLI is exposed through a stable per-user command shim and `PATH` entry, while the one-command PowerShell bootstrap also updates its current session for immediate CLI use.
+
 ## 0.1.7-alpha
 
 - Optimized both MCP traffic shapes: bursty short work now uses larger bounded batches plus HTTP keep-alive, while long-running process work uses shorter foreground limits, detached Jobs, bounded polling, and combined incremental output cursors to avoid holding one Secure MCP Tunnel request open for the full task.

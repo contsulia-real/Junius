@@ -37,6 +37,7 @@ The installer:
 - creates the application virtual environment from your existing Python;
 - installs locked application dependencies;
 - validates the installed runtime;
+- creates `%LOCALAPPDATA%\Junius\bin\junius.cmd` and adds that bin directory to the current user's `PATH`;
 - registers Junius for the current user's Windows logon;
 - starts Junius immediately and waits for Host health.
 
@@ -47,8 +48,11 @@ Normal installation does not require administrator elevation.
 Run:
 
 ```powershell
+junius --help
 irm http://127.0.0.1:8787/__junius/host-health
 ```
+
+The bootstrap also adds the Junius bin directory to the PowerShell session that ran the install command, so `junius` is available immediately after installation.
 
 A working installation returns JSON with:
 
@@ -211,6 +215,14 @@ $health = Invoke-RestMethod http://127.0.0.1:8787/__junius/host-health -ErrorAct
 if ($health.pid) { taskkill /PID $health.pid /T /F | Out-Null }
 
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Junius /f
+
+$juniusBin = "$env:LOCALAPPDATA\Junius\bin"
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$userPath = (($userPath -split ";") | Where-Object {
+  $_.Trim().TrimEnd([char]92) -ine $juniusBin.TrimEnd([char]92)
+}) -join ";"
+[Environment]::SetEnvironmentVariable("Path", $userPath, "User")
+
 Remove-Item "$env:LOCALAPPDATA\Junius" -Recurse -Force
 ```
 
@@ -227,6 +239,10 @@ Get-NetTCPConnection -LocalPort 8787 -State Listen | Select-Object LocalAddress,
 ```
 
 Stop or reconfigure the conflicting process before starting Junius.
+
+**`junius` is not recognized**
+
+Re-run the installer. A current installation creates `%LOCALAPPDATA%\Junius\bin\junius.cmd`, adds that directory to the user `PATH`, and makes it available in the invoking PowerShell session.
 
 **Python is not found**
 

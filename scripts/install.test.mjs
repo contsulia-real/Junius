@@ -19,9 +19,11 @@ import {
   validateInstalledApp,
 } from "./install-application.mjs";
 import {
+  windowsCliCmd,
   windowsInstallPaths,
   windowsRunValue,
   windowsStartupPowerShell,
+  windowsUserPathPowerShell,
 } from "./install-paths.mjs";
 import {
   supportedPythonVersion,
@@ -103,6 +105,14 @@ test(
     assert.equal(
       paths.appRoot,
       "C:\\Users\\Demo\\AppData\\Local\\Junius\\app",
+    );
+    assert.equal(
+      paths.binRoot,
+      "C:\\Users\\Demo\\AppData\\Local\\Junius\\bin",
+    );
+    assert.equal(
+      paths.cliShim,
+      "C:\\Users\\Demo\\AppData\\Local\\Junius\\bin\\junius.cmd",
     );
     assert.equal(
       paths.promptRoot,
@@ -1130,6 +1140,44 @@ test(
         );
       }
     }
+  },
+);
+
+test(
+  "installer CLI shim forwards arguments and registers a stable user PATH entry",
+  () => {
+    const shim =
+      windowsCliCmd(
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Users\\Demo\\AppData\\Local\\Junius\\app\\bin\\junius.mjs",
+      );
+
+    assert.equal(
+      shim,
+      [
+        "@echo off",
+        "\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\Users\\Demo\\AppData\\Local\\Junius\\app\\bin\\junius.mjs\" %*",
+        "",
+      ].join("\r\n"),
+    );
+
+    const pathScript =
+      windowsUserPathPowerShell(
+        "C:\\Users\\Demo\\AppData\\Local\\Junius\\bin",
+      );
+
+    assert.match(
+      pathScript,
+      /SetEnvironmentVariable\('Path', \$next, 'User'\)/u,
+    );
+    assert.match(
+      pathScript,
+      /OrdinalIgnoreCase/u,
+    );
+    assert.doesNotMatch(
+      pathScript,
+      /setx/u,
+    );
   },
 );
 

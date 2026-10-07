@@ -37,6 +37,7 @@ irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' |
 - 基于系统现有 Python 创建应用虚拟环境；
 - 安装锁定的应用依赖；
 - 验证已安装运行时；
+- 创建 `%LOCALAPPDATA%\Junius\bin\junius.cmd`，并把该 bin 目录加入当前用户的 `PATH`；
 - 注册当前 Windows 用户登录启动；
 - 立即启动 Junius，并等待 Host health 通过。
 
@@ -47,8 +48,11 @@ irm 'https://raw.githubusercontent.com/contsulia-real/Junius/main/install.ps1' |
 运行：
 
 ```powershell
+junius --help
 irm http://127.0.0.1:8787/__junius/host-health
 ```
+
+Bootstrap 还会把 Junius bin 目录加入执行安装命令的当前 PowerShell 会话，因此安装完成后可以立刻使用 `junius`。
 
 正常安装会返回 JSON，其中：
 
@@ -211,6 +215,14 @@ $health = Invoke-RestMethod http://127.0.0.1:8787/__junius/host-health -ErrorAct
 if ($health.pid) { taskkill /PID $health.pid /T /F | Out-Null }
 
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Junius /f
+
+$juniusBin = "$env:LOCALAPPDATA\Junius\bin"
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$userPath = (($userPath -split ";") | Where-Object {
+  $_.Trim().TrimEnd([char]92) -ine $juniusBin.TrimEnd([char]92)
+}) -join ";"
+[Environment]::SetEnvironmentVariable("Path", $userPath, "User")
+
 Remove-Item "$env:LOCALAPPDATA\Junius" -Recurse -Force
 ```
 
@@ -227,6 +239,10 @@ Get-NetTCPConnection -LocalPort 8787 -State Listen | Select-Object LocalAddress,
 ```
 
 先停止或重新配置冲突进程，再启动 Junius。
+
+**无法识别 `junius` 命令**
+
+重新运行安装命令。当前安装流程会创建 `%LOCALAPPDATA%\Junius\bin\junius.cmd`、把该目录加入用户 `PATH`，并立即加入当前 PowerShell 会话。
 
 **找不到 Python**
 

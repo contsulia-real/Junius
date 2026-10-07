@@ -5,6 +5,9 @@ import {
   validateInstalledApp,
 } from "./install-application.mjs";
 import {
+  installWindowsCli,
+} from "./install-cli.mjs";
+import {
   packageRootFromImportMeta,
   windowsInstallPaths,
 } from "./install-paths.mjs";
@@ -111,6 +114,12 @@ export async function installJunius() {
     paths.appRoot,
   );
 
+  const cli =
+    await installWindowsCli(
+      paths,
+      process.execPath,
+    );
+
   const startup =
     await writeWindowsStartup(
       paths,
@@ -155,5 +164,9 @@ export async function installJunius() {
   );
   console.log(
     "Junius will start automatically when this Windows user signs in.",
+  );
+  console.log(
+    "CLI: " +
+      cli.cliShim,
   );
 }

@@ -332,6 +332,60 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "Junius installation failed."
   }
+
+  $juniusRoot = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "Junius"
+  $juniusBin = Join-Path $juniusRoot "bin"
+  $installedCli = Join-Path $juniusRoot "app\bin\junius.mjs"
+  $juniusShim = Join-Path $juniusBin "junius.cmd"
+
+  New-Item -ItemType Directory -Path $juniusBin -Force | Out-Null
+  $shim = "@echo off`r`n`"$nodePath`" `"$installedCli`" %*`r`n"
+  [IO.File]::WriteAllText(
+    $juniusShim,
+    $shim,
+    [Text.UTF8Encoding]::new($false)
+  )
+
+  $normalizedJuniusBin = $juniusBin.TrimEnd([char]92)
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $userEntries = if ([string]::IsNullOrWhiteSpace($userPath)) {
+    @()
+  }
+  else {
+    @(
+      $userPath.Split(";") |
+        Where-Object {
+          -not [string]::IsNullOrWhiteSpace($_)
+        }
+    )
+  }
+  $userHasJuniusBin = @(
+    $userEntries |
+      Where-Object {
+        $_.Trim().TrimEnd([char]92) -ieq $normalizedJuniusBin
+      }
+  ).Count -gt 0
+
+  if (-not $userHasJuniusBin) {
+    $userPath = if ([string]::IsNullOrWhiteSpace($userPath)) {
+      $juniusBin
+    }
+    else {
+      $userPath.TrimEnd(";") + ";" + $juniusBin
+    }
+    [Environment]::SetEnvironmentVariable("Path", $userPath, "User")
+  }
+
+  $sessionHasJuniusBin = @(
+    $env:Path.Split(";") |
+      Where-Object {
+        $_.Trim().TrimEnd([char]92) -ieq $normalizedJuniusBin
+      }
+  ).Count -gt 0
+
+  if (-not $sessionHasJuniusBin) {
+    $env:Path = $juniusBin + ";" + $env:Path
+  }
 }
 finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

@@ -35,6 +35,12 @@ export function windowsInstallPaths(
   return {
     root,
     appRoot: join(root, "app"),
+    binRoot: join(root, "bin"),
+    cliShim: join(
+      root,
+      "bin",
+      "junius.cmd",
+    ),
     promptRoot: join(root, "prompts"),
     startupScript: join(
       root,
@@ -64,6 +70,43 @@ function powershellLiteral(
       ) +
     "'"
   );
+}
+
+export function windowsCliCmd(
+  nodeExecutable,
+  cliPath,
+) {
+  return [
+    "@echo off",
+    `"${nodeExecutable}" "${cliPath}" %*`,
+    "",
+  ].join("\r\n");
+}
+
+export function windowsUserPathPowerShell(
+  binRoot,
+) {
+  const entry =
+    powershellLiteral(binRoot);
+
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$entry = ${entry}`,
+    "$current = [Environment]::GetEnvironmentVariable('Path', 'User')",
+    "$entries = if ([string]::IsNullOrWhiteSpace($current)) { @() } else { @($current.Split(';') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }",
+    "$exists = $false",
+    "foreach ($item in $entries) {",
+    "  if ([string]::Equals($item.Trim().TrimEnd([char]92), $entry.TrimEnd([char]92), [System.StringComparison]::OrdinalIgnoreCase)) {",
+    "    $exists = $true",
+    "    break",
+    "  }",
+    "}",
+    "if (-not $exists) {",
+    "  $next = if ([string]::IsNullOrWhiteSpace($current)) { $entry } else { $current.TrimEnd(';') + ';' + $entry }",
+    "  [Environment]::SetEnvironmentVariable('Path', $next, 'User')",
+    "}",
+    "",
+  ].join("\r\n");
 }
 
 export function windowsStartupPowerShell(

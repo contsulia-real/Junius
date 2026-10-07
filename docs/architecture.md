@@ -48,11 +48,17 @@ Installation performs:
       ↓
     validate the installed compiled runtime and CLI
       ↓
+    create %LOCALAPPDATA%\Junius\bin\junius.cmd
+      ↓
+    add %LOCALAPPDATA%\Junius\bin to the user PATH
+      ↓
     register HKCU logon startup
       ↓
     start Junius immediately
       ↓
     wait for Host health
+
+The CLI shim records the exact Node executable used for installation and forwards arguments to the installed `app\bin\junius.mjs`. The installer adds the stable `%LOCALAPPDATA%\Junius\bin` directory to the per-user `PATH` without using `setx`, avoiding PATH truncation; the bootstrap also updates the invoking PowerShell process so `junius` is immediately available after a one-command install.
 
 The logon startup entry records the exact Node executable used for installation and launches scripts/host-launcher.mjs through a hidden per-user PowerShell startup script. The installer itself starts the freshly installed Host directly with that same Node executable and launcher path, rather than routing the immediate health-checked start back through the logon wrapper. No Windows service or administrator elevation is required.
 

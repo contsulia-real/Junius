@@ -385,6 +385,21 @@ test(
       "GitHub download token must not be inherited by installed Junius",
     );
 
+    assert.equal(
+      installScript.includes(
+        "junius.cmd",
+      ),
+      true,
+      "PowerShell bootstrap must repair the Junius command shim",
+    );
+    assert.equal(
+      installScript.includes(
+        "[Environment]::SetEnvironmentVariable(\"Path\", $userPath, \"User\")",
+      ),
+      true,
+      "PowerShell bootstrap must persist the Junius bin directory on the user PATH",
+    );
+
     const readme =
       await readFile(
         join(
