@@ -2,7 +2,11 @@
 
 ## Unreleased
 
+## 0.1.8-alpha
+
 - Fixed Windows installation so the packaged `junius` CLI is exposed through a stable per-user command shim and `PATH` entry, while the one-command PowerShell bootstrap also updates its current session for immediate CLI use.
+- Added informed four-way consent before Playwright or Windows Computer Use access, with turn/Chat-scoped allow or deny choices, session isolation, Escape revocation, and control cleanup. The client must actually accept the request; model-only authorization assertions no longer grant access.
+- Prevented persistent MCP observability from storing raw user turn titles and tool arguments; existing records are scrubbed at startup and local history is bounded to seven days and 256 sessions.
 
 ## 0.1.7-alpha
 
