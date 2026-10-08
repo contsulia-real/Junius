@@ -6,20 +6,32 @@ import { join } from "node:path";
 import { McpObservabilityStore } from "./mcp-observability.js";
 import { McpObservabilityPersistence } from "./mcp-observability-persistence.js";
 
-test("persisted observations omit private prompts and arguments while live turns still work", () => {
-  const root = mkdtempSync(join(tmpdir(), "junius-private-observation-"));
+test("persisted observations retain prompt titles, bounded tool arguments and event inputs across a restart", () => {
+  const root = mkdtempSync(join(tmpdir(), "junius-observation-"));
   try {
     const store = new McpObservabilityStore({ rootPath: root });
-    store.beginTurn("chat", [{ type: "text", text: "PRIVATE_SYNTHETIC_TITLE" + "x".repeat(10000) }]);
-    const call = store.beginToolCall("run_command", { password: "PRIVATE_SYNTHETIC_SECRET", args: ["PRIVATE_ARG"] }, "chat");
+    store.beginTurn("chat", [
+      { type: "text", text: "Show the actual user request" },
+      { type: "file" },
+    ]);
+    const call = store.beginToolCall("run_command", { args: ["node", "--version"] }, "chat");
     store.finishToolCall(call, "succeeded");
     store.endTurn("chat");
-    assert.match(store.snapshot("chat").turns[0]!.title, /PRIVATE_SYNTHETIC_TITLE/u);
+
     const disk = readFileSync(join(root, readdirSync(root)[0]!), "utf8");
-    assert.doesNotMatch(disk, /PRIVATE_SYNTHETIC_TITLE|PRIVATE_SYNTHETIC_SECRET|PRIVATE_ARG/u);
+    assert.match(disk, /Show the actual user request \[File\]/u);
+    assert.match(disk, /"node"/u);
+    assert.match(disk, /"--version"/u);
+    assert.doesNotMatch(disk, /\[private input omitted\]/u);
+
     const restored = new McpObservabilityStore({ rootPath: root }).snapshot("chat").turns[0]!;
-    assert.equal(restored.title, "[private input omitted]");
-    assert.equal(restored.tools[0]!.calls[0]!.input, "[private input omitted]");
+    assert.equal(restored.title, "Show the actual user request [File]");
+    assert.deepEqual(restored.tools[0]!.calls[0]!.input, { args: ["node", "--version"] });
+    assert.deepEqual(
+      restored.events.find((event) => event.kind === "tool_started")?.input,
+      { args: ["node", "--version"] },
+    );
+
     store.deleteSession("chat");
     assert.deepEqual(readdirSync(root), []);
   } finally {
@@ -27,22 +39,21 @@ test("persisted observations omit private prompts and arguments while live turns
   }
 });
 
-test("legacy observation files are scrubbed on startup and aged files expire", () => {
-  const root = mkdtempSync(join(tmpdir(), "junius-legacy-observation-"));
+test("startup preserves valid observation history and expires aged files", () => {
+  const root = mkdtempSync(join(tmpdir(), "junius-retained-observation-"));
   try {
     const old = new McpObservabilityStore({ rootPath: root });
-    old.beginTurn("chat", [{ type: "text", text: "PRIVATE_LEGACY_TITLE" }]);
-    const call = old.beginToolCall("run_command", { secret: "PRIVATE_LEGACY_ARG" }, "chat");
+    old.beginTurn("chat", [{ type: "text", text: "Keep this earlier prompt" }]);
+    const call = old.beginToolCall("run_command", { args: ["example"] }, "chat");
     old.finishToolCall(call, "succeeded");
     const name = readdirSync(root)[0]!;
     const path = join(root, name);
-    const original = JSON.parse(readFileSync(path, "utf8"));
-    original.snapshot.turns[0].title = "PRIVATE_LEGACY_TITLE";
-    original.snapshot.turns[0].tools[0].calls[0].input = { secret: "PRIVATE_LEGACY_ARG" };
-    writeFileSync(path, JSON.stringify(original));
+    const original = readFileSync(path, "utf8");
+
     new McpObservabilityPersistence(root);
-    assert.doesNotMatch(readFileSync(path, "utf8"), /PRIVATE_LEGACY_TITLE|PRIVATE_LEGACY_ARG/u);
-    const expired = JSON.parse(readFileSync(path, "utf8"));
+    assert.equal(readFileSync(path, "utf8"), original);
+
+    const expired = JSON.parse(original);
     expired.updatedAt = "2020-01-01T00:00:00.000Z";
     writeFileSync(path, JSON.stringify(expired));
     new McpObservabilityPersistence(root);

@@ -38,23 +38,6 @@ export interface SessionObservabilityMetadata {
 
 const MAX_SESSIONS_ON_DISK = 256;
 const SESSION_RETENTION_MS = 7 * 24 * 60 * 60_000;
-const PRIVATE_INPUT = "[private input omitted]";
-
-function privateSnapshot(snapshot: McpObservabilitySnapshot): McpObservabilitySnapshot {
-  return {
-    ...snapshot,
-    turns: snapshot.turns.map((turn) => ({
-      ...turn,
-      title: PRIVATE_INPUT,
-      tools: turn.tools.map((group) => ({
-        ...group,
-        calls: group.calls.map((call) => ({ ...call, input: PRIVATE_INPUT })),
-      })),
-      events: turn.events.map(({ input: _input, ...event }) => event),
-    })),
-  };
-}
-
 function fileName(
   sessionId: string,
 ): string {
@@ -91,10 +74,10 @@ export class McpObservabilityPersistence {
         recursive: true,
       },
     );
-    this.#pruneAndScrub();
+    this.#pruneExpired();
   }
 
-  #pruneAndScrub(): void {
+  #pruneExpired(): void {
     const now = Date.now();
     const retained: { path: string; updatedAt: number }[] = [];
     for (const name of readdirSync(this.rootPath)) {
@@ -107,11 +90,9 @@ export class McpObservabilityPersistence {
           rmSync(path, { force: true });
           continue;
         }
-        const scrubbed = { ...parsed, snapshot: privateSnapshot(parsed.snapshot) };
-        if (JSON.stringify(scrubbed.snapshot) !== JSON.stringify(parsed.snapshot)) this.#write(scrubbed);
         retained.push({ path, updatedAt });
       } catch {
-        // Corrupt observation files cannot be trusted as privacy-safe history.
+        // Discard corrupt observation files.
         rmSync(path, { force: true });
       }
     }
@@ -200,7 +181,7 @@ export class McpObservabilityPersistence {
       updatedAt: now,
       snapshot,
     });
-    this.#pruneAndScrub();
+    this.#pruneExpired();
 
     return {
       createdAt: now,
@@ -270,7 +251,7 @@ export class McpObservabilityPersistence {
     writeFileSync(
       temporary,
       JSON.stringify(
-        { ...value, snapshot: privateSnapshot(value.snapshot) },
+        value,
         null,
         2,
       ),
