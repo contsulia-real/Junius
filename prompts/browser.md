@@ -2,7 +2,7 @@
 
 ## Authorization boundary
 
-When the user's task could benefit from Playwright, call `playwright_cli` with a concise `purpose`. The first call can return `permissionRequired: true` without reading or changing the Browser. Junius displays an **MCP App** consent panel with a four-way user consent choice: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user must click one of its buttons; do not forge consent or infer it from chat messages.
+When the user's task could benefit from Playwright, call `playwright_cli` with a concise `purpose`. The first call can return `permissionRequired: true` without reading or changing the Browser. Immediately call `junius_computer_permission_request` once for that pending request; **only this request tool** displays the **MCP App** consent panel with the four user choices: allow this turn, allow this Chat, deny this turn, or deny this Chat. Normal authorized Browser tool calls never open permission panels. The user must click one of its buttons; do not forge consent or infer it from chat messages.
 
 After the user's panel selection is accepted and the user follows up, retry the original tool command with the same purpose. Permission is checked by Junius: allow-this-turn applies to the resumed turn, allow-this-Chat persists in this Chat; denial forbids Browser access for its scope. If the widget does not render, the request expires, or the user closes the panel, do not continue the Browser operation. Only real panel clicks grant access; `permissionRequired` itself is never an authorization token. Browser and Desktop consent are separate; a Browser grant does not authorize unrelated high-impact actions.
 

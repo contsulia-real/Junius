@@ -4,6 +4,8 @@
 
 ## 0.1.9-alpha
 
+- Show Browser/Desktop four-choice consent UI only for genuinely pending requests, not after every authorized tool call; use nonce-bound widget actions to preserve Chat-scoped permission when app session metadata is unavailable.
+
 - Restored local Junius observability history across Host/Worker restarts with actual user turn titles and bounded tool-call inputs/events instead of `[private input omitted]`; retained existing seven-day/256-session pruning and session isolation.
 - Replaced unavailable MCP elicitation-based Browser and Desktop authorization with a user-clicked MCP App consent panel, preserving independent four-way turn/Chat permissions and denying device access until approval.
 - Aligned the shipped Core, Browser, Desktop, and Engineering contracts with the actual consent flow and prohibited using Workspace commands or silently installed Playwright/Chromium as a Browser authorization workaround.

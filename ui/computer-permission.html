@@ -44,8 +44,17 @@
     post({ jsonrpc: "2.0", id, method, params });
     return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
   }
-  window.addEventListener("message", ({ data }) => {
-    if (!data || data.jsonrpc !== "2.0" || typeof data.id !== "number") return;
+  window.addEventListener("message", ({ data, source }) => {
+    if (source !== window.parent || !data || data.jsonrpc !== "2.0") return;
+    if (data.method === "ui/notifications/tool-result") {
+      show(payload(data.params));
+      return;
+    }
+    if (data.method === "ui/resource-teardown" && data.id != null) {
+      post({ jsonrpc: "2.0", id: data.id, result: {} });
+      return;
+    }
+    if (typeof data.id !== "number") return;
     const handler = pending.get(data.id);
     if (!handler) return;
     pending.delete(data.id);
@@ -66,23 +75,26 @@
     await ready;
     return payload(await request("tools/call", { name, arguments: args }));
   }
+  function show(response) {
+    if (response?.status !== "pending" || typeof response.nonce !== "string" || !response.nonce) return false;
+    if (current && token === null) return false; // Already answered this widget.
+    token = response.nonce;
+    current = response;
+    const browser = current.tool === "browser";
+    byId("tool").textContent = browser ? "Playwright 浏览器" : "Computer Use 桌面";
+    byId("purpose").textContent = "目的：" + current.purpose;
+    byId("risk").textContent = browser
+      ? "可能访问已登录网页及浏览器状态。"
+      : "可能查看屏幕、窗口和剪贴板，并使用键盘鼠标。";
+    buttons.forEach((button) => { button.disabled = busy; });
+    status.textContent = "请选择授权范围；关闭面板不会授权。";
+    return true;
+  }
   async function load() {
+    if (show(window.openai?.toolOutput)) return;
     try {
       const response = await call("junius_computer_permission_state", {});
-      if (response.status !== "pending" || !response.nonce) {
-        status.textContent = "当前没有待处理的授权请求；未授予任何权限。";
-        return;
-      }
-      token = response.nonce;
-      current = response;
-      const browser = current.tool === "browser";
-      byId("tool").textContent = browser ? "Playwright 浏览器" : "Computer Use 桌面";
-      byId("purpose").textContent = "目的：" + current.purpose;
-      byId("risk").textContent = browser
-        ? "可能访问已登录网页及浏览器状态。"
-        : "可能查看屏幕、窗口和剪贴板，并使用键盘鼠标。";
-      buttons.forEach((button) => { button.disabled = false; });
-      status.textContent = "请选择授权范围；关闭面板不会授权。";
+      if (!show(response)) status.textContent = "正在等待当前授权请求的信息；未授予任何权限。";
     } catch (error) {
       status.textContent = "无法读取授权请求：" + String(error.message ?? error);
     }

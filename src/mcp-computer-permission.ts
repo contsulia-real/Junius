@@ -62,6 +62,19 @@ export class ComputerPermissionManager {
     }
     return { ...pending, status: "pending" };
   }
+  pendingByNonce(nonce: string): ({ chat: string } & Pending) | undefined {
+    for (const chat of this.#scopes.keys()) {
+      const pending = this.pending(chat);
+      if (pending?.nonce === nonce) return { chat, ...pending };
+    }
+    return undefined;
+  }
+  decideByNonce(nonce: string, decision: ComputerDecision, chat?: string): boolean {
+    const pending = this.pendingByNonce(nonce);
+    return pending !== undefined &&
+      (chat === undefined || pending.chat === chat) &&
+      this.decide(pending.chat, nonce, decision);
+  }
   decide(chat: string, nonce: string, decision: ComputerDecision): boolean {
     const state = this.#scopes.get(chat);
     const pending = this.pending(chat);

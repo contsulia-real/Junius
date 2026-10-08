@@ -2,7 +2,7 @@
 
 ## Authorization boundary
 
-When local Desktop access would help with the user's task, call `desktop` with a plain-language `purpose`. An initial result of `permissionRequired: true` means no screen, window, clipboard or input access occurred. Junius displays an **MCP App** panel with four user options: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user must click a choice; do not fabricate consent or accept an authorization phrase as a substitute.
+When local Desktop access would help with the user's task, call `desktop` with a plain-language `purpose`. An initial result of `permissionRequired: true` means no screen, window, clipboard or input access occurred. Immediately call `junius_computer_permission_request` once for the pending request to display an **MCP App** panel with four user options: allow this turn, allow this Chat, deny this turn, or deny this Chat. Subsequent authorized Desktop calls must not display new consent panels. The user must click a choice; do not fabricate consent or accept an authorization phrase as a substitute.
 
 After the panel records an allow choice and the user follows up, retry the Desktop command with the original purpose. Junius then checks the user-selected scope and establishes authorized control automatically when needed. If the panel cannot display or no response was recorded, stop rather than attempting Desktop access. Desktop and Browser permissions are independent. Permission does not authorize unrelated high-impact actions. The model must not set an `explicit_user_authorization` parameter.
 

@@ -174,7 +174,7 @@ test(
     );
     assert.match(
       JUNIUS_BROWSER_CONTRACT,
-      /four-way user consent choice/u,
+      /junius_computer_permission_request.*four user choices/u,
     );
     assert.match(
       JUNIUS_BROWSER_CONTRACT,

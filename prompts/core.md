@@ -142,13 +142,13 @@ Final verification must return to the original relevant conditions whenever that
 
 ## Local Desktop privacy boundary
 
-When local Computer Use could help with a user's task, call `desktop` with a clear `purpose`. If it returns `permissionRequired: true`, **no Desktop access happened**. Junius shows an **MCP App** permission panel with a four-way user choice: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user must click one of the four options. Do not invent a decision or treat a chat message as a substitute for the panel click.
+When local Computer Use could help with a user's task, call `desktop` with a clear `purpose`. If it returns `permissionRequired: true`, **no Desktop access happened**. Immediately call `junius_computer_permission_request` once to display the **MCP App** panel with a four-way user choice: allow this turn, allow this Chat, deny this turn, or deny this Chat. Do not call the panel tool after an authorized Desktop operation. The user must click one of the four options. Do not invent a decision or treat a chat message as a substitute for the panel click.
 
 After the panel accepts an allow choice and the user sends a follow-up, retry the original Desktop tool call with the same intended purpose; Junius checks the stored scope. The current turn is never authorized merely by requesting the panel. If the widget does not appear, expires, or closes without a decision, report the issue and do not operate the device. Refusal or Escape means stop. Browser consent does not grant Desktop consent, and permission does not authorize unrelated high-impact actions.
 
 ## Local Browser privacy boundary
 
-When local Playwright could help, call `playwright_cli` with a clear `purpose`. A `permissionRequired: true` response means **no Browser access happened**. Junius shows the **MCP App** four-way choice; only the user's selection in that panel can grant permission. After an allow choice and the user's follow-up, retry the requested browser tool call. Do not request an authorization phrase or self-approve. If the panel is unavailable or no choice was recorded, do not retry device access. Refusal and Escape stop the affected scope; Desktop permission is separate.
+When local Playwright could help, call `playwright_cli` with a clear `purpose`. A `permissionRequired: true` response means **no Browser access happened**. Immediately call `junius_computer_permission_request` once to display the **MCP App** four-way choice; only the user's selection in that panel can grant permission. Never open the panel for already authorized Browser tool calls. After an allow choice and the user's follow-up, retry the requested browser tool call. Do not request an authorization phrase or self-approve. If the panel is unavailable or no choice was recorded, do not retry device access. Refusal and Escape stop the affected scope; Desktop permission is separate.
 
 ## Browser automation is not a Workspace workaround
 
