@@ -212,7 +212,7 @@ Job launch uses the same process preparation model as run_command.
     playwright_cli(session, command, args)
     desktop(session, command, ...)
 
-Browser and Desktop are first-class MCP services rather than Workspace-scoped process adapters.
+Browser and Desktop are first-class MCP services rather than Workspace-scoped process adapters. They run without Junius-specific four-way permission widgets; named Browser and Desktop sessions are isolated by Chat and user Escape interrupts the active operation. Desktop still uses the control_begin/control_end lifecycle.
 
 ## Runtime topology
 
@@ -279,7 +279,7 @@ Junius owns the turn model instead of depending on an OpenAI turn identifier. Fo
 
 After each turn begins, the assistant must discover installed Skills with `list_skills`, match their descriptions against the current task, and `read_skill` for every applicable Skill before substantive task tools. Global Skills participate in every Workspace; effective Workspace overrides remain authoritative. This makes Skill activation responsive to installation/removal and gives the monitor a factual Skill-use event.
 
-Before any consequential tool call in the same turn, the assistant must call `junius_task_review` with the user's actual objective, work scope and non-goals, risks including alternate paths, and observable verification. The common tool-call boundary refuses potentially state-changing operations if this checkpoint was not recorded for the **active** turn. Read-only discovery stays available, as do cancellation and emergency window closing. A new turn cannot inherit a prior review. Review content is recorded as an ordinary tool invocation; this is a procedural guard, **not** a semantic proof of design quality, permission to operate Browser/Desktop, or user approval of material choices.
+Before any consequential tool call in the same turn, the assistant must call `junius_task_review` with the user's actual objective, work scope and non-goals, risks including alternate paths, and observable verification. The common tool-call boundary refuses potentially state-changing operations if this checkpoint was not recorded for the **active** turn. Read-only discovery stays available, as do cancellation and emergency window closing. A new turn cannot inherit a prior review. Review content is recorded as an ordinary tool invocation; this is a procedural guard, **not** a semantic proof of design quality, a grant to expand the user's requested task, or user approval of material choices.
 
 Every ordinary MCP tool invocation passes through one common observation hook. The hook attaches the call to the active Junius turn for the current MCP session, captures a bounded input snapshot so repeated calls to the same tool can be distinguished, and records ordered start/completion events. These observability inputs are stored only in the session observability record and are not copied into the persistent Audit store. If an ordinary tool arrives without an active `junius_turn_begin`, Junius refuses to execute it and tells the caller to begin the turn first. Every ordinary tool result also reminds the caller to invoke `junius_turn_end` before the final assistant answer when no further Junius tool call is needed. Starting a new explicit turn closes any unfinished prior turn in that MCP session as a recovery path.
 

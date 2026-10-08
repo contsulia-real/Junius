@@ -2,7 +2,7 @@ import type {
   McpServer,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { ComputerPermissionManager, closeComputerSessions } from "./mcp-computer-permission.js";
+import { ComputerSessionManager, closeComputerSessions } from "./mcp-computer-sessions.js";
 import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { DesktopComputerUseService } from "./desktop-computer-use.js";
 import type {
@@ -57,7 +57,7 @@ export function registerMcpTurnTools(
   server: McpServer,
   observability:
     McpObservabilityStore,
-  permissions = new ComputerPermissionManager(),
+  sessions = new ComputerSessionManager(),
   browser?: PlaywrightCliService,
   desktop?: DesktopComputerUseService,
 ): void {
@@ -126,11 +126,11 @@ export function registerMcpTurnTools(
         )?.["openai/locale"];
 
       if (browser && desktop) {
-        await closeComputerSessions(permissions.endTurn(sessionId), browser, desktop);
+        await closeComputerSessions(sessions.endTurn(sessionId), browser, desktop);
       } else {
-        permissions.endTurn(sessionId);
+        sessions.endTurn(sessionId);
       }
-      permissions.beginTurn(sessionId);
+      sessions.beginTurn(sessionId);
       const turnId =
         observability.beginTurn(
           sessionId,
@@ -146,7 +146,7 @@ export function registerMcpTurnTools(
             type:
               "text" as const,
             text:
-              "Junius turn started. Read applicable Skills and inspect relevant context. Before any consequential tool, call junius_task_review with objective, scope, risks, and verification; this does not replace Browser/Desktop consent. After the final Junius tool call, call junius_turn_end before the final answer.",
+              "Junius turn started. Read applicable Skills and inspect relevant context. Before any consequential tool, call junius_task_review with objective, scope, risks, and verification; this does not replace the user task constraints. After the final Junius tool call, call junius_turn_end before the final answer.",
           },
         ],
         structuredContent: {
@@ -162,7 +162,7 @@ export function registerMcpTurnTools(
       title:
         "Review Task Before Execution",
       description:
-        "Required before consequential Junius tools in the current turn. After inspecting relevant context, state the user's real goal, the chosen work boundary (including what stays untouched), material risks/alternative paths, and how the original problem will be verified. This records a review checkpoint; it is NOT a user approval, an independent assessment of correctness, or permission to use Browser/Desktop. Read-only discovery is allowed before review. A new turn requires a new review.",
+        "Required before consequential Junius tools in the current turn. After inspecting relevant context, state the user's real goal, the chosen work boundary (including what stays untouched), material risks/alternative paths, and how the original problem will be verified. This records a review checkpoint; it is NOT a user approval, an independent assessment of correctness, or permission to exceed the requested task. Read-only discovery is allowed before review. A new turn requires a new review.",
       inputSchema:
         z.object({
           objective:
@@ -201,7 +201,7 @@ export function registerMcpTurnTools(
       return {
         content: [{
           type: "text" as const,
-          text: "Task review recorded for this turn. This is not user approval or proof that the design is correct. Execute only within the stated scope, verify the actual outcome, and respect independent Browser/Desktop consent.",
+          text: "Task review recorded for this turn. This is not user approval or proof that the design is correct. Execute only within the stated scope, verify the actual outcome, and respect the requested scope.",
         }],
         structuredContent: {
           reviewed: true,
@@ -263,9 +263,9 @@ export function registerMcpTurnTools(
           sessionId,
         );
       if (browser && desktop) {
-        await closeComputerSessions(permissions.endTurn(sessionId), browser, desktop);
+        await closeComputerSessions(sessions.endTurn(sessionId), browser, desktop);
       } else {
-        permissions.endTurn(sessionId);
+        sessions.endTurn(sessionId);
       }
 
       return {

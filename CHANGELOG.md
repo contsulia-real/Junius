@@ -4,6 +4,8 @@
 
 ## 0.1.9-alpha
 
+- Removed Junius-specific Browser/Desktop four-way authorization dialogs, policy state, and redundant service authorization flags; preserve Chat-scoped sessions, Desktop control lifecycle, and Escape interruption.
+
 - Show Browser/Desktop four-choice consent UI only for genuinely pending requests, not after every authorized tool call; use nonce-bound widget actions to preserve Chat-scoped permission when app session metadata is unavailable.
 
 - Restored local Junius observability history across Host/Worker restarts with actual user turn titles and bounded tool-call inputs/events instead of `[private input omitted]`; retained existing seven-day/256-session pruning and session isolation.

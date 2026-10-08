@@ -4,8 +4,6 @@ export type PlaywrightCliErrorCode =
   | "playwright_cli_closing"
   | "playwright_cli_not_available"
   | "invalid_session"
-  | "authorization_required"
-  | "authorization_not_allowed"
   | "user_interrupted"
   | "data_cleanup_failed"
   | "spawn_failed"

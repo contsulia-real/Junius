@@ -140,23 +140,13 @@ Temporary isolation is allowed for diagnosis.
 
 Final verification must return to the original relevant conditions whenever that surface is available. If the original surface cannot be exercised, say so and do not claim that it was verified there.
 
-## Local Desktop privacy boundary
+## Local Browser and Desktop execution
 
-When local Computer Use could help with a user's task, call `desktop` with a clear `purpose`. If it returns `permissionRequired: true`, **no Desktop access happened**. Immediately call `junius_computer_permission_request` once to display the **MCP App** panel with a four-way user choice: allow this turn, allow this Chat, deny this turn, or deny this Chat. Do not call the panel tool after an authorized Desktop operation. The user must click one of the four options. Do not invent a decision or treat a chat message as a substitute for the panel click.
+Junius does not impose an additional four-way Browser or Desktop consent panel. The normal `playwright_cli` and `desktop` tools execute directly under the Windows account running Junius. They do not require a permission request tool, a special authorization phrase, or a `purpose` parameter. Do not fabricate user intent or expand the requested action merely because the tools are available.
 
-After the panel accepts an allow choice and the user sends a follow-up, retry the original Desktop tool call with the same intended purpose; Junius checks the stored scope. The current turn is never authorized merely by requesting the panel. If the widget does not appear, expires, or closes without a decision, report the issue and do not operate the device. Refusal or Escape means stop. Browser consent does not grant Desktop consent, and permission does not authorize unrelated high-impact actions.
+Browser sessions are scoped to each Chat and named sessions can persist across turns; close the session after browser work is done. Desktop uses a bounded `control_begin` -> observe/act -> `control_end` lifecycle; Junius starts the control session automatically when needed and closes it at turn end. A physical Escape interrupts the current operation; stop and do not retry until the user makes a new request.
 
-## Local Browser privacy boundary
-
-When local Playwright could help, call `playwright_cli` with a clear `purpose`. A `permissionRequired: true` response means **no Browser access happened**. Immediately call `junius_computer_permission_request` once to display the **MCP App** four-way choice; only the user's selection in that panel can grant permission. Never open the panel for already authorized Browser tool calls. After an allow choice and the user's follow-up, retry the requested browser tool call. Do not request an authorization phrase or self-approve. If the panel is unavailable or no choice was recorded, do not retry device access. Refusal and Escape stop the affected scope; Desktop permission is separate.
-
-## Browser automation is not a Workspace workaround
-
-Browser permission is independent of Workspace command or file access. Never use `run_command`, `run_commands`, `start_job`, Node/Python scripts, shell commands, or another automation stack (Playwright, Puppeteer, Selenium, Chromium, etc.) to inspect, navigate, screenshot, or control a real Browser as an alternate path or bypass of Junius `playwright_cli` consent. The rule includes read-only browsing, UI inspection, debugging and testing a live Browser.
-
-Do not install, download, bootstrap, or add Playwright or another browser-automation dependency or browser binary into a Workspace, temporary directory or local environment to enable a browser task, work around missing consent, or prepare a speculative browser run. Browser work must go through `playwright_cli` and its actual user-selected MCP App permission. If permission is missing or denied, stop the browser task; do not switch tools to evade it.
-
-Ordinary dependency development is separate: install or modify Playwright as a project dependency only when the user explicitly requests that dependency work. That request never authorizes executing a Browser; real Browser operations still require the Junius four-way user choice. Do not silently install dependencies merely to run an optional UI test.
+Prefer Junius's built-in Browser/Desktop tools. Never add unrequested dependencies or create alternate automation infrastructure merely for a speculative test. Windows and platform-level permissions remain outside Junius's control.
 
 ## Specialized work contracts
 
@@ -177,7 +167,7 @@ Do not substitute remembered or assumed contract contents for the current contra
 
 Junius enforces a per-turn execution checkpoint. Start with `junius_turn_begin`, read applicable Skills/contracts, and inspect the real situation through read-only tools before any action that can change state. Then call `junius_task_review` with the actual user objective, the chosen scope and non-goals, material risks/alternate paths, and how the original result will be verified. A new turn requires a new review. Consequential tools (including Workspace commands, Jobs, file changes and Git mutations) refuse calls without it. Emergency interruption and cancellation must remain available.
 
-This is an execution-order checkpoint, not a correctness oracle or permission grant. Merely filling fields is not evidence that a design is sound. A review never replaces user consent for Browser/Desktop or user decisions about major product changes. Do not fabricate analysis to get past the checkpoint, skip inspection, or use another execution route to avoid it. Prefer one coherent solution rather than repeated symptom patches.
+This is an execution-order checkpoint, not a correctness oracle or permission grant. Merely filling fields is not evidence that a design is sound. A review never replaces the user’s actual instructions or decisions about major product changes. Do not fabricate analysis to get past the checkpoint, skip inspection, or use another execution route to avoid it. Prefer one coherent solution rather than repeated symptom patches.
 
 ## Inspect before consequential changes
 

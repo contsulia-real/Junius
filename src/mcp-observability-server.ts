@@ -29,8 +29,6 @@ const INTERNAL_OBSERVABILITY_TOOLS =
   new Set([
     JUNIUS_PANEL_TOOL,
     JUNIUS_PANEL_SNAPSHOT_TOOL,
-    "junius_computer_permission_state",
-    "junius_computer_permission_decide",
     JUNIUS_TURN_BEGIN_TOOL,
     JUNIUS_TURN_END_TOOL,
   ]);
@@ -267,7 +265,7 @@ export function attachMcpObservability(
               "Consequential Junius tool blocked: call junius_task_review " +
               "in this turn after inspecting relevant context. Describe the " +
               "user goal, scope and non-goals, material risks, and observable " +
-              "verification. A review is not Browser/Desktop consent.",
+              "verification. A review is not permission to expand the user task.",
           }],
         };
       }

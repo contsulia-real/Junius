@@ -1,18 +1,14 @@
 # JUNIUS DESKTOP COMPUTER USE CONTRACT
 
-## Authorization boundary
+## Direct Desktop operation
 
-When local Desktop access would help with the user's task, call `desktop` with a plain-language `purpose`. An initial result of `permissionRequired: true` means no screen, window, clipboard or input access occurred. Immediately call `junius_computer_permission_request` once for the pending request to display an **MCP App** panel with four user options: allow this turn, allow this Chat, deny this turn, or deny this Chat. Subsequent authorized Desktop calls must not display new consent panels. The user must click a choice; do not fabricate consent or accept an authorization phrase as a substitute.
+Use `desktop` directly when the user requests a Windows desktop action. Junius no longer displays a four-way consent panel and requires no `purpose` field, authorization phrase, or explicit authorization flag. The caller still must act within the user's task and respect the Windows account's ordinary permissions.
 
-After the panel records an allow choice and the user follows up, retry the Desktop command with the original purpose. Junius then checks the user-selected scope and establishes authorized control automatically when needed. If the panel cannot display or no response was recorded, stop rather than attempting Desktop access. Desktop and Browser permissions are independent. Permission does not authorize unrelated high-impact actions. The model must not set an `explicit_user_authorization` parameter.
-
-Desktop perception is screenshot-only. Do not assume UI Automation, accessibility trees, semantic controls, or hidden structured UI state.
+Desktop perception is screenshot-only. Do not assume UI Automation, accessibility trees, semantic controls, or hidden structured UI state. Junius automatically begins a named desktop control session when needed and closes it at turn end; explicit `control_begin` and `control_end` are available as lifecycle operations.
 
 ## Control lifecycle
 
-A Desktop control task uses this bounded lifecycle:
-
-MCP App user click -> user follow-up -> authorized control_begin -> observe -> act -> observe -> control_end(session)
+Desktop work follows: control_begin -> observe -> act -> observe -> control_end(session).
 
 Use the same session throughout the task. If control_begin succeeded, always call control_end before finishing, including on errors. Do not leave an active Desktop control scope.
 

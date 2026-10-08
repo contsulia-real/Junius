@@ -37,10 +37,9 @@ export class DesktopComputerUseService {
     NodeJS.Platform;
   #helperClient:
     DesktopHelperClient | undefined;
-  // Privacy authorization lives here so unauthorized calls fail
-  // before the Desktop helper can start. The Python helper separately
-  // tracks the visible control/indicator lifecycle as a second safety gate.
-  readonly #authorizedSessions =
+  // Track active control sessions separately from user permission. The Python
+  // helper owns the visible control/indicator lifecycle.
+  readonly #activeSessions =
     new Set<string>();
 
   constructor(
@@ -163,34 +162,9 @@ export class DesktopComputerUseService {
 
     if (
       request.command ===
-        "control_begin"
-    ) {
-      if (
-        request
-          .explicitUserAuthorization !==
-        true
-      ) {
-        throw new DesktopComputerUseError(
-          "authorization_required",
-          "Desktop control_begin requires explicit authorization from the current user request.",
-        );
-      }
-    } else if (
-      request
-        .explicitUserAuthorization !==
-      undefined
-    ) {
-      throw new DesktopComputerUseError(
-        "authorization_not_allowed",
-        "explicitUserAuthorization is only valid for desktop control_begin.",
-      );
-    }
-
-    if (
-      request.command ===
         "control_end"
     ) {
-      this.#authorizedSessions
+      this.#activeSessions
         .delete(
           request.session,
         );
@@ -217,14 +191,14 @@ export class DesktopComputerUseService {
         "control_begin"
     ) {
       if (
-        !this.#authorizedSessions
+        !this.#activeSessions
           .has(
             request.session,
           )
       ) {
         throw new DesktopComputerUseError(
-          "authorization_required",
-          "Desktop access requires a successful explicitly authorized control_begin for this session.",
+          "control_not_started",
+          "Desktop control is not active for this session. Start control_begin first.",
         );
       }
 
@@ -232,11 +206,11 @@ export class DesktopComputerUseService {
         this.#helperClient
           ?.running !== true
       ) {
-        this.#authorizedSessions
+        this.#activeSessions
           .clear();
         throw new DesktopComputerUseError(
           "control_not_started",
-          "Desktop control is no longer active. Start a new explicitly authorized control_begin.",
+          "Desktop control is no longer active. Start a new control_begin.",
         );
       }
     }
@@ -277,7 +251,7 @@ export class DesktopComputerUseService {
         response.code ===
           "control_not_started"
       ) {
-        this.#authorizedSessions
+        this.#activeSessions
           .clear();
         throw new DesktopComputerUseError(
           "control_not_started",
@@ -304,7 +278,7 @@ export class DesktopComputerUseService {
       request.command ===
         "control_begin"
     ) {
-      this.#authorizedSessions
+      this.#activeSessions
         .add(
           request.session,
         );
@@ -333,7 +307,7 @@ export class DesktopComputerUseService {
 
   async close():
     Promise<void> {
-    this.#authorizedSessions
+    this.#activeSessions
       .clear();
     const helper =
       this.#helperClient;

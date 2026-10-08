@@ -84,8 +84,6 @@ export type DesktopComputerUseErrorCode =
   | "invalid_session"
   | "command_not_allowed"
   | "arguments_not_allowed"
-  | "authorization_required"
-  | "authorization_not_allowed"
   | "user_interrupted"
   | "control_not_started"
   | "spawn_failed"
@@ -111,7 +109,6 @@ export interface DesktopHelperImage {
 export interface DesktopRunRequest {
   readonly session: string;
   readonly command: DesktopCommand;
-  readonly explicitUserAuthorization?: true;
   readonly handle?: number;
   readonly x?: number;
   readonly y?: number;

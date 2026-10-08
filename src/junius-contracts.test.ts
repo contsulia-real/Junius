@@ -160,22 +160,10 @@ test(
       source,
       /export const JUNIUS_CORE_CONTRACT = `/u,
     );
-    assert.match(
-      JUNIUS_CORE_CONTRACT,
-      /four-way user choice/u,
-    );
-    assert.match(
-      JUNIUS_DESKTOP_CONTRACT,
-      /four user options/u,
-    );
-    assert.match(
-      JUNIUS_CORE_CONTRACT,
-      /four-way choice/u,
-    );
-    assert.match(
-      JUNIUS_BROWSER_CONTRACT,
-      /junius_computer_permission_request.*four user choices/u,
-    );
+    for (const contract of [JUNIUS_CORE_CONTRACT, JUNIUS_BROWSER_CONTRACT, JUNIUS_DESKTOP_CONTRACT]) {
+      assert.match(contract, /direct|directly|no longer displays/u);
+      assert.doesNotMatch(contract, /junius_computer_permission_request|permissionRequired/u);
+    }
     assert.match(
       JUNIUS_BROWSER_CONTRACT,
       /JUNIUS_BROWSER_RETAIN_DATA=1/u,

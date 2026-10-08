@@ -59,9 +59,7 @@ export class PlaywrightCliService {
   readonly #retainData: boolean;
   readonly #interrupt:
     UserInterruptSource | undefined;
-  readonly #authorizedSessions =
-    new Set<string>();
-  #brokerError: string | undefined;
+#brokerError: string | undefined;
   #closing = false;
 
   constructor(
@@ -182,8 +180,7 @@ export class PlaywrightCliService {
   async run(
     session: string,
     command: PlaywrightCliCommand,
-    args: readonly string[],
-    explicitUserAuthorization?: true,
+    args: readonly string[]
   ): Promise<PlaywrightCliExecution> {
     if (!SESSION_PATTERN.test(session)) {
       throw new PlaywrightCliError(
@@ -199,33 +196,11 @@ export class PlaywrightCliService {
       );
     }
 
-    const alreadyAuthorized =
-      this.#authorizedSessions.has(session);
-    if (alreadyAuthorized) {
-      if (explicitUserAuthorization !== undefined) {
-        throw new PlaywrightCliError(
-          "authorization_not_allowed",
-          "Browser authorization is already active for this session. Do not repeat explicit_user_authorization.",
-        );
-      }
-    } else if (explicitUserAuthorization !== true) {
-      throw new PlaywrightCliError(
-        "authorization_required",
-        "Browser access requires explicit authorization from the current user request.",
-      );
-    }
-
     if (this.#launcher === undefined) {
       throw new PlaywrightCliError(
         "playwright_cli_not_available",
         "playwright-cli was not found on PATH.",
       );
-    }
-
-    if (command === "close") {
-      this.#authorizedSessions.delete(session);
-    } else if (!alreadyAuthorized) {
-      this.#authorizedSessions.add(session);
     }
 
     const closingState: PlaywrightSessionToken | undefined =
@@ -468,7 +443,6 @@ export class PlaywrightCliService {
     );
 
     this.#sessions.clear();
-    this.#authorizedSessions.clear();
 
     await this.#broker?.close();
   }

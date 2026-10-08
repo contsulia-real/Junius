@@ -9,26 +9,11 @@ import {
   resolveJuniusPromptRoot,
 } from "./junius-prompt-store.js";
 
-test("packaged computer-use rules describe the actual MCP App approval handoff", () => {
+test("packaged Browser/Desktop rules describe direct execution without a Junius consent dialog", () => {
   for (const name of ["core", "browser", "desktop"] as const) {
     const rule = readDefaultJuniusPrompt(name).text;
-    assert.match(rule, /MCP App/u, name);
-    assert.match(rule, /permissionRequired/u, name);
-    assert.match(rule, /user.*(?:select|click|choice)|用户.*(?:选择|点击)/iu, name);
-    assert.match(rule, /(?:retry|call.*again|再次调用|重试)/iu, name);
-    assert.equal(rule.includes("elicitation/create"), false, name);
-  }
-});
-
-test("browser permission applies to indirect automation and prohibits silently installing Playwright", () => {
-  for (const name of ["core", "browser", "engineering"] as const) {
-    const rule = readDefaultJuniusPrompt(name).text;
-    assert.match(rule, /run_command|run_commands|start_job/u, name);
-    assert.match(rule, /Playwright|Puppeteer|Selenium/u, name);
-    assert.match(rule, /install|dependency|dependencies/u, name);
-    assert.match(rule, /explicitly requests|explicitly asks|explicit user/u, name);
-    assert.match(rule, /permission|consent|authorization/u, name);
-    assert.match(rule, /bypass|alternate/u, name);
+    assert.match(rule, /direct|directly/u, name);
+    assert.doesNotMatch(rule, /permissionRequired|junius_computer_permission_request|MCP App/u, name);
   }
 });
 

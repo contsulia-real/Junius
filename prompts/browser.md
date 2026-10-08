@@ -1,20 +1,10 @@
 # JUNIUS BROWSER COMPUTER USE CONTRACT
 
-## Authorization boundary
+## Direct Browser operation
 
-When the user's task could benefit from Playwright, call `playwright_cli` with a concise `purpose`. The first call can return `permissionRequired: true` without reading or changing the Browser. Immediately call `junius_computer_permission_request` once for that pending request; **only this request tool** displays the **MCP App** consent panel with the four user choices: allow this turn, allow this Chat, deny this turn, or deny this Chat. Normal authorized Browser tool calls never open permission panels. The user must click one of its buttons; do not forge consent or infer it from chat messages.
+Use `playwright_cli` directly when the user's task requires browser interaction. Junius does not display an additional consent panel or require a permission token, a `purpose` field, or a user authorization phrase. Browser sessions are isolated by Chat. The Playwright CLI command and arguments pass through unchanged apart from Junius's session flag.
 
-After the user's panel selection is accepted and the user follows up, retry the original tool command with the same purpose. Permission is checked by Junius: allow-this-turn applies to the resumed turn, allow-this-Chat persists in this Chat; denial forbids Browser access for its scope. If the widget does not render, the request expires, or the user closes the panel, do not continue the Browser operation. Only real panel clicks grant access; `permissionRequired` itself is never an authorization token. Browser and Desktop consent are separate; a Browser grant does not authorize unrelated high-impact actions.
-
-The Playwright CLI command and argument vector are passed through unchanged apart from Junius's session flag. Use the appropriate installed CLI capability.
-
-## No alternate automation or silent installation
-
-Only the authorized Junius `playwright_cli` path may operate a real Browser. Do not replace a pending, denied, or unavailable consent request with `run_command`, `run_commands`, `start_job`, shell, Node/Python scripts, `npx playwright`, `pnpm`, Puppeteer, Selenium or any alternate automation path. This includes read-only page inspection, screenshots, navigation, UI tests and browser debugging. Workspace command access is not Browser permission.
-
-Never install, download, bootstrap or add Playwright, Chromium or other Browser automation packages or binaries in a Workspace, temporary directory or the host just to browse or avoid the Junius permission panel. Use the existing Junius Browser tool; if consent is not granted, stop and report the blocked step. Installing a browser package does not grant permission.
-
-An explicit user request to change a project's Playwright dependency is ordinary engineering work and may be handled as that task, but does not authorize operating a Browser. Do not install it unrequested as preparation for an optional UI test.
+Do not confuse technical tool access with permission to do unrelated tasks. Prefer the existing `playwright_cli` service over inventing another automation stack. Do not silently install Playwright, Chromium, or other dependencies as preparation for an optional test; dependency installation is a separate change that needs a task-related reason.
 
 ## User interrupt
 

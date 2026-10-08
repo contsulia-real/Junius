@@ -188,7 +188,7 @@ The current MCP surface is:
 - Computer use: `playwright_cli`, `desktop`
 - Turn / execution review / observability: `junius_turn_begin`, `junius_task_review`, `junius_turn_end`, `junius_observability_panel`, `close_junius_test_window`
 
-Read-only tools can inspect first; consequential tools require a per-turn `junius_task_review` covering objective, scope, risks, and verification. Browser/Desktop still require separate user consent.
+Read-only tools can inspect first; consequential tools require a per-turn `junius_task_review` covering objective, scope, risks, and verification. Browser/Desktop execute directly under the Windows account running Junius without an additional Junius consent panel.
 
 The source-tree test connection does not expose installed-copy update tools.
 

@@ -4,14 +4,13 @@ import type { AuditStore } from "./audit-store.js";
 import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { McpObservabilityStore } from "./mcp-observability.js";
 import { observabilitySessionId } from "./mcp-session-context.js";
-import { ComputerPermissionManager } from "./mcp-computer-permission.js";
-import { computerPermissionPrompt, computerPermissionToolMeta } from "./mcp-computer-permission-panel.js";
+import { ComputerSessionManager } from "./mcp-computer-sessions.js";
 import { playwrightCliToolError, stableIdSchema } from "./mcp-tool-shared.js";
 
 export function registerBrowserTool(
   server: McpServer,
   playwrightCli: PlaywrightCliService,
-  permissions: ComputerPermissionManager,
+  sessions: ComputerSessionManager,
   observability: McpObservabilityStore,
   audit?: AuditStore,
 ): void {
@@ -20,50 +19,33 @@ export function registerBrowserTool(
     {
       title: "Use Local Playwright CLI",
       description:
-        "Use the local browser when it would help complete the user's task. Junius will first present a user-facing choice explaining the purpose and four permission scopes (allow/deny this turn or this Chat). Do not require the user to speak an authorization phrase. Browser inspection also requires consent. Do not use this tool after an Escape interruption during the same turn; do not retry without renewed user consent. Device permission does not authorize independent high-impact actions. close ends the named browser session.",
+        "Use the local Playwright browser directly for the user's task. Sessions are isolated by Chat, and close ends the named session. Physical Escape interrupts a running operation; stop after an interruption. No separate Junius consent panel.",
       inputSchema: z.object({
         session: stableIdSchema.default("junius")
           .describe("Browser session name within this Chat (never shared across Chats)."),
-        purpose: z.string().min(8).max(400)
-          .describe("Plain-language explanation for the user of why browser access is needed and what you will do."),
         command: z.string().min(1).max(4_096),
         args: z.array(z.string().max(65_536)).max(256).default([]),
       }),
-      _meta: computerPermissionToolMeta(),
       annotations: {
         readOnlyHint: false, destructiveHint: true,
         idempotentHint: false, openWorldHint: true,
       },
     },
-    async ({ session, purpose, command, args }, context) => {
+    async ({ session, command, args }, context) => {
       const chat = observabilitySessionId(context.mcpReq._meta);
       const turnId = chat === undefined ? undefined : observability.activeTurnId(chat);
       if (!chat || !turnId) {
         return { isError: true, content: [{ type: "text" as const, text: "Junius turn identity is required before browser access." }] };
       }
-      const choice = permissions.authorize(chat, turnId, "browser", purpose);
-      if (choice !== "allowed") {
-        return choice === "denied"
-          ? { isError: true, content: [{ type: "text" as const, text: "Browser permission denied for this Chat or turn." }] }
-          : computerPermissionPrompt("browser", purpose);
+      if (sessions.wasInterrupted(chat, "browser")) {
+        return { isError: true, content: [{ type: "text" as const, text: "Browser operation was interrupted by Escape; wait for the next user turn." }] };
       }
-
-      const actualSession = permissions.session(chat, session ?? "junius");
-      const initial = !permissions.isTracked(chat, "browser", actualSession);
-      permissions.track(chat, "browser", actualSession);
+      const actualSession = sessions.session(chat, session ?? "junius");
+      sessions.track(chat, "browser", actualSession);
       const startedAt = performance.now();
       try {
-        let execution;
-        try {
-          execution = await playwrightCli.run(
-            actualSession, command, args, initial ? true : undefined,
-          );
-        } catch (error) {
-          // An idle browser session may have expired while Chat-level consent remains valid.
-          if (initial || (error as { code?: string })?.code !== "authorization_required") throw error;
-          execution = await playwrightCli.run(actualSession, command, args, true);
-        }
-        if (command === "close") permissions.untrack(chat, "browser", actualSession);
+        const execution = await playwrightCli.run(actualSession, command, args);
+        if (command === "close") sessions.untrack(chat, "browser", actualSession);
         audit?.record({
           category: "browser", action: command, status: "succeeded",
           subject: actualSession, durationMs: execution.durationMs,
@@ -77,8 +59,8 @@ export function registerBrowserTool(
         };
       } catch (error) {
         if ((error as { code?: string })?.code === "user_interrupted") {
-          permissions.interrupt(chat, "browser");
-          permissions.untrack(chat, "browser", actualSession);
+          sessions.interrupt(chat, "browser");
+          sessions.untrack(chat, "browser", actualSession);
           await playwrightCli.run(actualSession, "close", []).catch(() => undefined);
         }
         audit?.record({

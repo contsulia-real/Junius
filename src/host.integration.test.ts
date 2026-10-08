@@ -1105,7 +1105,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       browserTool?.inputSchema
         ?.properties ?? {};
     assert.equal("explicit_user_authorization" in browserProperties, false);
-    assert.equal("purpose" in browserProperties, true);
+    assert.equal("purpose" in browserProperties, false);
     assert.equal(
       browserTool
         ?.inputSchema
@@ -1116,26 +1116,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       false,
     );
 
-    const unauthorizedBrowser =
-      await callMcpTool(
-        mcpOrigin,
-        mcpSessionId,
-        "playwright_cli",
-        {
-          session:
-            "browser-privacy-boundary",
-          purpose: "核查设备访问授权边界",
-          command:
-            "snapshot",
-          args: [],
-        },
-        true,
-      );
-    assert.equal(
-      unauthorizedBrowser.isError, false,
-      JSON.stringify({ payload: unauthorizedBrowser.payload, content: unauthorizedBrowser.textContents }),
-    );
-    assert.equal(unauthorizedBrowser.payload.permissionRequired, true);
+    assert.equal(tools.some(tool => tool.name === "junius_computer_permission_request"), false);
+    assert.equal(tools.some(tool => tool.name === "junius_computer_permission_decide"), false);
 
     const desktopTool =
       tools.find(
@@ -1178,48 +1160,16 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
           "explicit_user_authorization",
         ) ?? false,
       false,
-      "Desktop authorization is now requested from the client rather than asserted by the model.",
+      "Desktop has no Junius-specific permission inputs.",
     );
     assert.equal("explicit_user_authorization" in desktopProperties, false);
-    assert.equal("purpose" in desktopProperties, true);
+    assert.equal("purpose" in desktopProperties, false);
 
-    const unauthorizedDesktop =
-      await callMcpTool(
-        mcpOrigin,
-        mcpSessionId,
-        "desktop",
-        {
-          session:
-            "privacy-boundary",
-          purpose: "核查设备访问授权边界",
-          command:
-            "control_begin",
-        },
-        true,
-      );
-    assert.equal(unauthorizedDesktop.isError, false);
-    assert.equal(unauthorizedDesktop.payload.permissionRequired, true);
-
-    const unauthorizedScreenshot =
-      await callMcpTool(
-        mcpOrigin,
-        mcpSessionId,
-        "desktop",
-        {
-          session:
-            "privacy-boundary",
-          purpose: "核查设备访问授权边界",
-          command:
-            "screenshot",
-        },
-        true,
-      );
-    assert.equal(unauthorizedScreenshot.isError, false);
-    assert.equal(unauthorizedScreenshot.payload.permissionRequired, true);
+    // Live Browser/Desktop access is tested only through synthetic helpers.
+    // Host contract checks must never operate the user's actual device.
 
     for (
       const property of [
-        "purpose",
         "actions",
         "screenshot_after",
         "screenshot_handle",

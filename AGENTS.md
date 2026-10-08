@@ -43,13 +43,12 @@ Scope: this entire repository.
 - If a touched file mixes separable responsibilities and a behavior-preserving split is directly relevant to the task, split along those responsibility boundaries instead of adding more unrelated logic.
 - Do not split files merely to reduce line count, and do not replace one god-file with tiny pass-through modules, circular dependencies, duplicated helpers, or multiple sources of truth.
 
-## Browser and Desktop privacy
+## Browser and Desktop execution
 
-- When local Browser or Desktop access would help, Junius must request informed user permission through its four-way consent mechanism: allow this turn, allow this Chat, deny this turn, deny this Chat.
-- Do not require a specific authorization phrase in the user request. The model decides whether to request access; only the real user's selected answer grants it.
-- Never access the real Browser or Desktop before the user selects an applicable allow choice. Browser and Desktop authorization are independent and scoped to the Chat and turn. Respect refusal and Escape; no cross-Chat inheritance.
-- Workspace commands, scripts and dependencies are not a substitute for Browser consent. Do not install Playwright or another browser-automation package merely to browse, run UI tests or bypass authorization; do not control the Browser through shells, Node/Python or alternative automation tools without Junius permission. Explicitly requested dependency maintenance is separate from, and does not grant, Browser access.
-- Engineering tests must use fake/synthetic helpers by default. Real Browser and Desktop access remain gated by an actual user choice.
+- Junius does not impose an additional four-way consent panel, per-Chat permission gate, or special user authorization flag for Browser or Desktop. The user has explicitly chosen to remove this product-level restriction. `playwright_cli` and `desktop` run under the Windows account that owns the Junius instance.
+- Retain per-Chat session separation, normal browser profile cleanup, the Desktop control_begin/control_end lifecycle, and physical Escape interruption. Never access unrelated device state merely because the tool is available; follow the user's requested task.
+- Windows and platform permissions are independent of Junius and cannot be assumed disabled.
+- Prefer the existing Junius Browser service, and do not silently install another browser automation dependency without a concrete task-related reason. Engineering tests should use synthetic helpers unless live GUI work is specifically requested.
 
 ## Deliberate execution boundary
 
