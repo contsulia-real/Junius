@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { McpServer, type RegisteredTool, type ServerContext } from "@modelcontextprotocol/server";
 import { ComputerPermissionManager } from "./mcp-computer-permission.js";
+import { registerComputerPermissionPanel, COMPUTER_PERMISSION_URI } from "./mcp-computer-permission-panel.js";
 import { McpObservabilityStore } from "./mcp-observability.js";
 import { attachMcpObservability } from "./mcp-observability-server.js";
 import { registerMcpTurnTools } from "./mcp-turn-tools.js";
@@ -11,29 +12,18 @@ import { withMcpSessionContext } from "./mcp-session-context.js";
 import { PlaywrightCliError, type PlaywrightCliService } from "./playwright-cli.js";
 import { DesktopComputerUseError, type DesktopComputerUseService } from "./desktop-computer-use.js";
 
-type Result = { resultType?: string; requestState?: string; inputRequests?: unknown; isError?: boolean };
+type Result = { structuredContent?: Record<string, unknown>; content?: unknown[]; isError?: boolean };
 type BrowserCall = { session: string; command: string; authorized?: true };
 type DesktopCall = { session: string; command: string; authorized?: true };
-function context(token?: string, decision?: string): ServerContext {
-  return {
-    mcpReq: {
-      _meta: {},
-      requestState: () => token,
-      inputResponses: decision ? {
-        permission: { action: "accept", content: { decision } },
-      } : undefined,
-    },
-  } as unknown as ServerContext;
+function context(): ServerContext {
+  return { mcpReq: { _meta: {} } } as unknown as ServerContext;
 }
 function fixture() {
   const browserCalls: BrowserCall[] = [], desktopCalls: DesktopCall[] = [];
-  let interruptBrowser = false, interruptDesktop = false;
+  let interruptDesktop = false;
   const browser = {
     async run(session: string, command: string, _args: readonly string[], authorized?: true) {
       browserCalls.push({ session, command, authorized });
-      if (interruptBrowser && command !== "close") {
-        throw new PlaywrightCliError("user_interrupted", "synthetic interruption");
-      }
       return { session, command, exitCode: 0, stdout: "SYNTHETIC", stderr: "", durationMs: 0, transport: "spawn" as const };
     },
   } as PlaywrightCliService;
@@ -41,7 +31,7 @@ function fixture() {
     async run(req: { session: string; command: string; explicitUserAuthorization?: true }) {
       desktopCalls.push({ session: req.session, command: req.command, authorized: req.explicitUserAuthorization });
       if (interruptDesktop && req.command !== "control_end") {
-        throw new DesktopComputerUseError("user_interrupted", "synthetic interruption");
+        throw new DesktopComputerUseError("user_interrupted", "synthetic");
       }
       return { session: req.session, command: req.command, result: {}, durationMs: 0 };
     },
@@ -51,79 +41,84 @@ function fixture() {
   const permissions = new ComputerPermissionManager();
   registerBrowserTool(server, browser, permissions, obs);
   registerDesktopTool(server, desktop, permissions, obs);
+  registerComputerPermissionPanel(server, permissions);
   registerMcpTurnTools(server, obs, permissions, browser, desktop);
   attachMcpObservability(server, obs);
   const internal = server as unknown as {
     _registeredTools: Record<string, RegisteredTool>;
     executeToolHandler(tool: RegisteredTool, args: unknown, context: ServerContext): Promise<Result>;
   };
-  function call(chat: string, name: string, args: unknown, ctx = context()): Promise<Result> {
+  function call(chat: string, name: string, args: unknown): Promise<Result> {
     return withMcpSessionContext(chat, () =>
-      internal.executeToolHandler(internal._registeredTools[name]!, args, ctx));
+      internal.executeToolHandler(internal._registeredTools[name]!, args, context()));
   }
   async function begin(chat: string) {
     await call(chat, "junius_turn_begin", { parts: [{ type: "text", text: "synthetic user intent" }] });
+    await call(chat, "junius_task_review", { objective: "Exercise synthetic Browser/Desktop permissions", scope: "Only in-memory fake tools and one Chat turn", risks: "Permission scopes and user clicks must never be fabricated", verification: "Assert zero real access before approval and correct behavior afterward" });
   }
-  async function end(chat: string) {
-    await call(chat, "junius_turn_end", {});
+  async function end(chat: string) { await call(chat, "junius_turn_end", {}); }
+  async function decision(chat: string, value: string) {
+    const status = await call(chat, "junius_computer_permission_state", {});
+    const nonce = status.structuredContent?.nonce;
+    assert.equal(typeof nonce, "string");
+    return call(chat, "junius_computer_permission_decide", { nonce, decision: value });
   }
-  return {
-    browserCalls, desktopCalls, call, begin, end,
-    interruptBrowser: () => { interruptBrowser = true; },
-    interruptDesktop: () => { interruptDesktop = true; },
-  };
+  return { browserCalls, desktopCalls, call, begin, end, decision,
+    interruptDesktop: () => { interruptDesktop = true; }, internal };
 }
 
-test("real MCP tool path asks for consent and never executes before acceptance", async () => {
+test("MCP UI consent works without client elicitation and never runs before clicking", async () => {
   const f = fixture();
   await f.begin("Chat-A");
   const arg = { session: "junius", command: "snapshot", args: [], purpose: "核查合成网页内容" };
-  const first = await f.call("Chat-A", "playwright_cli", arg);
-  assert.equal(first.resultType, "input_required");
+  const result = await f.call("Chat-A", "playwright_cli", arg);
+  assert.equal(result.structuredContent?.permissionRequired, true);
   assert.equal(f.browserCalls.length, 0);
-  const accepted = await f.call("Chat-A", "playwright_cli", arg, context(first.requestState, "允许本轮"));
+  const meta = f.internal._registeredTools.playwright_cli!._meta as { ui?: { resourceUri?: string } };
+  assert.equal(meta?.ui?.resourceUri, COMPUTER_PERMISSION_URI);
+  const denied = await f.call("Chat-B", "junius_computer_permission_state", {});
+  assert.equal(denied.structuredContent?.status, "unavailable");
+  // A widget choice is received after the prior model turn ends.
+  await f.end("Chat-A");
+  assert.equal((await f.decision("Chat-A", "允许本轮")).structuredContent?.ok, true);
+  await f.begin("Chat-A");
+  const accepted = await f.call("Chat-A", "playwright_cli", arg);
   assert.notEqual(accepted.isError, true);
   assert.equal(f.browserCalls.length, 1);
   assert.equal(f.browserCalls[0]!.authorized, true);
-  await f.call("Chat-A", "playwright_cli", arg);
-  assert.equal(f.browserCalls[1]!.authorized, undefined);
   await f.end("Chat-A");
   assert.equal(f.browserCalls.at(-1)?.command, "close");
   await f.begin("Chat-A");
   const again = await f.call("Chat-A", "playwright_cli", arg);
-  assert.equal(again.resultType, "input_required");
-  assert.equal(f.browserCalls.length, 3);
+  assert.equal(again.structuredContent?.permissionRequired, true);
 });
 
-test("Chat-scoped permission never crosses Chat and Escape blocks the remainder of the turn", async () => {
+test("chat consent and Escape are isolated, including app-only request results", async () => {
   const f = fixture();
-  await f.begin("Chat-A");
+  await f.begin("A");
   const arg = { command: "windows", purpose: "查看合成桌面窗口" };
-  const first = await f.call("Chat-A", "desktop", arg);
-  assert.equal(first.resultType, "input_required");
+  const first = await f.call("A", "desktop", arg);
+  assert.equal(first.structuredContent?.permissionRequired, true);
   assert.equal(f.desktopCalls.length, 0);
-  const accepted = await f.call("Chat-A", "desktop", arg, context(first.requestState, "允许本会话"));
-  assert.notEqual(accepted.isError, true);
+  const status = await f.call("A", "junius_computer_permission_state", {});
+  const nonce = status.structuredContent!.nonce;
+  assert.equal((await f.call("B", "junius_computer_permission_decide", { nonce, decision: "允许本会话" })).structuredContent?.ok, false);
+  await f.end("A");
+  assert.equal((await f.decision("A", "允许本会话")).structuredContent?.ok, true);
+  await f.begin("A");
+  await f.call("A", "desktop", arg);
   assert.deepEqual(f.desktopCalls.map(x => x.command), ["control_begin", "windows"]);
-  await f.end("Chat-A");
+  await f.end("A");
   assert.equal(f.desktopCalls.at(-1)?.command, "control_end");
-  await f.begin("Chat-A");
-  const continued = await f.call("Chat-A", "desktop", arg);
-  assert.notEqual(continued.resultType, "input_required");
-  assert.deepEqual(f.desktopCalls.slice(-2).map(x => x.command), ["control_begin", "windows"]);
-  await f.begin("Chat-B");
-  const other = await f.call("Chat-B", "desktop", arg);
-  assert.equal(other.resultType, "input_required");
-  const otherAccepted = await f.call("Chat-B", "desktop", arg, context(other.requestState, "允许本轮"));
-  assert.notEqual(otherAccepted.isError, true);
-  assert.notEqual(f.desktopCalls[0]?.session, f.desktopCalls.at(-1)?.session);
+  await f.begin("A");
+  const continued = await f.call("A", "desktop", arg);
+  assert.notEqual(continued.structuredContent?.permissionRequired, true);
+  await f.begin("B");
+  assert.equal((await f.call("B", "desktop", arg)).structuredContent?.permissionRequired, true);
   f.interruptDesktop();
-  const interrupted = await f.call("Chat-A", "desktop", arg);
+  const interrupted = await f.call("A", "desktop", arg);
   assert.equal(interrupted.isError, true);
   const count = f.desktopCalls.length;
-  const stopped = await f.call("Chat-A", "desktop", arg);
-  assert.equal(stopped.isError, true);
+  assert.equal((await f.call("A", "desktop", arg)).isError, true);
   assert.equal(f.desktopCalls.length, count);
-  await f.end("Chat-A");
-  await f.end("Chat-B");
 });

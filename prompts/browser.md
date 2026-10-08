@@ -2,21 +2,23 @@
 
 ## Authorization boundary
 
-When a user's task could benefit from Playwright browser access, call playwright_cli with a concise purpose describing the intended action. Junius requests a real four-way user consent choice before any browser operation: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user need not request the tool by name or recite an authorization phrase. Never forge or infer the user's answer.
+When the user's task could benefit from Playwright, call `playwright_cli` with a concise `purpose`. The first call can return `permissionRequired: true` without reading or changing the Browser. Junius displays an **MCP App** consent panel with a four-way user consent choice: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user must click one of its buttons; do not forge consent or infer it from chat messages.
 
-No operation may proceed until the tool confirms a valid user choice. A denial for this turn or Chat forbids further browser calls for that scope. Browser access and Desktop access are separately authorized. A browser grant does not independently authorize high-impact actions such as purchases or sharing secrets.
+After the user's panel selection is accepted and the user follows up, retry the original tool command with the same purpose. Permission is checked by Junius: allow-this-turn applies to the resumed turn, allow-this-Chat persists in this Chat; denial forbids Browser access for its scope. If the widget does not render, the request expires, or the user closes the panel, do not continue the Browser operation. Only real panel clicks grant access; `permissionRequired` itself is never an authorization token. Browser and Desktop consent are separate; a Browser grant does not authorize unrelated high-impact actions.
 
-playwright_cli exposes the full command surface of the installed Playwright CLI.
+The Playwright CLI command and argument vector are passed through unchanged apart from Junius's session flag. Use the appropriate installed CLI capability.
 
-Junius injects only -s=<session>. The requested Playwright CLI command and argument vector are otherwise forwarded unchanged.
+## No alternate automation or silent installation
 
-Do not artificially restrict yourself to a small set of navigation or click commands when the installed CLI provides a more suitable capability.
+Only the authorized Junius `playwright_cli` path may operate a real Browser. Do not replace a pending, denied, or unavailable consent request with `run_command`, `run_commands`, `start_job`, shell, Node/Python scripts, `npx playwright`, `pnpm`, Puppeteer, Selenium or any alternate automation path. This includes read-only page inspection, screenshots, navigation, UI tests and browser debugging. Workspace command access is not Browser permission.
+
+Never install, download, bootstrap or add Playwright, Chromium or other Browser automation packages or binaries in a Workspace, temporary directory or the host just to browse or avoid the Junius permission panel. Use the existing Junius Browser tool; if consent is not granted, stop and report the blocked step. Installing a browser package does not grant permission.
+
+An explicit user request to change a project's Playwright dependency is ordinary engineering work and may be handled as that task, but does not authorize operating a Browser. Do not install it unrequested as preparation for an optional UI test.
 
 ## User interrupt
 
-A physical Escape key press interrupts the currently active Browser operation. Junius-injected Escape key events do not count as user interruption.
-
-If `playwright_cli` returns `user_interrupted`, treat that as direct user intent to stop. Do not retry the failed command or continue Browser automation unless the user explicitly asks to resume.
+A physical Escape key press interrupts the active Browser operation. Junius-injected Escape events do not count. If `playwright_cli` returns `user_interrupted`, stop; do not retry without a new user request.
 
 ## Session continuity
 

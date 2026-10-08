@@ -22,6 +22,7 @@ import {
 import {
   JUNIUS_TURN_BEGIN_TOOL,
   JUNIUS_TURN_END_TOOL,
+  JUNIUS_TASK_REVIEW_TOOL,
   registerMcpTurnTools,
 } from "./mcp-turn-tools.js";
 import {
@@ -297,6 +298,7 @@ test("MCP observability refuses ordinary tools until an explicit Junius turn beg
         value:
           z.string(),
       },
+      annotations: { readOnlyHint: true },
     },
     async () => {
       executions += 1;
@@ -411,6 +413,67 @@ test("MCP observability refuses ordinary tools until an explicit Junius turn beg
   );
 });
 
+
+test("consequential tools require a scoped task review before execution, without blocking inspection", async () => {
+  const server = new McpServer({ name: "Junius Test", version: "0" });
+  const store = new McpObservabilityStore();
+  let changes = 0;
+  let reads = 0;
+  for (const [name, readOnly] of [["write_file", false], ["run_command", false], ["git_commit", false], ["cancel_job", false], ["workspace_batch", true]] as const) {
+    server.registerTool(name, {
+      inputSchema: {},
+      annotations: { readOnlyHint: readOnly },
+    }, async () => {
+      if (readOnly) reads += 1;
+      else changes += 1;
+      return { content: [] };
+    });
+  }
+  registerMcpTurnTools(server, store);
+  attachMcpObservability(server, store);
+  const view = internals(server);
+  const context = fakeContext();
+  const invoke = (name: string, args: unknown = {}, session = "conversation-1") =>
+    executeTool(view, view._registeredTools[name]!, args, context, session) as Promise<{
+      isError?: boolean;
+      content?: readonly { text?: string }[];
+    }>;
+  const begin = (session = "conversation-1") => invoke(JUNIUS_TURN_BEGIN_TOOL, {
+    parts: [{ type: "text", text: "Fix the full problem, not one symptom" }],
+  }, session);
+  await begin();
+  assert.notEqual((await invoke("workspace_batch")).isError, true);
+  assert.equal(reads, 1);
+  for (const name of ["write_file", "run_command", "git_commit"]) {
+    const blocked = await invoke(name);
+    assert.equal(blocked.isError, true, name);
+    assert.match(blocked.content?.[0]?.text ?? "", /junius_task_review/u);
+  }
+  assert.equal(changes, 0);
+  assert.notEqual((await invoke("cancel_job")).isError, true);
+  assert.equal(changes, 1);
+
+  const reviewed = await invoke(JUNIUS_TASK_REVIEW_TOOL, {
+    objective: "Fix task-level rushed execution, not only an individual tool",
+    scope: "Use the existing turn boundary and preserve unrelated behavior",
+    risks: "Commands can mutate state; a new turn or conversation must not inherit review",
+    verification: "Read-only succeeds, mutations block before review and proceed after review",
+  });
+  assert.notEqual(reviewed.isError, true);
+  for (const name of ["write_file", "run_command", "git_commit"]) {
+    assert.notEqual((await invoke(name)).isError, true, name);
+  }
+  assert.equal(changes, 4);
+
+  await begin("conversation-2");
+  assert.equal((await invoke("write_file", {}, "conversation-2")).isError, true);
+  assert.equal(changes, 4);
+  await invoke(JUNIUS_TURN_END_TOOL);
+  await begin();
+  assert.equal((await invoke("run_command")).isError, true);
+  assert.equal(changes, 4);
+});
+
 test("ChatGPT tool calls without MCP-Session-Id use openai/session for turn observability", async () => {
   const server =
     new McpServer({
@@ -424,6 +487,7 @@ test("ChatGPT tool calls without MCP-Session-Id use openai/session for turn obse
     "ordinary_tool",
     {
       inputSchema: {},
+      annotations: { readOnlyHint: true },
     },
     async () => ({
       content: [],
@@ -550,6 +614,7 @@ test("MCP observability records ordinary tools inside Junius-owned turns and exc
         value:
           z.string(),
       },
+      annotations: { readOnlyHint: true },
     },
     async () => ({
       content: [],

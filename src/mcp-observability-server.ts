@@ -15,6 +15,7 @@ import {
 import {
   JUNIUS_TURN_BEGIN_TOOL,
   JUNIUS_TURN_END_TOOL,
+  JUNIUS_TASK_REVIEW_TOOL,
 } from "./mcp-turn-tools.js";
 
 export const JUNIUS_TEST_WINDOW_CLOSE_TOOL =
@@ -28,6 +29,8 @@ const INTERNAL_OBSERVABILITY_TOOLS =
   new Set([
     JUNIUS_PANEL_TOOL,
     JUNIUS_PANEL_SNAPSHOT_TOOL,
+    "junius_computer_permission_state",
+    "junius_computer_permission_decide",
     JUNIUS_TURN_BEGIN_TOOL,
     JUNIUS_TURN_END_TOOL,
   ]);
@@ -244,6 +247,28 @@ export function attachMcpObservability(
                 ".",
             },
           ],
+        };
+      }
+
+      // A turn alone is not a decision to act. All potentially state-changing
+      // tools share this checkpoint, including shells, jobs and file mutations.
+      // Emergency stop/close actions must remain available without review.
+      if (
+        tool.annotations?.readOnlyHint !== true &&
+        name !== JUNIUS_TEST_WINDOW_CLOSE_TOOL &&
+        name !== "cancel_job" &&
+        !observability.hasTaskReview(sessionId)
+      ) {
+        return {
+          isError: true,
+          content: [{
+            type: "text" as const,
+            text:
+              "Consequential Junius tool blocked: call junius_task_review " +
+              "in this turn after inspecting relevant context. Describe the " +
+              "user goal, scope and non-goals, material risks, and observable " +
+              "verification. A review is not Browser/Desktop consent.",
+          }],
         };
       }
 

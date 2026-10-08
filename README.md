@@ -186,7 +186,9 @@ The current MCP surface is:
 - Git: `git_snapshot`, `git_prepare_commit`, `git_commit`
 - Installed-copy updates: `check_junius_update`, `update_junius`
 - Computer use: `playwright_cli`, `desktop`
-- Turn / observability plumbing: `junius_turn_begin`, `junius_turn_end`, `junius_observability_panel`, `close_junius_test_window`
+- Turn / execution review / observability: `junius_turn_begin`, `junius_task_review`, `junius_turn_end`, `junius_observability_panel`, `close_junius_test_window`
+
+Read-only tools can inspect first; consequential tools require a per-turn `junius_task_review` covering objective, scope, risks, and verification. Browser/Desktop still require separate user consent.
 
 The source-tree test connection does not expose installed-copy update tools.
 

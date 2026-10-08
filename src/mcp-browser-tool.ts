@@ -5,6 +5,7 @@ import type { PlaywrightCliService } from "./playwright-cli.js";
 import type { McpObservabilityStore } from "./mcp-observability.js";
 import { observabilitySessionId } from "./mcp-session-context.js";
 import { ComputerPermissionManager } from "./mcp-computer-permission.js";
+import { computerPermissionPrompt, computerPermissionToolMeta } from "./mcp-computer-permission-panel.js";
 import { playwrightCliToolError, stableIdSchema } from "./mcp-tool-shared.js";
 
 export function registerBrowserTool(
@@ -28,7 +29,7 @@ export function registerBrowserTool(
         command: z.string().min(1).max(4_096),
         args: z.array(z.string().max(65_536)).max(256).default([]),
       }),
-      _meta: { securitySchemes: [{ type: "noauth" }] },
+      _meta: computerPermissionToolMeta(),
       annotations: {
         readOnlyHint: false, destructiveHint: true,
         idempotentHint: false, openWorldHint: true,
@@ -40,12 +41,11 @@ export function registerBrowserTool(
       if (!chat || !turnId) {
         return { isError: true, content: [{ type: "text" as const, text: "Junius turn identity is required before browser access." }] };
       }
-      const choice = permissions.authorize(chat, turnId, "browser",
-        purpose ?? `运行浏览器命令 ${command}`, context);
-      if (choice !== true) {
-        return choice === false
+      const choice = permissions.authorize(chat, turnId, "browser", purpose);
+      if (choice !== "allowed") {
+        return choice === "denied"
           ? { isError: true, content: [{ type: "text" as const, text: "Browser permission denied for this Chat or turn." }] }
-          : choice;
+          : computerPermissionPrompt("browser", purpose);
       }
 
       const actualSession = permissions.session(chat, session ?? "junius");

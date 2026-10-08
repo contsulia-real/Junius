@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { ComputerPermissionManager } from "./mcp-computer-permission.js";
+import { computerPermissionPrompt, computerPermissionToolMeta } from "./mcp-computer-permission-panel.js";
 import { observabilitySessionId } from "./mcp-session-context.js";
 import type { McpObservabilityStore } from "./mcp-observability.js";
 import type { AuditStore } from "./audit-store.js";
@@ -291,9 +292,7 @@ export function registerDesktopTool(
             "Optional top-level window handle for action_batch screenshot_after.",
           ),
       }),
-      _meta: {
-        securitySchemes: [{ type: "noauth" }],
-      },
+      _meta: computerPermissionToolMeta(),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -326,12 +325,11 @@ export function registerDesktopTool(
       if (!chat || !turnId) {
         return { isError: true, content: [{ type: "text" as const, text: "Junius turn identity is required before desktop access." }] };
       }
-      const choice = permissions.authorize(chat, turnId, "desktop",
-        purpose ?? `运行桌面操作 ${command}`, context);
-      if (choice !== true) {
-        return choice === false
+      const choice = permissions.authorize(chat, turnId, "desktop", purpose);
+      if (choice !== "allowed") {
+        return choice === "denied"
           ? { isError: true, content: [{ type: "text" as const, text: "Desktop permission denied for this Chat or turn." }] }
-          : choice;
+          : computerPermissionPrompt("desktop", purpose);
       }
       const actualSession = permissions.session(chat, session ?? "junius");
       const initial = !permissions.isTracked(chat, "desktop", actualSession);

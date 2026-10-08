@@ -1,87 +1,81 @@
 import { createHash, randomUUID } from "node:crypto";
-import { acceptedContent, inputRequired, type InputRequiredResult, type ServerContext } from "@modelcontextprotocol/server";
 
 export type ComputerTool = "browser" | "desktop";
-type Decision = "允许本轮" | "允许本会话" | "拒绝本轮" | "拒绝本会话";
-interface Pending { readonly nonce: string; readonly turnId: string; readonly tool: ComputerTool }
+export const COMPUTER_DECISIONS = ["允许本轮", "允许本会话", "拒绝本轮", "拒绝本会话"] as const;
+export type ComputerDecision = (typeof COMPUTER_DECISIONS)[number];
+interface Pending {
+  nonce: string;
+  turnId: string;
+  tool: ComputerTool;
+  purpose: string;
+  createdAt: number;
+}
 interface Scope {
   readonly chatAllow: Set<ComputerTool>;
   readonly chatDeny: Set<ComputerTool>;
   readonly turnAllow: Set<ComputerTool>;
   readonly turnDeny: Set<ComputerTool>;
+  readonly nextTurnAllow: Set<ComputerTool>;
   readonly sessions: Map<ComputerTool, Set<string>>;
   pending?: Pending;
 }
 function scope(): Scope {
-  return { chatAllow: new Set(), chatDeny: new Set(), turnAllow: new Set(), turnDeny: new Set(), sessions: new Map() };
+  return { chatAllow: new Set(), chatDeny: new Set(), turnAllow: new Set(),
+    turnDeny: new Set(), nextTurnAllow: new Set(), sessions: new Map() };
 }
+const REQUEST_TTL_MS = 5 * 60_000;
 
 export class ComputerPermissionManager {
   readonly #scopes = new Map<string, Scope>();
-
   #get(chat: string): Scope {
     let state = this.#scopes.get(chat);
     if (!state) { state = scope(); this.#scopes.set(chat, state); }
     return state;
   }
-
   beginTurn(chat: string): void {
     const state = this.#get(chat);
     state.turnAllow.clear();
     state.turnDeny.clear();
-    state.pending = undefined;
+    for (const tool of state.nextTurnAllow) state.turnAllow.add(tool);
+    state.nextTurnAllow.clear();
   }
-
-  // A named device session must never be shared by different Chats.
   session(chat: string, name: string): string {
     const hash = createHash("sha256").update(chat + "\0" + name).digest("hex").slice(0, 32);
     return hash + "-" + name.slice(0, 30);
   }
-
-  authorize(chat: string, turnId: string, tool: ComputerTool, purpose: string, context: ServerContext): boolean | InputRequiredResult {
+  authorize(chat: string, turnId: string, tool: ComputerTool, purpose: string): "allowed" | "denied" | "pending" {
     const state = this.#get(chat);
-    if (state.chatDeny.has(tool) || state.turnDeny.has(tool)) return false;
-    if (state.chatAllow.has(tool) || state.turnAllow.has(tool)) return true;
-
-    const pending = state.pending;
-    if (pending?.turnId === turnId && pending.tool === tool && context.mcpReq.requestState() === pending.nonce) {
-      state.pending = undefined;
-      const content = acceptedContent<{ decision: Decision }>(context.mcpReq.inputResponses, "permission");
-      switch (content?.decision) {
-        case "允许本轮": state.turnAllow.add(tool); return true;
-        case "允许本会话": state.chatAllow.add(tool); return true;
-        case "拒绝本会话": state.chatDeny.add(tool); return false;
-        default: state.turnDeny.add(tool); return false;
-      }
+    if (state.chatDeny.has(tool) || state.turnDeny.has(tool)) return "denied";
+    if (state.chatAllow.has(tool) || state.turnAllow.has(tool)) return "allowed";
+    if (state.pending?.turnId !== turnId || state.pending.tool !== tool) {
+      state.pending = { nonce: randomUUID(), turnId, tool, purpose, createdAt: Date.now() };
     }
-
-    // Responses without a matching pending server nonce never confer permission.
-    const nonce = randomUUID();
-    state.pending = { nonce, turnId, tool };
-    const toolName = tool === "browser" ? "Playwright 浏览器" : "Computer Use 桌面";
-    const exposure = tool === "browser"
-      ? "可能读取已登录网页和操作浏览器。"
-      : "可能查看屏幕、窗口和剪贴板，并操作键盘鼠标。";
-    return inputRequired({
-      requestState: nonce,
-      inputRequests: {
-        permission: inputRequired.elicit({
-          message: `Junius 请求使用${toolName}。用途：${purpose.slice(0, 350)}。${exposure}请选择授权范围：`,
-          requestedSchema: {
-            type: "object",
-            properties: {
-              decision: {
-                type: "string", title: "授权选择",
-                enum: ["允许本轮", "允许本会话", "拒绝本轮", "拒绝本会话"],
-              },
-            },
-            required: ["decision"],
-          },
-        }),
-      },
-    });
+    return "pending";
   }
-
+  pending(chat: string): (Pending & { status: "pending" }) | undefined {
+    const state = this.#scopes.get(chat);
+    const pending = state?.pending;
+    if (!pending) return undefined;
+    if (Date.now() - pending.createdAt > REQUEST_TTL_MS) {
+      state!.pending = undefined;
+      return undefined;
+    }
+    return { ...pending, status: "pending" };
+  }
+  decide(chat: string, nonce: string, decision: ComputerDecision): boolean {
+    const state = this.#scopes.get(chat);
+    const pending = this.pending(chat);
+    if (!state || !pending || pending.nonce !== nonce || !COMPUTER_DECISIONS.includes(decision)) return false;
+    state.pending = undefined;
+    const tool = pending.tool;
+    switch (decision) {
+      case "允许本会话": state.chatAllow.add(tool); break;
+      case "允许本轮": state.nextTurnAllow.add(tool); break;
+      case "拒绝本会话": state.chatDeny.add(tool); break;
+      case "拒绝本轮": state.turnDeny.add(tool); break;
+    }
+    return true;
+  }
   track(chat: string, tool: ComputerTool, session: string): void {
     const state = this.#get(chat);
     let names = state.sessions.get(tool);
@@ -97,6 +91,7 @@ export class ComputerPermissionManager {
   interrupt(chat: string, tool: ComputerTool): void {
     const state = this.#get(chat);
     state.turnAllow.delete(tool);
+    state.nextTurnAllow.delete(tool);
     state.chatAllow.delete(tool);
     state.turnDeny.add(tool);
     state.pending = undefined;
@@ -106,7 +101,6 @@ export class ComputerPermissionManager {
     if (!state) return new Map();
     const closing = new Map<ComputerTool, readonly string[]>();
     for (const [tool, sessions] of state.sessions) {
-      // Desktop control ends after every turn, even when Chat permission persists.
       if (tool === "desktop" || !state.chatAllow.has(tool)) {
         closing.set(tool, [...sessions]);
         sessions.clear();
@@ -114,7 +108,7 @@ export class ComputerPermissionManager {
     }
     state.turnAllow.clear();
     state.turnDeny.clear();
-    state.pending = undefined;
+    // Keep pending approval until its short expiry: the user may click after the model finishes this turn.
     return closing;
   }
   endChat(chat: string): ReadonlyMap<ComputerTool, readonly string[]> {

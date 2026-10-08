@@ -476,6 +476,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       cwd: process.cwd(),
       env: {
         ...process.env,
+        JUNIUS_WORKER_ENTRY_PATH: "",
+        JUNIUS_PROJECT_ROOT: process.cwd(),
         JUNIUS_MCP_PORT: String(mcpPort),
         LOCALAPPDATA: join(
           root,
@@ -592,9 +594,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         "utf8",
       );
     assert.equal(
-      initializedMcp
-        .instructions,
-      expectedCoreContract,
+      initializedMcp.instructions?.replaceAll("\r\n", "\n"),
+      expectedCoreContract.replaceAll("\r\n", "\n"),
     );
 
     const tools =
@@ -705,6 +706,47 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       begunTurn.isError,
       false,
     );
+
+    const unreviewedMutation =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "run_command",
+        {
+          workspace: "default",
+          executable: "node",
+          args: ["--version"],
+        },
+        true,
+      );
+    assert.equal(unreviewedMutation.isError, true);
+    assert.match(
+      unreviewedMutation.textContents.join(" "),
+      /junius_task_review/u,
+    );
+
+    const unreviewedRead =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "list_skills",
+        {},
+      );
+    assert.equal(unreviewedRead.isError, false);
+
+    const reviewedTurn =
+      await callMcpTool(
+        mcpOrigin,
+        mcpSessionId,
+        "junius_task_review",
+        {
+          objective: "Exercise the full Host MCP integration surface",
+          scope: "Only the synthetic integration sandbox and registered test tools",
+          risks: "Confirm writes, permissions and session isolation do not leak",
+          verification: "Check tool effects and the MCP result contract",
+        },
+      );
+    assert.equal(reviewedTurn.isError, false);
 
     const installedSkill =
       await callMcpTool(
@@ -1039,10 +1081,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         ),
       );
     assert.deepEqual(
-      loadedContracts
-        .textContents
-        .slice(1),
-      expectedSpecializedContracts,
+      loadedContracts.textContents.slice(1).map(value => value.replaceAll("\r\n", "\n")),
+      expectedSpecializedContracts.map(value => value.replaceAll("\r\n", "\n")),
     );
 
     await callMcpTool(
@@ -1092,16 +1132,10 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         true,
       );
     assert.equal(
-      unauthorizedBrowser
-        .isError,
-      true,
+      unauthorizedBrowser.isError, false,
+      JSON.stringify({ payload: unauthorizedBrowser.payload, content: unauthorizedBrowser.textContents }),
     );
-    assert.match(
-      unauthorizedBrowser
-        .textContents
-        .join("\n"),
-      /Cannot request input|elicitation|authorization_required/u,
-    );
+    assert.equal(unauthorizedBrowser.payload.permissionRequired, true);
 
     const desktopTool =
       tools.find(
@@ -1163,16 +1197,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         },
         true,
       );
-    assert.equal(
-      unauthorizedDesktop.isError,
-      true,
-    );
-    assert.match(
-      unauthorizedDesktop
-        .textContents
-        .join("\n"),
-      /Cannot request input|elicitation|authorization_required/u,
-    );
+    assert.equal(unauthorizedDesktop.isError, false);
+    assert.equal(unauthorizedDesktop.payload.permissionRequired, true);
 
     const unauthorizedScreenshot =
       await callMcpTool(
@@ -1188,17 +1214,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         },
         true,
       );
-    assert.equal(
-      unauthorizedScreenshot
-        .isError,
-      true,
-    );
-    assert.match(
-      unauthorizedScreenshot
-        .textContents
-        .join("\n"),
-      /Cannot request input|elicitation|authorization_required/u,
-    );
+    assert.equal(unauthorizedScreenshot.isError, false);
+    assert.equal(unauthorizedScreenshot.payload.permissionRequired, true);
 
     for (
       const property of [

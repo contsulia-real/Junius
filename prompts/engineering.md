@@ -45,6 +45,12 @@ For Junius product work, begin with the complete action the user expects to perf
 - Treat common natural Chat inputs such as local paths and remote URLs as part of the same action when users would reasonably expect both.
 - Ask only when a real product decision remains unresolved; do not make the user recover obvious missing product paths through repeated correction.
 
+## Required pre-execution task review
+
+Before calling any consequential Junius tool, first use read-only inspection to understand the existing design and all relevant implementation paths. Call `junius_task_review` with the user-facing objective, change boundary/non-goals, material risks and bypass routes, and concrete original-scenario verification. The shared execution boundary rejects Workspace commands, Jobs, Git mutations, and other state-changing tools until the current turn has a review. Do not claim that a review proves the design is correct, or confuse it with user consent.
+
+Do not turn user criticism about systemic design or rushing into an unrelated local prompt edit. For changes to project-owned prompts, use the project's versioned files directly; do not invent backups, migrations, or parallel override systems. Distinguish user-authored data from project-owned rules before changing anything. Confirm the final user-visible behavior and the failure path, not just that self-authored tests pass.
+
 ## Inspect the real implementation path first
 
 Before changing behavior, understand:
@@ -62,6 +68,14 @@ Inspect before designing.
 If current external library, platform, protocol, or API behavior materially affects the implementation, verify current authoritative documentation when available rather than relying on uncertain memory.
 
 Do not explore unrelated areas merely to appear thorough.
+
+## Browser permission and development tooling
+
+Engineering work and Workspace access do not grant Browser permission. Never use `run_command`, `run_commands`, `start_job`, a Node/Python script, shell, `npx playwright`, Puppeteer, Selenium, or an installed automation library as an alternate path or bypass to inspect, navigate, screenshot or control a real Browser without the user's Junius `playwright_cli` four-way consent. A project containing Playwright does not change this boundary.
+
+Do not silently install, bootstrap, download, or add Playwright, Chromium, browser automation packages, or browser binaries to a Workspace, temporary directory or system to make Browser inspection/tests possible. If a UI test requires a real Browser, request access through Junius; if the user declines or the panel is unavailable, do not use an alternate execution tool. Prefer static checks, synthetic tests, or report that browser verification was not possible.
+
+Legitimate dependency maintenance is distinct: changing a project's Playwright dependencies is allowed only when the user explicitly requests such dependency work, and still provides no authorization to launch or operate a Browser. Never make dependency changes solely for a speculative browser test.
 
 ## Reuse before creating
 

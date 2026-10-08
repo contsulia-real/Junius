@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.9-alpha
+
+- Replaced unavailable MCP elicitation-based Browser and Desktop authorization with a user-clicked MCP App consent panel, preserving independent four-way turn/Chat permissions and denying device access until approval.
+- Aligned the shipped Core, Browser, Desktop, and Engineering contracts with the actual consent flow and prohibited using Workspace commands or silently installed Playwright/Chromium as a Browser authorization workaround.
+- Removed unintended automatic prompt rewriting and backup-file creation while preserving the user's existing prompt files and normal prompt-read behavior.
+- Added an enforced per-turn task-review checkpoint before consequential Junius tool calls. Read-only inspection and emergency cancellation remain available; task review does not grant Browser/Desktop consent or prove design correctness.
+
 ## 0.1.8-alpha
 
 - Fixed Windows installation so the packaged `junius` CLI is exposed through a stable per-user command shim and `PATH` entry, while the one-command PowerShell bootstrap also updates its current session for immediate CLI use.

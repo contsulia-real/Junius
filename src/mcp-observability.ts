@@ -343,6 +343,7 @@ interface MutableObservedTurn {
   completedSequence?: number;
   calls:
     MutableObservedToolCall[];
+  taskReviewed?: boolean;
   skills:
     MutableObservedSkillUse[];
 }
@@ -852,6 +853,25 @@ export class McpObservabilityStore {
 
   activeTurnId(sessionId: string): string | undefined {
     return this.#activeTurn(sessionId)?.id;
+  }
+
+  markTaskReviewed(
+    sessionId: string,
+  ): boolean {
+    const turn =
+      this.#activeTurn(sessionId);
+    if (turn === undefined) {
+      return false;
+    }
+    turn.taskReviewed = true;
+    return true;
+  }
+
+  hasTaskReview(
+    sessionId: string,
+  ): boolean {
+    return this.#activeTurn(sessionId)
+      ?.taskReviewed === true;
   }
 
   hasActiveTurn(

@@ -22,7 +22,12 @@ test(
 
     assert.equal(
       packageJson.version,
-      "0.1.8-alpha",
+      JSON.parse(
+        readFileSync(
+          new URL("../install-lock.json", import.meta.url),
+          "utf8",
+        ),
+      ).version,
     );
     assert.equal(
       JUNIUS_VERSION,

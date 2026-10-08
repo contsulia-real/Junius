@@ -48,7 +48,14 @@ Scope: this entire repository.
 - When local Browser or Desktop access would help, Junius must request informed user permission through its four-way consent mechanism: allow this turn, allow this Chat, deny this turn, deny this Chat.
 - Do not require a specific authorization phrase in the user request. The model decides whether to request access; only the real user's selected answer grants it.
 - Never access the real Browser or Desktop before the user selects an applicable allow choice. Browser and Desktop authorization are independent and scoped to the Chat and turn. Respect refusal and Escape; no cross-Chat inheritance.
+- Workspace commands, scripts and dependencies are not a substitute for Browser consent. Do not install Playwright or another browser-automation package merely to browse, run UI tests or bypass authorization; do not control the Browser through shells, Node/Python or alternative automation tools without Junius permission. Explicitly requested dependency maintenance is separate from, and does not grant, Browser access.
 - Engineering tests must use fake/synthetic helpers by default. Real Browser and Desktop access remain gated by an actual user choice.
+
+## Deliberate execution boundary
+
+- Before any consequential Junius tool call, inspect the relevant design using read-only tools and submit `junius_task_review` with the user's actual goal, scope/non-goals, risk and alternate paths, and verifiable result. The execution layer must refuse consequential tools without a per-turn review; this checkpoint is not proof of correctness or user authorization.
+- A correction about rushed execution is a systemic design concern, not permission to modify unrelated project prompts or invent migrations/backups. Prioritize full task comprehension, ownership boundaries, alternative execution routes, and end-to-end verification over quickly patching the last observed symptom.
+- Reject premature completion claims: passing tests proves only tested behavior; verify the original failure and state which installed or user-facing surfaces remain untested.
 
 ## Engineering workflow
 

@@ -13,6 +13,7 @@ import { registerMcpTurnTools } from "./mcp-turn-tools.js";
 import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
 import { registerBrowserTool } from "./mcp-browser-tool.js";
 import { ComputerPermissionManager } from "./mcp-computer-permission.js";
+import { registerComputerPermissionPanel } from "./mcp-computer-permission-panel.js";
 import { registerDesktopTool } from "./mcp-desktop-tool.js";
 import { registerJobTools } from "./mcp-job-tools.js";
 import { registerRunCommandTool } from "./mcp-command-tool.js";
@@ -114,6 +115,7 @@ export function createMcpServer(
     server,
     observability,
   );
+  registerComputerPermissionPanel(server, permissions);
   attachMcpObservability(
     server,
     observability,

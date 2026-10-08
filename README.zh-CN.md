@@ -186,7 +186,9 @@ Junius 没有管理 Web UI。
 - Git：`git_snapshot`、`git_prepare_commit`、`git_commit`
 - 已安装副本更新：`check_junius_update`、`update_junius`
 - Computer Use：`playwright_cli`、`desktop`
-- Turn / observability plumbing：`junius_turn_begin`、`junius_turn_end`、`junius_observability_panel`、`close_junius_test_window`
+- Turn / 执行审查 / observability：`junius_turn_begin`、`junius_task_review`、`junius_turn_end`、`junius_observability_panel`、`close_junius_test_window`
+
+只读工具可先进行检查；有状态变更风险的工具必须先在本轮提交 `junius_task_review`（目标、范围、风险、验收方式）。Browser/Desktop 仍需独立的用户授权。
 
 源码测试连接不会暴露已安装副本的更新工具。
 

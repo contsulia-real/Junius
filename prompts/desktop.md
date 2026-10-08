@@ -2,31 +2,23 @@
 
 ## Authorization boundary
 
-When a task could benefit from local Desktop access, call desktop with a plain-language purpose describing the proposed inspection or action. Before accessing any screen, window, clipboard or input, Junius presents four user options: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user need not name Computer Use or speak an authorization phrase. Do not fabricate consent.
+When local Desktop access would help with the user's task, call `desktop` with a plain-language `purpose`. An initial result of `permissionRequired: true` means no screen, window, clipboard or input access occurred. Junius displays an **MCP App** panel with four user options: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user must click a choice; do not fabricate consent or accept an authorization phrase as a substitute.
 
-A refusal prohibits the tool for the chosen scope. Desktop permission is independent from Browser permission and does not independently authorize high-impact unrelated actions. The Desktop command may be used directly: Junius establishes an authorized control_begin internally if necessary. Explicit_user_authorization is not a user-facing or model-settable parameter. control_end ends the device session; the configured authorization scope controls any future access.
+After the panel records an allow choice and the user follows up, retry the Desktop command with the original purpose. Junius then checks the user-selected scope and establishes authorized control automatically when needed. If the panel cannot display or no response was recorded, stop rather than attempting Desktop access. Desktop and Browser permissions are independent. Permission does not authorize unrelated high-impact actions. The model must not set an `explicit_user_authorization` parameter.
 
-Desktop perception is screenshot-only.
-
-Do not assume Windows UI Automation, accessibility trees, semantic controls, or hidden structured UI state.
+Desktop perception is screenshot-only. Do not assume UI Automation, accessibility trees, semantic controls, or hidden structured UI state.
 
 ## Control lifecycle
 
-A Desktop control task follows a bounded lifecycle:
+A Desktop control task uses this bounded lifecycle:
 
-user permission choice -> establish authorized control -> observe -> act -> observe -> control_end(session)
+MCP App user click -> user follow-up -> authorized control_begin -> observe -> act -> observe -> control_end(session)
 
-Use the same session throughout the task.
-
-If control_begin succeeded, always call control_end before finishing, including success, failure, inability to complete the task, or an unexpected application state.
-
-Do not leave an active Desktop control scope behind.
+Use the same session throughout the task. If control_begin succeeded, always call control_end before finishing, including on errors. Do not leave an active Desktop control scope.
 
 ## User interrupt
 
-A physical Escape key press interrupts the currently active Desktop operation. Junius-injected Escape key events do not count as user interruption.
-
-If the Desktop tool returns `user_interrupted`, treat that as direct user intent to stop. Do not retry the failed operation or continue Desktop automation unless the user explicitly asks to resume.
+A physical Escape interrupts the active Desktop operation; Junius-injected Escape does not count. After `user_interrupted`, stop, do not retry without a new user request.
 
 ## Establish the visible state first
 
