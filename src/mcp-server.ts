@@ -12,6 +12,7 @@ import { registerMcpObservabilityPanel } from "./mcp-observability-panel.js";
 import { registerMcpTurnTools } from "./mcp-turn-tools.js";
 import { registerWorkspaceTools } from "./mcp-workspace-tools.js";
 import { registerBrowserTool } from "./mcp-browser-tool.js";
+import { ComputerPermissionManager } from "./mcp-computer-permission.js";
 import { registerDesktopTool } from "./mcp-desktop-tool.js";
 import { registerJobTools } from "./mcp-job-tools.js";
 import { registerRunCommandTool } from "./mcp-command-tool.js";
@@ -40,6 +41,7 @@ export function createMcpServer(
   audit?: AuditStore,
   observability: McpObservabilityStore =
     new McpObservabilityStore(),
+  permissions: ComputerPermissionManager = new ComputerPermissionManager(),
 ): McpServer {
   const developmentInstance =
     isJuniusDevelopmentInstance();
@@ -74,11 +76,15 @@ export function createMcpServer(
   registerBrowserTool(
     server,
     playwrightCli,
+    permissions,
+    observability,
     audit,
   );
   registerDesktopTool(
     server,
     desktop,
+    permissions,
+    observability,
     audit,
   );
   registerJobTools(server, jobs);
@@ -100,6 +106,9 @@ export function createMcpServer(
   registerMcpTurnTools(
     server,
     observability,
+    permissions,
+    playwrightCli,
+    desktop,
   );
   registerMcpObservabilityPanel(
     server,

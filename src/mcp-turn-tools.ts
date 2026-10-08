@@ -2,6 +2,9 @@ import type {
   McpServer,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { ComputerPermissionManager, closeComputerSessions } from "./mcp-computer-permission.js";
+import type { PlaywrightCliService } from "./playwright-cli.js";
+import type { DesktopComputerUseService } from "./desktop-computer-use.js";
 import type {
   McpObservabilityStore,
 } from "./mcp-observability.js";
@@ -52,6 +55,9 @@ export function registerMcpTurnTools(
   server: McpServer,
   observability:
     McpObservabilityStore,
+  permissions = new ComputerPermissionManager(),
+  browser?: PlaywrightCliService,
+  desktop?: DesktopComputerUseService,
 ): void {
   server.registerTool(
     JUNIUS_TURN_BEGIN_TOOL,
@@ -117,6 +123,12 @@ export function registerMcpTurnTools(
             | undefined
         )?.["openai/locale"];
 
+      if (browser && desktop) {
+        await closeComputerSessions(permissions.endTurn(sessionId), browser, desktop);
+      } else {
+        permissions.endTurn(sessionId);
+      }
+      permissions.beginTurn(sessionId);
       const turnId =
         observability.beginTurn(
           sessionId,
@@ -194,6 +206,11 @@ export function registerMcpTurnTools(
         observability.endTurn(
           sessionId,
         );
+      if (browser && desktop) {
+        await closeComputerSessions(permissions.endTurn(sessionId), browser, desktop);
+      } else {
+        permissions.endTurn(sessionId);
+      }
 
       return {
         content: [],

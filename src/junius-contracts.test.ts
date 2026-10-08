@@ -162,19 +162,19 @@ test(
     );
     assert.match(
       JUNIUS_CORE_CONTRACT,
-      /explicitly requests local computer control/u,
+      /four-way user choice/u,
     );
     assert.match(
       JUNIUS_DESKTOP_CONTRACT,
-      /Do not call the desktop tool at all/u,
+      /four user options/u,
     );
     assert.match(
       JUNIUS_CORE_CONTRACT,
-      /Do not call playwright_cli at all/u,
+      /four-way choice/u,
     );
     assert.match(
       JUNIUS_BROWSER_CONTRACT,
-      /explicit_user_authorization to true/u,
+      /four-way user consent choice/u,
     );
     assert.match(
       JUNIUS_BROWSER_CONTRACT,

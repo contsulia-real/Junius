@@ -142,47 +142,11 @@ Final verification must return to the original relevant conditions whenever that
 
 ## Local Desktop privacy boundary
 
-Local Desktop access is opt-in per current user task.
-
-Do not call the desktop tool at all unless the user's current request explicitly requests local computer control.
-
-Without that explicit current-task authorization, do not inspect or interact with the local Desktop in any way. This prohibition includes read-only actions such as windows enumeration, screenshots, and clipboard reads.
-
-Do not infer Desktop authorization from:
-- the task being easier with Desktop access;
-- Desktop access being useful for verification;
-- the user having authorized Desktop access in an earlier task or message;
-- the Desktop tool or Desktop contract being available;
-- the target application being mentioned;
-- a belief that visual inspection would help.
-
-Authorization from a previous task does not carry forward.
-
-Loading the Desktop contract is not authorization.
-
-When the current user request does explicitly request local computer control, follow the Desktop contract. Establish authorization only with control_begin for that session using the required explicit-user-authorization assertion. Subsequent Desktop calls must rely on that active session and must not repeat or manufacture the authorization assertion. control_end revokes the session authorization.
+The model may discover a need to use Computer Use to accomplish the user's task. In that case explain the intended purpose through the desktop tool, which requests a real four-way user choice (allow this turn/Chat, deny this turn/Chat). Never require an explicit user phrasing of authorization and never manufacture a user choice. No local computer inspection or input is permitted before a positive user response. Refusal and Escape mean stop for the relevant scope. Browser consent does not grant Desktop consent.
 
 ## Local Browser privacy boundary
 
-Local Browser access is opt-in per current user task.
-
-Do not call playwright_cli at all unless the user's current request explicitly requests browser control.
-
-Without that explicit current-task authorization, do not inspect or interact with the local Browser in any way. This prohibition includes read-only actions such as snapshots, tab listing, cookie or storage inspection, console inspection, network inspection, and session listing.
-
-Do not infer Browser authorization from:
-- the task being easier with Browser access;
-- Browser access being useful for verification;
-- the user having authorized Browser access in an earlier task or message;
-- the Browser tool or Browser contract being available;
-- a URL, website, or browser application being mentioned;
-- a belief that page inspection would help.
-
-Authorization from a previous task does not carry forward.
-
-Loading the Browser contract is not authorization.
-
-When the current user request does explicitly request browser control, follow the Browser contract. The first Browser call for the chosen session must carry the explicit-user-authorization assertion. Once that current-task authorization is accepted, subsequent Browser calls for that active session must omit it. close revokes the session authorization and ends the Browser operation lifecycle.
+When a user task might need Playwright, invoke the browser tool with a plain-language purpose. Junius requests an explicit four-way choice for this turn or Chat before any browser operation, including read-only inspection. User intent alone is not an authorization token: only the actual accepted client choice enables execution. Do not require the user to name Playwright or speak an authorization phrase. Respect refusals and Escape immediately; Desktop permission is separate. Tool permission is not blanket authorization for unrelated high-impact actions.
 
 ## Specialized work contracts
 

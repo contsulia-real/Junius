@@ -4,6 +4,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { sendHostJson } from "./host-http.js";
+import { createHash } from "node:crypto";
 import { WORKER_AUTH_HEADER } from "./worker-auth.js";
 import type { WorkerSupervisor } from "./worker-supervisor.js";
 import {
@@ -63,12 +64,13 @@ export async function proxyModernMcp(
   }
 
   const call = parseToolCall(body);
+  const chatId = requestSessionId ?? call?.chatId;
   traces?.annotate(traceId, {
     ...(call?.name === undefined
       ? {}
       : { tool: call.name }),
   });
-  const routeKey = routeKeyForTool(call);
+  const routeKey = routeKeyForTool(call, chatId);
 
   let lease;
   try {
@@ -102,9 +104,10 @@ export async function proxyModernMcp(
     workerId: worker.id,
   });
   traces?.event(traceId, "worker_acquired", worker.id);
-  bindBeforeForward(supervisor, call, worker.id);
+  bindBeforeForward(supervisor, call, worker.id, chatId);
 
   const captureStartJob = call?.name === "start_job";
+  const captureTurnBoundary = call?.name === "junius_turn_begin" || call?.name === "junius_turn_end";
   const desktopCommand =
     call?.name === "desktop"
       ? call.arguments.command
@@ -117,6 +120,7 @@ export async function proxyModernMcp(
     call?.name === "delete_workspace";
   const captureToolResponse =
     captureStartJob ||
+    captureTurnBoundary ||
     captureDesktopLifecycle ||
     captureWorkspaceMutation;
 
@@ -175,7 +179,7 @@ export async function proxyModernMcp(
         upstreamResponse.pipe(res);
         upstreamResponse.once("end", () => {
           traces?.event(traceId, "worker_response_ended");
-          releaseAfterForward(supervisor, call);
+          releaseAfterForward(supervisor, call, chatId);
           lease.release();
         });
         upstreamResponse.once("error", (error) => {
@@ -274,8 +278,8 @@ export async function proxyModernMcp(
                 typeof call?.arguments.session === "string"
                   ? call.arguments.session
                   : "junius";
-              const resourceKey =
-                `desktop:${session}`;
+              const resourceKey = routeKeyForTool(call, chatId)
+                ?? `desktop:${session}`;
 
               if (desktopCommand === "control_begin") {
                 supervisor.bindResource(
@@ -289,9 +293,20 @@ export async function proxyModernMcp(
               }
             }
 
+            if (captureTurnBoundary && chatId && toolCallSucceeded(responseText)) {
+              const scope = createHash("sha256").update(chatId).digest("hex").slice(0, 16);
+              const bindings = supervisor.state().resourceBindings;
+              for (const binding of bindings) {
+                if (binding.key.startsWith(`browser:${scope}:`) || binding.key.startsWith(`desktop:${scope}:`)) {
+                  supervisor.releaseResource(binding.key);
+                }
+              }
+            }
+
             releaseAfterForward(
               supervisor,
               call,
+              chatId,
             );
             if (!res.destroyed) {
               res.end(responseBody);

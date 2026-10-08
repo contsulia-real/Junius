@@ -1,8 +1,10 @@
 import type { WorkerSupervisor } from "./worker-supervisor.js";
+import { createHash } from "node:crypto";
 
 export interface McpToolCall {
   readonly name: string;
   readonly arguments: Record<string, unknown>;
+  readonly chatId?: string;
 }
 
 export function parseToolCall(body: Buffer): McpToolCall | undefined {
@@ -38,14 +40,22 @@ export function parseToolCall(body: Buffer): McpToolCall | undefined {
   const params = message.params as {
     name?: unknown;
     arguments?: unknown;
+    _meta?: unknown;
   };
 
   if (typeof params.name !== "string") {
     return undefined;
   }
 
+  const metadata = params._meta;
+  const chat = metadata !== null && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)["openai/session"]
+    : undefined;
+
   return {
     name: params.name,
+    ...(typeof chat === "string" && chat.length > 0 && chat.length <= 512
+      ? { chatId: "openai:" + chat } : {}),
     arguments:
       typeof params.arguments === "object" &&
       params.arguments !== null &&
@@ -64,8 +74,14 @@ function argumentString(
   return typeof value === "string" ? value : fallback;
 }
 
+function scopedDeviceKey(kind: "browser" | "desktop", name: string, chat?: string): string {
+  const scope = chat === undefined ? "" : createHash("sha256").update(chat).digest("hex").slice(0, 16) + ":";
+  return `${kind}:${scope}${name}`;
+}
+
 export function routeKeyForTool(
   call: McpToolCall | undefined,
+  chat?: string,
 ): string | undefined {
   if (call === undefined) return undefined;
 
@@ -80,12 +96,12 @@ export function routeKeyForTool(
 
   if (call.name === "playwright_cli") {
     const session = argumentString(call, "session", "junius")!;
-    return `browser:${session}`;
+    return scopedDeviceKey("browser", session, chat);
   }
 
   if (call.name === "desktop") {
     const session = argumentString(call, "session", "junius")!;
-    return `desktop:${session}`;
+    return scopedDeviceKey("desktop", session, chat);
   }
 
   return undefined;
@@ -95,6 +111,7 @@ export function bindBeforeForward(
   supervisor: WorkerSupervisor,
   call: McpToolCall | undefined,
   workerId: string,
+  chat?: string,
 ): void {
   if (call === undefined) return;
 
@@ -103,7 +120,7 @@ export function bindBeforeForward(
     if (command !== "close") {
       const session = argumentString(call, "session", "junius")!;
       supervisor.bindResource(
-        `browser:${session}`,
+        scopedDeviceKey("browser", session, chat),
         workerId,
       );
     }
@@ -114,13 +131,14 @@ export function bindBeforeForward(
 export function releaseAfterForward(
   supervisor: WorkerSupervisor,
   call: McpToolCall | undefined,
+  chat?: string,
 ): void {
   if (
     call?.name === "playwright_cli" &&
     argumentString(call, "command") === "close"
   ) {
     const session = argumentString(call, "session", "junius")!;
-    supervisor.releaseResource(`browser:${session}`);
+    supervisor.releaseResource(scopedDeviceKey("browser", session, chat));
   }
 }
 

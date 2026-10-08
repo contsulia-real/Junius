@@ -1,5 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { ComputerPermissionManager } from "./mcp-computer-permission.js";
+import { observabilitySessionId } from "./mcp-session-context.js";
+import type { McpObservabilityStore } from "./mcp-observability.js";
 import type { AuditStore } from "./audit-store.js";
 import type {
   DesktopBatchAction,
@@ -211,6 +214,8 @@ function toDesktopBatchAction(
 export function registerDesktopTool(
   server: McpServer,
   desktop: DesktopComputerUseService,
+  permissions: ComputerPermissionManager,
+  observability: McpObservabilityStore,
   audit?: AuditStore,
 ): void {
   server.registerTool(
@@ -218,14 +223,10 @@ export function registerDesktopTool(
     {
       title: "Use Local Desktop",
       description:
-        "Drive the local Windows desktop through screenshot-based Junius computer use. PRIVACY BOUNDARY: do not call this tool unless the current user's request explicitly asks ChatGPT to control the local computer. This includes read-only access such as windows, screenshot, and clipboard_read. Authorization is established only by a successful control_begin with explicit_user_authorization=true for that session; subsequent calls rely on that active session and must not repeat the assertion. A physical Escape key press interrupts the active Desktop operation and returns user_interrupted; treat that as direct user intent to stop and do not retry or continue Desktop automation unless the user explicitly asks to resume. control_end revokes it. Previous authorization does not carry forward.",
+        "Use the local Windows desktop when necessary for a user task. Junius presents four user consent choices before inspecting the screen, windows, clipboard or sending input. No authorization phrase is needed. After physical Escape interruption do not retry. control_begin may be called first but Junius also starts a scoped desktop session automatically; control_end closes it.",
       inputSchema: z.object({
-        explicit_user_authorization: z
-          .literal(true)
-          .optional()
-          .describe(
-            "Privacy assertion used only with control_begin. Set to true only when the current user's request explicitly asks ChatGPT to control this local computer. Omit it for every other command.",
-          ),
+        purpose: z.string().min(8).max(400)
+          .describe("Plain-language explanation of the intended desktop access shown to the user."),
         session: stableIdSchema
           .default("junius")
           .describe(
@@ -301,7 +302,7 @@ export function registerDesktopTool(
       },
     },
     async ({
-      explicit_user_authorization,
+      purpose,
       session,
       command,
       handle,
@@ -319,16 +320,23 @@ export function registerDesktopTool(
       actions,
       screenshot_after,
       screenshot_handle,
-    }) => {
+    }, context) => {
+      const chat = observabilitySessionId(context.mcpReq._meta);
+      const turnId = chat === undefined ? undefined : observability.activeTurnId(chat);
+      if (!chat || !turnId) {
+        return { isError: true, content: [{ type: "text" as const, text: "Junius turn identity is required before desktop access." }] };
+      }
+      const choice = permissions.authorize(chat, turnId, "desktop",
+        purpose ?? `运行桌面操作 ${command}`, context);
+      if (choice !== true) {
+        return choice === false
+          ? { isError: true, content: [{ type: "text" as const, text: "Desktop permission denied for this Chat or turn." }] }
+          : choice;
+      }
+      const actualSession = permissions.session(chat, session ?? "junius");
+      const initial = !permissions.isTracked(chat, "desktop", actualSession);
       const startedAt = performance.now();
       const auditMetadata = {
-        ...(explicit_user_authorization ===
-        undefined
-          ? {}
-          : {
-              explicitUserAuthorization:
-                explicit_user_authorization,
-            }),
         ...(handle === undefined
           ? {}
           : { handle }),
@@ -377,16 +385,21 @@ export function registerDesktopTool(
       };
 
       try {
+        if (!initial && command !== "control_begin" && command !== "control_end" &&
+            typeof desktop.state === "function" && !desktop.state().helperRunning) {
+          await desktop.run({ session: actualSession, command: "control_begin", explicitUserAuthorization: true });
+        }
+        if (initial && command !== "control_begin" && command !== "control_end") {
+          await desktop.run({ session: actualSession, command: "control_begin", explicitUserAuthorization: true });
+          permissions.track(chat, "desktop", actualSession);
+        }
+        if (!initial && command === "control_begin") {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session, command, result: { active: true } }) }] };
+        }
         const execution = await desktop.run({
-          session,
+          session: actualSession,
           command,
-          ...(explicit_user_authorization ===
-          undefined
-            ? {}
-            : {
-                explicitUserAuthorization:
-                  explicit_user_authorization,
-              }),
+          ...(initial && command === "control_begin" ? { explicitUserAuthorization: true as const } : {}),
           ...(handle === undefined ? {} : { handle }),
           ...(x === undefined ? {} : { x }),
           ...(y === undefined ? {} : { y }),
@@ -417,6 +430,8 @@ export function registerDesktopTool(
             : { screenshotHandle: screenshot_handle }),
         });
 
+        if (command === "control_begin") permissions.track(chat, "desktop", actualSession);
+        if (command === "control_end") permissions.untrack(chat, "desktop", actualSession);
         audit?.record({
           category: "desktop",
           action: command,
@@ -435,7 +450,7 @@ export function registerDesktopTool(
             type: "text",
             text: JSON.stringify({
               ok: true,
-              session: execution.session,
+              session,
               command: execution.command,
               result: execution.result,
               durationMs: execution.durationMs,
@@ -453,6 +468,14 @@ export function registerDesktopTool(
 
         return { content };
       } catch (error) {
+        if ((error as { code?: string })?.code === "control_not_started") {
+          permissions.untrack(chat, "desktop", actualSession);
+        }
+        if ((error as { code?: string })?.code === "user_interrupted") {
+          permissions.interrupt(chat, "desktop");
+          permissions.untrack(chat, "desktop", actualSession);
+          await desktop.run({ session: actualSession, command: "control_end" }).catch(() => undefined);
+        }
         audit?.record({
           category: "desktop",
           action: command,

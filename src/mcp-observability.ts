@@ -850,6 +850,10 @@ export class McpObservabilityStore {
       : this.#turnsById.get(id);
   }
 
+  activeTurnId(sessionId: string): string | undefined {
+    return this.#activeTurn(sessionId)?.id;
+  }
+
   hasActiveTurn(
     sessionId?: string,
   ): boolean {

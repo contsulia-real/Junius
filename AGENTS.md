@@ -45,10 +45,10 @@ Scope: this entire repository.
 
 ## Browser and Desktop privacy
 
-- Never access, inspect, screenshot, enumerate, or control the user's real local Desktop unless the **current user request** explicitly asks ChatGPT to control the local computer.
-- Never access, inspect, enumerate, or control the user's real local Browser unless the **current user request** explicitly asks ChatGPT to control the browser.
-- Previous authorization does not carry forward.
-- Engineering tests must use fake/synthetic helpers by default. Live Desktop access remains explicitly gated.
+- When local Browser or Desktop access would help, Junius must request informed user permission through its four-way consent mechanism: allow this turn, allow this Chat, deny this turn, deny this Chat.
+- Do not require a specific authorization phrase in the user request. The model decides whether to request access; only the real user's selected answer grants it.
+- Never access the real Browser or Desktop before the user selects an applicable allow choice. Browser and Desktop authorization are independent and scoped to the Chat and turn. Respect refusal and Escape; no cross-Chat inheritance.
+- Engineering tests must use fake/synthetic helpers by default. Real Browser and Desktop access remain gated by an actual user choice.
 
 ## Engineering workflow
 

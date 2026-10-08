@@ -2,19 +2,9 @@
 
 ## Authorization boundary
 
-This contract does not grant permission to access the local Browser.
+When a user's task could benefit from Playwright browser access, call playwright_cli with a concise purpose describing the intended action. Junius requests a real four-way user consent choice before any browser operation: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user need not request the tool by name or recite an authorization phrase. Never forge or infer the user's answer.
 
-Do not call playwright_cli at all unless the user's current request explicitly asks ChatGPT to control the browser.
-
-If that explicit current-task authorization is absent, stop before any Browser access. Do not open pages, inspect snapshots, enumerate tabs or sessions, read cookies or storage, inspect console or network data, attach to browsers, or perform any other Browser operation.
-
-Do not infer authorization from usefulness, verification needs, previous Browser use, prior user authorization, a URL being present, or the availability of this contract or tool.
-
-Previous-task authorization does not carry forward.
-
-The first Browser call for the chosen session must set explicit_user_authorization to true, and only when the current user request explicitly authorized browser control. Once that current-task authorization is accepted, omit explicit_user_authorization from follow-up calls for the same active session, even if an individual Browser command fails. Repeating the assertion is invalid.
-
-For an already-authorized active session, close omits the authorization assertion. If close is itself the first Browser call in the current user-authorized task, it must carry explicit_user_authorization=true like any other first Browser call. close revokes Browser authorization for that session and ends the Browser operation lifecycle.
+No operation may proceed until the tool confirms a valid user choice. A denial for this turn or Chat forbids further browser calls for that scope. Browser access and Desktop access are separately authorized. A browser grant does not independently authorize high-impact actions such as purchases or sharing secrets.
 
 playwright_cli exposes the full command surface of the installed Playwright CLI.
 

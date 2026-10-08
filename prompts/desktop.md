@@ -2,23 +2,9 @@
 
 ## Authorization boundary
 
-This contract does not grant permission to access the local Desktop.
+When a task could benefit from local Desktop access, call desktop with a plain-language purpose describing the proposed inspection or action. Before accessing any screen, window, clipboard or input, Junius presents four user options: allow this turn, allow this Chat, deny this turn, or deny this Chat. The user need not name Computer Use or speak an authorization phrase. Do not fabricate consent.
 
-Do not call the desktop tool at all unless the user's current request explicitly asks ChatGPT to control the local computer.
-
-If that explicit current-task authorization is absent, stop before any Desktop access. Do not enumerate windows, capture screenshots, read the clipboard, focus windows, move the pointer, send input, or perform any other Desktop operation.
-
-Do not infer authorization from usefulness, verification needs, previous Desktop use, prior user authorization, the presence of an application, or the availability of this contract or tool.
-
-Previous-task authorization does not carry forward.
-
-Authorization is established only by a successful control_begin for the chosen session.
-
-Set explicit_user_authorization to true only on control_begin, and only when the current user request explicitly authorized local computer control. That field must never be set speculatively.
-
-After control_begin succeeds, omit explicit_user_authorization from windows, screenshot, clipboard, focus, mouse, keyboard, wait, action_batch, and all other follow-up commands. Those commands are permitted only while the same session remains active.
-
-control_end does not require the authorization assertion. It revokes authorization for that session immediately, even if helper-side cleanup fails. After control_end, no Desktop observation or input may occur until a new explicitly authorized control_begin succeeds. A different session never inherits authorization.
+A refusal prohibits the tool for the chosen scope. Desktop permission is independent from Browser permission and does not independently authorize high-impact unrelated actions. The Desktop command may be used directly: Junius establishes an authorized control_begin internally if necessary. Explicit_user_authorization is not a user-facing or model-settable parameter. control_end ends the device session; the configured authorization scope controls any future access.
 
 Desktop perception is screenshot-only.
 
@@ -26,13 +12,9 @@ Do not assume Windows UI Automation, accessibility trees, semantic controls, or 
 
 ## Control lifecycle
 
-Every Desktop control task must use exactly one control lifecycle:
+A Desktop control task follows a bounded lifecycle:
 
-control_begin(session, explicit_user_authorization=true)
--> observe
--> act
--> observe
--> control_end(session)
+user permission choice -> establish authorized control -> observe -> act -> observe -> control_end(session)
 
 Use the same session throughout the task.
 

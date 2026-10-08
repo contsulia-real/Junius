@@ -4,6 +4,7 @@ import {
   isLegacyRequest,
 } from "@modelcontextprotocol/server";
 import { randomUUID } from "node:crypto";
+import { ComputerPermissionManager, closeComputerSessions } from "./mcp-computer-permission.js";
 import { createMcpServer } from "./mcp-server.js";
 import { RunCommandService } from "./run-command.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
@@ -31,6 +32,7 @@ export async function createMcpRuntime(
   desktop: DesktopComputerUseService,
   audit?: AuditStore,
   observability?: McpObservabilityStore,
+  permissions = new ComputerPermissionManager(),
 ): Promise<McpRuntime> {
   const modernHandler = createMcpHandler(
     () => createMcpServer(
@@ -42,6 +44,7 @@ export async function createMcpRuntime(
       desktop,
       audit,
       observability,
+      permissions,
     ),
     {
     legacy: "reject",
@@ -61,6 +64,7 @@ export async function createMcpRuntime(
       desktop,
       audit,
       observability,
+      permissions,
     );
   const legacyTransport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: randomUUID,
@@ -121,6 +125,11 @@ export async function createMcpRuntime(
               undefined &&
             response.ok
           ) {
+            await closeComputerSessions(
+              permissions.endChat(requestSessionId),
+              playwrightCli,
+              desktop,
+            );
             observability?.deleteSession(
               requestSessionId,
             );

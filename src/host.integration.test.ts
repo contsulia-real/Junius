@@ -1064,12 +1064,8 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
     const browserProperties =
       browserTool?.inputSchema
         ?.properties ?? {};
-    assert.equal(
-      browserProperties
-        .explicit_user_authorization
-        ?.const,
-      true,
-    );
+    assert.equal("explicit_user_authorization" in browserProperties, false);
+    assert.equal("purpose" in browserProperties, true);
     assert.equal(
       browserTool
         ?.inputSchema
@@ -1088,6 +1084,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         {
           session:
             "browser-privacy-boundary",
+          purpose: "核查设备访问授权边界",
           command:
             "snapshot",
           args: [],
@@ -1103,7 +1100,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       unauthorizedBrowser
         .textContents
         .join("\n"),
-      /authorization_required/u,
+      /Cannot request input|elicitation|authorization_required/u,
     );
 
     const desktopTool =
@@ -1147,14 +1144,10 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
           "explicit_user_authorization",
         ) ?? false,
       false,
-      "Desktop authorization assertion must be optional globally and required by control_begin semantics only.",
+      "Desktop authorization is now requested from the client rather than asserted by the model.",
     );
-    assert.equal(
-      desktopProperties
-        .explicit_user_authorization
-        ?.const,
-      true,
-    );
+    assert.equal("explicit_user_authorization" in desktopProperties, false);
+    assert.equal("purpose" in desktopProperties, true);
 
     const unauthorizedDesktop =
       await callMcpTool(
@@ -1164,6 +1157,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         {
           session:
             "privacy-boundary",
+          purpose: "核查设备访问授权边界",
           command:
             "control_begin",
         },
@@ -1177,7 +1171,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       unauthorizedDesktop
         .textContents
         .join("\n"),
-      /authorization_required/u,
+      /Cannot request input|elicitation|authorization_required/u,
     );
 
     const unauthorizedScreenshot =
@@ -1188,6 +1182,7 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
         {
           session:
             "privacy-boundary",
+          purpose: "核查设备访问授权边界",
           command:
             "screenshot",
         },
@@ -1202,12 +1197,12 @@ test("Junius Host serves MCP and local diagnostics on one loopback listener", as
       unauthorizedScreenshot
         .textContents
         .join("\n"),
-      /authorization_required/u,
+      /Cannot request input|elicitation|authorization_required/u,
     );
 
     for (
       const property of [
-        "explicit_user_authorization",
+        "purpose",
         "actions",
         "screenshot_after",
         "screenshot_handle",

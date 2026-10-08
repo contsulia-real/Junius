@@ -18,6 +18,7 @@ import {
   type JobSnapshot,
 } from "./job-manager.js";
 import { createMcpRuntime } from "./mcp-runtime.js";
+import { ComputerPermissionManager } from "./mcp-computer-permission.js";
 import { McpObservabilityStore } from "./mcp-observability.js";
 import {
   resolveMcpObservabilitySessionsPath,
@@ -151,6 +152,7 @@ export async function startAgentWorker(
     );
   const desktop =
     new DesktopComputerUseService();
+  const permissions = new ComputerPermissionManager();
 
   const workspaceRuntime =
     await createAgentWorkerWorkspaceRuntime(
@@ -208,6 +210,7 @@ export async function startAgentWorker(
       desktop,
       audit,
       observability,
+      permissions,
     );
 
   const {
