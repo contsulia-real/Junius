@@ -264,6 +264,7 @@ const requiredPackFiles = [
   "scripts/host-bootstrap-releases.mjs",
   "scripts/host-bootstrap-host.mjs",
   "scripts/install.mjs",
+  "scripts/install-cli.mjs",
   "scripts/install-paths.mjs",
   "scripts/install-process.mjs",
   "scripts/install-python.mjs",
