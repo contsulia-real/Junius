@@ -4,6 +4,7 @@ param(
   [long]$ReleaseId = 0,
   [string]$Repository = "contsulia-real/Junius",
   [string]$ApiBaseUrl = "https://api.github.com",
+  [string]$ReleaseBaseUrl = "https://github.com",
   [string]$CurrentVersion = "",
   [switch]$CheckOnly,
   [switch]$Json,
@@ -48,6 +49,51 @@ function Get-JuniusRelease {
     return Invoke-JuniusGitHubJson -Uri (
       "$ApiBaseUrl/repos/$Repository/releases/$ReleaseId"
     )
+  }
+
+  # Public release discovery does not consume the anonymous REST API quota.
+  # ReleaseId and custom API endpoints retain their CI/test behavior.
+  if ($ApiBaseUrl -eq "https://api.github.com") {
+    $base = $ReleaseBaseUrl.TrimEnd("/")
+    $tag = $Version
+    if ([string]::IsNullOrWhiteSpace($tag)) {
+      $feed = [xml](Invoke-WebRequest -Uri "$base/$Repository/releases.atom" -Headers @{
+        "User-Agent" = "Junius-Installer"
+        "Accept" = "application/atom+xml"
+      } -UseBasicParsing).Content
+      $ns = [Xml.XmlNamespaceManager]::new($feed.NameTable)
+      $ns.AddNamespace("atom", "http://www.w3.org/2005/Atom")
+      $prefix = "$base/$Repository/releases/tag/"
+      $latestUpdated = [DateTimeOffset]::MinValue
+      foreach ($entry in $feed.SelectNodes("/atom:feed/atom:entry", $ns)) {
+        $link = $entry.SelectSingleNode("atom:link[@rel='alternate']", $ns)
+        $updated = $entry.SelectSingleNode("atom:updated", $ns)
+        if ($null -eq $link -or $null -eq $updated) { continue }
+        $href = [string]$link.GetAttribute("href")
+        if (-not $href.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $entryTag = [Uri]::UnescapeDataString($href.Substring($prefix.Length))
+        if ($entryTag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$') { continue }
+        $when = [DateTimeOffset]::Parse($updated.InnerText)
+        if ($when -gt $latestUpdated) {
+          $tag = $entryTag
+          $latestUpdated = $when
+        }
+      }
+      if ([string]::IsNullOrWhiteSpace($tag)) {
+        throw "No published Junius GitHub Release was found in the public release feed."
+      }
+    }
+    if (-not $tag.StartsWith("v", [StringComparison]::OrdinalIgnoreCase)) {
+      $tag = "v" + $tag
+    }
+    $download = "$base/$Repository/releases/download/" + [Uri]::EscapeDataString($tag)
+    return [pscustomobject]@{
+      tag_name = $tag
+      assets = @(
+        [pscustomobject]@{ name = "junius-windows.tgz"; url = ""; browser_download_url = "$download/junius-windows.tgz" },
+        [pscustomobject]@{ name = "SHA256SUMS.txt"; url = ""; browser_download_url = "$download/SHA256SUMS.txt" }
+      )
+    }
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Version)) {

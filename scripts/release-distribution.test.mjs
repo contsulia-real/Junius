@@ -934,6 +934,25 @@ test(
             },
           ];
 
+          if (request.url === "/contsulia-real/Junius/releases.atom") {
+            response.writeHead(200, { "content-type": "application/atom+xml" });
+            response.end([
+              '<?xml version="1.0" encoding="UTF-8"?>',
+              '<feed xmlns="http://www.w3.org/2005/Atom">',
+              '<entry><updated>2026-10-08T14:38:03Z</updated><link rel="alternate" href="' +
+                origin + '/contsulia-real/Junius/releases/tag/' + tag + '"/></entry>',
+              '<entry><updated>2024-01-01T00:00:00Z</updated><link rel="alternate" href="' +
+                origin + '/contsulia-real/Junius/releases/tag/v0.0.1-alpha"/></entry>',
+              '</feed>',
+            ].join(""));
+            return;
+          }
+          if (request.url === "/contsulia-real/Empty/releases.atom") {
+            response.writeHead(200, { "content-type": "application/atom+xml" });
+            response.end('<feed xmlns="http://www.w3.org/2005/Atom"/>');
+            return;
+          }
+
           if (
             request.url ===
             "/repos/contsulia-real/Junius/releases/4242"
@@ -1029,7 +1048,9 @@ test(
             request.url ===
               "/assets/junius-windows.tgz" ||
             request.url ===
-              "/api/assets/junius-windows.tgz"
+              "/api/assets/junius-windows.tgz" ||
+            request.url ===
+              "/contsulia-real/Junius/releases/download/" + tag + "/junius-windows.tgz"
           ) {
             response.writeHead(
               200,
@@ -1048,7 +1069,9 @@ test(
             request.url ===
               "/assets/SHA256SUMS.txt" ||
             request.url ===
-              "/api/assets/SHA256SUMS.txt"
+              "/api/assets/SHA256SUMS.txt" ||
+            request.url ===
+              "/contsulia-real/Junius/releases/download/" + tag + "/SHA256SUMS.txt"
           ) {
             response.writeHead(
               200,
@@ -1206,6 +1229,41 @@ test(
         publicResult.stdout,
         /verification completed without installation/u,
       );
+
+      const feedBase = "http://127.0.0.1:" + address.port;
+      const feedCheck = await runProcess("powershell.exe", [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", join(process.cwd(), "install.ps1"),
+        "-ReleaseBaseUrl", feedBase,
+        "-CheckOnly", "-CurrentVersion", "0.0.2-alpha", "-Json",
+      ], { env: { ...process.env, GITHUB_TOKEN: "" } });
+      assert.equal(feedCheck.exitCode, 0, feedCheck.stderr + feedCheck.stdout);
+      assert.equal(JSON.parse(feedCheck.stdout.trim()).releaseTag, tag);
+
+      const feedVerify = await runProcess("powershell.exe", [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", join(process.cwd(), "install.ps1"),
+        "-ReleaseBaseUrl", feedBase, "-VerifyOnly",
+      ], { env: { ...process.env, GITHUB_TOKEN: "" } });
+      assert.equal(feedVerify.exitCode, 0, feedVerify.stderr + feedVerify.stdout);
+      assert.match(feedVerify.stdout, /Verified SHA-256:/u);
+
+      const pinnedVerify = await runProcess("powershell.exe", [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", join(process.cwd(), "install.ps1"),
+        "-ReleaseBaseUrl", feedBase, "-Version", packageJson.version, "-VerifyOnly",
+      ], { env: { ...process.env, GITHUB_TOKEN: "" } });
+      assert.equal(pinnedVerify.exitCode, 0, pinnedVerify.stderr + pinnedVerify.stdout);
+      assert.match(pinnedVerify.stdout, /Verified SHA-256:/u);
+
+      const emptyFeed = await runProcess("powershell.exe", [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", join(process.cwd(), "install.ps1"),
+        "-ReleaseBaseUrl", feedBase, "-Repository", "contsulia-real/Empty",
+        "-CheckOnly", "-CurrentVersion", "0.0.2-alpha",
+      ], { env: { ...process.env, GITHUB_TOKEN: "" } });
+      assert.notEqual(emptyFeed.exitCode, 0);
+      assert.match(emptyFeed.stderr, /No published Junius GitHub Release/u);
 
       const draftResult =
         await runProcess(
