@@ -19,7 +19,7 @@ export function registerBrowserTool(
     {
       title: "Use Local Playwright CLI",
       description:
-        "Use the local Playwright browser directly for the user's task. Sessions are isolated by Chat, and close ends the named session. Physical Escape interrupts a running operation; stop after an interruption. No separate Junius consent panel.",
+        "Use the local Playwright browser directly for the user's task. Sessions are isolated by Chat, and close ends the named session. Close the named session when the browser task is finished. No separate Junius consent panel.",
       inputSchema: z.object({
         session: stableIdSchema.default("junius")
           .describe("Browser session name within this Chat (never shared across Chats)."),
@@ -36,9 +36,6 @@ export function registerBrowserTool(
       const turnId = chat === undefined ? undefined : observability.activeTurnId(chat);
       if (!chat || !turnId) {
         return { isError: true, content: [{ type: "text" as const, text: "Junius turn identity is required before browser access." }] };
-      }
-      if (sessions.wasInterrupted(chat, "browser")) {
-        return { isError: true, content: [{ type: "text" as const, text: "Browser operation was interrupted by Escape; wait for the next user turn." }] };
       }
       const actualSession = sessions.session(chat, session ?? "junius");
       sessions.track(chat, "browser", actualSession);
@@ -58,11 +55,6 @@ export function registerBrowserTool(
           }],
         };
       } catch (error) {
-        if ((error as { code?: string })?.code === "user_interrupted") {
-          sessions.interrupt(chat, "browser");
-          sessions.untrack(chat, "browser", actualSession);
-          await playwrightCli.run(actualSession, "close", []).catch(() => undefined);
-        }
         audit?.record({
           category: "browser", action: command, status: "failed",
           subject: actualSession, durationMs: performance.now() - startedAt,

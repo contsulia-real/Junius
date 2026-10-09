@@ -29,7 +29,6 @@ import {
 } from "./playwright-cli.js";
 import { RunCommandService } from "./run-command.js";
 import { DesktopComputerUseService } from "./desktop-computer-use.js";
-import { EscapeInterruptService } from "./user-interrupt.js";
 import { WorkspaceFilesService } from "./workspace-files.js";
 import { WorkspaceRegistryService } from "./workspace-registry.js";
 import { createAgentWorkerWorkspaceRuntime } from "./agent-worker-workspaces.js";
@@ -142,14 +141,7 @@ export async function startAgentWorker(
       rootPath:
         resolveMcpObservabilitySessionsPath(),
     });
-  const interrupt =
-    new EscapeInterruptService();
-  const browser =
-    new PlaywrightCliService(
-      process.env,
-      undefined,
-      { interrupt },
-    );
+  const browser = new PlaywrightCliService();
   const desktop =
     new DesktopComputerUseService();
   const sessions = new ComputerSessionManager();
@@ -284,7 +276,6 @@ export async function startAgentWorker(
         jobs.close(),
         browser.close(),
         desktop.close(),
-        interrupt.close(),
         audit.close(),
       ]);
     },

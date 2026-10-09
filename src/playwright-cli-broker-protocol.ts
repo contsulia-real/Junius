@@ -4,7 +4,6 @@ export type PlaywrightCliBrokerErrorCode =
   | "broker_unavailable"
   | "broker_spawn_failed"
   | "broker_timeout"
-  | "broker_interrupted"
   | "broker_output_limit"
   | "broker_protocol_error";
 

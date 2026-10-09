@@ -46,7 +46,7 @@ Scope: this entire repository.
 ## Browser and Desktop execution
 
 - Junius does not impose an additional four-way consent panel, per-Chat permission gate, or special user authorization flag for Browser or Desktop. The user has explicitly chosen to remove this product-level restriction. `playwright_cli` and `desktop` run under the Windows account that owns the Junius instance.
-- Retain per-Chat session separation, normal browser profile cleanup, the Desktop control_begin/control_end lifecycle, and physical Escape interruption. Never access unrelated device state merely because the tool is available; follow the user's requested task.
+- Retain per-Chat session separation, normal browser profile cleanup, the Desktop control_begin/control_end lifecycle, and the visible Desktop Exit button. Do not install physical Escape keyboard hooks for Computer Use. Never access unrelated device state merely because the tool is available; follow the user's requested task.
 - Windows and platform permissions are independent of Junius and cannot be assumed disabled.
 - Prefer the existing Junius Browser service, and do not silently install another browser automation dependency without a concrete task-related reason. Engineering tests should use synthetic helpers unless live GUI work is specifically requested.
 

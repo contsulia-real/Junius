@@ -39,7 +39,7 @@ function responseFor(request) {
     return {
       ok: false,
       code: "user_interrupted",
-      message: "Desktop operation interrupted by user pressing Escape."
+      message: "Desktop control stopped by user."
     };
   }
 
@@ -207,7 +207,7 @@ async function beginControl(
   });
 }
 
-test("desktop surfaces Escape interruption as user_interrupted", async () => {
+test("desktop surfaces the Exit button stop as user_interrupted", async () => {
   const f = await fixture({
     environment: {
       JUNIUS_TEST_DESKTOP_INTERRUPT_COMMAND:

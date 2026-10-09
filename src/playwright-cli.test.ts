@@ -152,64 +152,6 @@ async function waitFor(
   assert.fail("condition_not_met_before_timeout");
 }
 
-test("playwright-cli Escape interrupt terminates the active command", async () => {
-  let controller:
-    AbortController | undefined;
-  const interrupt = {
-    arm() {
-      controller =
-        new AbortController();
-      return {
-        signal:
-          controller.signal,
-        release() {},
-      };
-    },
-  };
-  const f = await fixture(
-    { interrupt },
-    {
-      JUNIUS_TEST_PLAYWRIGHT_DELAY_MS:
-        "10000",
-    },
-  );
-
-  try {
-    const startedAt = Date.now();
-    const pending = f.service.run(
-      "browser",
-      "snapshot",
-      [],
-    );
-
-    await waitFor(
-      () =>
-        controller !==
-        undefined,
-    );
-    controller!.abort(
-      new Error(
-        "user_interrupted",
-      ),
-    );
-
-    await assert.rejects(
-      pending,
-      (error: unknown) =>
-        error instanceof
-          PlaywrightCliError &&
-        error.code ===
-          "user_interrupted",
-    );
-    assert.ok(
-      Date.now() - startedAt <
-        3_000,
-    );
-  } finally {
-    await f.dispose();
-  }
-});
-
 test("playwright-cli strips inherited Node preload environment", async () => {
   const f = await fixture(
     {},

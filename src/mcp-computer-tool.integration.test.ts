@@ -8,7 +8,7 @@ import { registerMcpTurnTools } from "./mcp-turn-tools.js";
 import { registerBrowserTool } from "./mcp-browser-tool.js";
 import { registerDesktopTool } from "./mcp-desktop-tool.js";
 import { withMcpSessionContext } from "./mcp-session-context.js";
-import { PlaywrightCliError, type PlaywrightCliService } from "./playwright-cli.js";
+import type { PlaywrightCliService } from "./playwright-cli.js";
 import { DesktopComputerUseError, type DesktopComputerUseService } from "./desktop-computer-use.js";
 
 type Result = { structuredContent?: Record<string, unknown>; content?: { type: string; text?: string }[]; isError?: boolean };
@@ -20,11 +20,9 @@ function fixture() {
   const browserCalls: { session: string; command: string }[] = [];
   const desktopCalls: { session: string; command: string }[] = [];
   let interruptDesktop = false;
-  let interruptBrowser = false;
   const browser = {
     async run(session: string, command: string) {
       browserCalls.push({ session, command });
-      if (interruptBrowser) throw new PlaywrightCliError("user_interrupted", "synthetic Escape");
       return { session, command, exitCode: 0, stdout: "SYNTHETIC", stderr: "", durationMs: 0, transport: "spawn" as const };
     },
   } as unknown as PlaywrightCliService;
@@ -32,7 +30,7 @@ function fixture() {
     async run(req: { session: string; command: string }) {
       desktopCalls.push({ session: req.session, command: req.command });
       if (interruptDesktop && req.command !== "control_end") {
-        throw new DesktopComputerUseError("user_interrupted", "synthetic Escape");
+        throw new DesktopComputerUseError("user_interrupted", "synthetic Exit button");
       }
       return { session: req.session, command: req.command, result: {}, durationMs: 0 };
     },
@@ -58,13 +56,13 @@ function fixture() {
     await call(chat, "junius_task_review", {
       objective: "Check direct Browser and Desktop execution without a Junius consent widget",
       scope: "Only synthetic in-memory fake device helpers with per-Chat session isolation",
-      risks: "Retain lifecycle cleanup and physical Escape interrupts",
+      risks: "Retain lifecycle cleanup and Desktop Exit button interrupts",
       verification: "No permission tool registered and device calls run directly",
     });
   }
   return { browserCalls, desktopCalls, call, begin, internal,
     interruptDesktop: () => { interruptDesktop = true; },
-    interruptBrowser: () => { interruptBrowser = true; } };
+  };
 }
 
 test("Browser operates directly with Chat-isolated named sessions, without a consent widget", async () => {
@@ -95,7 +93,7 @@ test("Desktop starts control automatically and closes at turn end, without a con
   assert.notEqual(f.desktopCalls[0]!.session, f.desktopCalls.at(-1)!.session);
 });
 
-test("Escape stops the affected device for the rest of the turn", async () => {
+test("Desktop Exit button stops Desktop for the rest of the turn", async () => {
   const f = fixture();
   await f.begin("A");
   f.interruptDesktop();
@@ -104,11 +102,4 @@ test("Escape stops the affected device for the rest of the turn", async () => {
   const count = f.desktopCalls.length;
   assert.equal((await f.call("A", "desktop", args)).isError, true);
   assert.equal(f.desktopCalls.length, count);
-  await f.begin("B");
-  f.interruptBrowser();
-  const browserArgs = { session: "browser", command: "snapshot", args: [] };
-  assert.equal((await f.call("B", "playwright_cli", browserArgs)).isError, true);
-  const browserCount = f.browserCalls.length;
-  assert.equal((await f.call("B", "playwright_cli", browserArgs)).isError, true);
-  assert.equal(f.browserCalls.length, browserCount); // No retry after Escape.
 });

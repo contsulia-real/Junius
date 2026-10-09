@@ -212,7 +212,7 @@ Job launch uses the same process preparation model as run_command.
     playwright_cli(session, command, args)
     desktop(session, command, ...)
 
-Browser and Desktop are first-class MCP services rather than Workspace-scoped process adapters. They run without Junius-specific four-way permission widgets; named Browser and Desktop sessions are isolated by Chat and user Escape interrupts the active operation. Desktop still uses the control_begin/control_end lifecycle.
+Browser and Desktop are first-class MCP services rather than Workspace-scoped process adapters. They run without Junius-specific four-way permission widgets; named Browser and Desktop sessions are isolated by Chat. Desktop provides a visible Exit button to stop local control and retains the control_begin/control_end lifecycle.
 
 ## Runtime topology
 
@@ -466,7 +466,7 @@ Browser launcher discovery prefers the app-local @playwright/cli installation be
 
 Browser audit persists the command name and argument count, but not the arbitrary Browser CLI argument vector.
 
-Active Browser commands share a Windows physical-Escape interrupt source. The interrupt helper uses a low-level keyboard hook and ignores injected keyboard events. On Escape, spawn-mode CLI children are terminated directly; broker-mode requests terminate the broker process and return `user_interrupted` without permanently disabling broker restart.
+Browser operations use the installed Playwright CLI's normal close and timeout handling. Junius does not register a physical Escape keyboard hook for Browser commands.
 
 ## Desktop architecture
 
@@ -489,7 +489,7 @@ The persistent Python helper handles:
 
 action_batch keeps the whole sequence inside one helper request. Explicit wait plus drag durations are bounded, and keys/buttons held by the batch are released in a finally path. screenshot_after turns the same call into an act → observe round trip.
 
-The Desktop helper uses the same physical-Escape detection primitive as Browser interruption. Wait, drag, text input, key macros, and action batches cooperatively check for interruption so cleanup runs normally; injected Escape events are ignored.
+The Desktop banner has a clickable Exit button. Clicking it stops the active Desktop control sessions, and wait, drag, text input, key macros, and action batches cooperatively check the stopped-session state so held input is cleaned up normally. Physical Escape is not an interruption mechanism.
 
 There is intentionally no accessibility-tree, UI Automation, or semantic-control dependency in Desktop perception. The visual model remains screenshot-only.
 
@@ -507,7 +507,7 @@ The disclosure is therefore task-scoped, not action-scoped.
 
 The persistent helper owns the user-visible native windows:
 
-- a top-center banner localized to the current Windows UI language, indicating that ChatGPT is controlling the computer through Junius;
+- a top-center banner localized to the current Windows UI language, indicating that ChatGPT is controlling the computer through Junius, with an adjacent clickable Exit button;
 - four topmost click-through edge windows;
 - breathing alpha animation on the edge windows.
 

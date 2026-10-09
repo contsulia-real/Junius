@@ -14,7 +14,7 @@ Use the same session throughout the task. If control_begin succeeded, always cal
 
 ## User interrupt
 
-A physical Escape interrupts the active Desktop operation; Junius-injected Escape does not count. After `user_interrupted`, stop, do not retry without a new user request.
+The visible indicator Exit button interrupts Desktop control. After `user_interrupted`, stop, do not retry without a new user request. Physical Escape is not an interruption path.
 
 ## Establish the visible state first
 

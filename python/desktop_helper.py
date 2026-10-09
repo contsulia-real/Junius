@@ -8,7 +8,6 @@ from desktop_helper_common import DesktopHelperError
 from desktop_indicator import DesktopActivityIndicator
 from desktop_input import action_batch, input_action
 from desktop_windows import list_windows, screenshot
-from user_interrupt import EscapeInterruptMonitor
 
 for _stream in (sys.stdin, sys.stdout, sys.stderr):
     _reconfigure = getattr(_stream, "reconfigure", None)
@@ -16,8 +15,6 @@ for _stream in (sys.stdin, sys.stdout, sys.stderr):
         _reconfigure(encoding="utf-8")
 
 ACTIVITY_INDICATOR = DesktopActivityIndicator()
-USER_INTERRUPT = EscapeInterruptMonitor(ACTIVITY_INDICATOR.stop_all)
-USER_INTERRUPT.start()
 
 
 def execute(
@@ -53,7 +50,7 @@ def execute(
     )
 
     def check_user_interrupt() -> None:
-        if USER_INTERRUPT.interrupted() or ACTIVITY_INDICATOR.is_stopped(session):
+        if ACTIVITY_INDICATOR.is_stopped(session):
             raise DesktopHelperError(
                 "user_interrupted",
                 "Desktop control stopped by user.",
@@ -102,7 +99,6 @@ def execute(
             ),
         )
 
-    USER_INTERRUPT.clear()
     check_user_interrupt()
 
     if command == "windows":

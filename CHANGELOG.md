@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed the unreliable physical Escape interrupt mechanism from Browser and Desktop Computer Use, including the Windows keyboard hook and release assets; Desktop interruption now uses the visible Exit button.
+
 ## 0.1.9-alpha
 
 - Changed public PowerShell installation to discover published Junius releases, including Alpha versions, via GitHub's public Atom feed and download assets directly, avoiding anonymous GitHub REST API rate limits while retaining SHA-256 checks.

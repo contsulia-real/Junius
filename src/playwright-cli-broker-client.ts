@@ -40,7 +40,6 @@ interface Pending {
     error: PlaywrightCliBrokerError,
   ) => void;
   readonly timer: NodeJS.Timeout;
-  readonly cleanupAbort?: () => void;
 }
 
 export interface PlaywrightCliBrokerClientOptions {
@@ -114,19 +113,11 @@ export class PlaywrightCliBrokerClient {
   async run(
     args: readonly string[],
     cwd: string,
-    signal?: AbortSignal,
   ): Promise<PlaywrightCliBrokerResponse> {
     if (this.#disabled || this.#closing) {
       throw new PlaywrightCliBrokerError(
         "broker_unavailable",
         "Playwright CLI broker is unavailable.",
-      );
-    }
-
-    if (signal?.aborted) {
-      throw new PlaywrightCliBrokerError(
-        "broker_interrupted",
-        "Browser operation interrupted by user pressing Escape.",
       );
     }
 
@@ -151,37 +142,10 @@ export class PlaywrightCliBrokerClient {
           );
         }, this.#timeoutMs);
 
-        let cleanupAbort:
-          (() => void) | undefined;
-        if (signal !== undefined) {
-          const onAbort = () => {
-            this.#fail(
-              new PlaywrightCliBrokerError(
-                "broker_interrupted",
-                "Browser operation interrupted by user pressing Escape.",
-              ),
-              false,
-            );
-          };
-          signal.addEventListener(
-            "abort",
-            onAbort,
-            { once: true },
-          );
-          cleanupAbort = () =>
-            signal.removeEventListener(
-              "abort",
-              onAbort,
-            );
-        }
-
         this.#pending.set(id, {
           resolve: resolvePromise,
           reject,
           timer,
-          ...(cleanupAbort === undefined
-            ? {}
-            : { cleanupAbort }),
         });
 
         child.stdin.write(payload, "utf8", (error) => {
@@ -377,7 +341,6 @@ export class PlaywrightCliBrokerClient {
 
     this.#pending.delete(response.id);
     clearTimeout(pending.timer);
-    pending.cleanupAbort?.();
     pending.resolve(
       playwrightCliBrokerResponse(response),
     );
@@ -439,7 +402,6 @@ export class PlaywrightCliBrokerClient {
   ): void {
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer);
-      pending.cleanupAbort?.();
       pending.reject(error);
     }
     this.#pending.clear();

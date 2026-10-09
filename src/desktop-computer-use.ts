@@ -243,7 +243,7 @@ export class DesktopComputerUseService {
         throw new DesktopComputerUseError(
           "user_interrupted",
           response.message ??
-            "Desktop operation interrupted by user pressing Escape.",
+            "Desktop control stopped by the user.",
         );
       }
 

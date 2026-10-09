@@ -6,10 +6,6 @@ Use `playwright_cli` directly when the user's task requires browser interaction.
 
 Do not confuse technical tool access with permission to do unrelated tasks. Prefer the existing `playwright_cli` service over inventing another automation stack. Do not silently install Playwright, Chromium, or other dependencies as preparation for an optional test; dependency installation is a separate change that needs a task-related reason.
 
-## User interrupt
-
-A physical Escape key press interrupts the active Browser operation. Junius-injected Escape events do not count. If `playwright_cli` returns `user_interrupted`, stop; do not retry without a new user request.
-
 ## Session continuity
 
 Use one stable named Browser session for related work when continuity matters.

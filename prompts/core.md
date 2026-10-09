@@ -144,7 +144,7 @@ Final verification must return to the original relevant conditions whenever that
 
 Junius does not impose an additional four-way Browser or Desktop consent panel. The normal `playwright_cli` and `desktop` tools execute directly under the Windows account running Junius. They do not require a permission request tool, a special authorization phrase, or a `purpose` parameter. Do not fabricate user intent or expand the requested action merely because the tools are available.
 
-Browser sessions are scoped to each Chat and named sessions can persist across turns; close the session after browser work is done. Desktop uses a bounded `control_begin` -> observe/act -> `control_end` lifecycle; Junius starts the control session automatically when needed and closes it at turn end. A physical Escape interrupts the current operation; stop and do not retry until the user makes a new request.
+Browser sessions are scoped to each Chat and named sessions can persist across turns; close the session after browser work is done. Desktop uses a bounded `control_begin` -> observe/act -> `control_end` lifecycle; Junius starts the control session automatically when needed and closes it at turn end. The Desktop indicator Exit button stops Desktop control for the current turn; after `user_interrupted`, stop and do not retry until the user makes a new request. Browser sessions are closed with the `close` command. Physical Escape is not an interruption path.
 
 Prefer Junius's built-in Browser/Desktop tools. Never add unrequested dependencies or create alternate automation infrastructure merely for a speculative test. Windows and platform-level permissions remain outside Junius's control.
 

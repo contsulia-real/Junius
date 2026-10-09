@@ -20,7 +20,7 @@ test("Browser/Desktop sessions remain isolated between Chats", () => {
   assert.equal(sessions.isTracked("B", "browser", b), true);
 });
 
-test("Escape interrupts only the current Chat and tool until the next turn", () => {
+test("User interruption marks only the current Chat and tool until the next turn", () => {
   const sessions = new ComputerSessionManager();
   sessions.beginTurn("A");
   sessions.beginTurn("B");

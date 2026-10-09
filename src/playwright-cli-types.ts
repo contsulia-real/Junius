@@ -4,7 +4,6 @@ export type PlaywrightCliErrorCode =
   | "playwright_cli_closing"
   | "playwright_cli_not_available"
   | "invalid_session"
-  | "user_interrupted"
   | "data_cleanup_failed"
   | "spawn_failed"
   | "process_timeout"
@@ -24,7 +23,6 @@ export interface PlaywrightCliServiceOptions {
   readonly sessionIdleMs?: number;
   readonly maxSessions?: number;
   readonly retainData?: boolean;
-  readonly interrupt?: import("./user-interrupt.js").UserInterruptSource;
 }
 
 export interface PlaywrightCliExecution {

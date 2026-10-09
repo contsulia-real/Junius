@@ -223,7 +223,7 @@ export function registerDesktopTool(
     {
       title: "Use Local Desktop",
       description:
-        "Use the local Windows desktop directly for a user task, including screenshots, windows, clipboard and input. control_begin may be called first, but Junius automatically starts a Chat-scoped desktop control session; control_end closes it. Physical Escape or the indicator Exit button stops desktop control for the current turn. No separate Junius consent panel.",
+        "Use the local Windows desktop directly for a user task, including screenshots, windows, clipboard and input. control_begin may be called first, but Junius automatically starts a Chat-scoped desktop control session; control_end closes it. The indicator Exit button stops desktop control for the current turn. No separate Junius consent panel.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
