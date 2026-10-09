@@ -223,7 +223,7 @@ export function registerDesktopTool(
     {
       title: "Use Local Desktop",
       description:
-        "Use the local Windows desktop directly for a user task, including screenshots, windows, clipboard and input. control_begin may be called first, but Junius automatically starts a Chat-scoped desktop control session; control_end closes it. Stop after physical Escape. No separate Junius consent panel.",
+        "Use the local Windows desktop directly for a user task, including screenshots, windows, clipboard and input. control_begin may be called first, but Junius automatically starts a Chat-scoped desktop control session; control_end closes it. Physical Escape or the indicator Exit button stops desktop control for the current turn. No separate Junius consent panel.",
       inputSchema: z.object({
         session: stableIdSchema
           .default("junius")
@@ -321,7 +321,7 @@ export function registerDesktopTool(
         return { isError: true, content: [{ type: "text" as const, text: "Junius turn identity is required before desktop access." }] };
       }
       if (sessions.wasInterrupted(chat, "desktop")) {
-        return { isError: true, content: [{ type: "text" as const, text: "Desktop operation was interrupted by Escape; wait for the next user turn." }] };
+        return { isError: true, content: [{ type: "text" as const, text: "Desktop control was stopped by the user; wait for the next user turn." }] };
       }
       const actualSession = sessions.session(chat, session ?? "junius");
       const initial = !sessions.isTracked(chat, "desktop", actualSession);

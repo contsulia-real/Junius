@@ -16,16 +16,9 @@ for _stream in (sys.stdin, sys.stdout, sys.stderr):
         _reconfigure(encoding="utf-8")
 
 ACTIVITY_INDICATOR = DesktopActivityIndicator()
-USER_INTERRUPT = EscapeInterruptMonitor()
+USER_INTERRUPT = EscapeInterruptMonitor(ACTIVITY_INDICATOR.stop_all)
 USER_INTERRUPT.start()
 
-
-def check_user_interrupt() -> None:
-    if USER_INTERRUPT.interrupted():
-        raise DesktopHelperError(
-            "user_interrupted",
-            "Desktop operation interrupted by user pressing Escape.",
-        )
 
 def execute(
     request: dict[str, Any],
@@ -58,6 +51,16 @@ def execute(
     session = str(
         request.get("session", "")
     )
+
+    def check_user_interrupt() -> None:
+        if USER_INTERRUPT.interrupted() or ACTIVITY_INDICATOR.is_stopped(session):
+            raise DesktopHelperError(
+                "user_interrupted",
+                "Desktop control stopped by user.",
+            )
+
+    if command != "control_end" and ACTIVITY_INDICATOR.is_stopped(session):
+        check_user_interrupt()
 
     if command == "control_begin":
         try:

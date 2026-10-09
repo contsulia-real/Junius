@@ -5,6 +5,7 @@ import math
 import threading
 import time
 from ctypes import wintypes
+from typing import Callable
 
 def activity_indicator_text(
     language_id: int | None = None,
@@ -48,7 +49,9 @@ PM_REMOVE = 0x0001
 WM_PAINT = 0x000F
 WM_ERASEBKGND = 0x0014
 WM_NCHITTEST = 0x0084
+WM_LBUTTONUP = 0x0202
 HTTRANSPARENT = -1
+HTCLIENT = 1
 
 DT_CENTER = 0x00000001
 DT_VCENTER = 0x00000004
@@ -65,10 +68,14 @@ EDGE_THICKNESS = 12
 BANNER_WIDTH = 460
 BANNER_HEIGHT = 48
 BANNER_TOP_MARGIN = 16
+EXIT_WIDTH = 84
+EXIT_GAP = 8
 PULSE_SECONDS = 1.8
 
 CLASS_NAME = "JuniusDesktopActivityIndicatorWindow"
 BANNER_KIND = "banner"
+EXIT_KIND = "exit"
+EXIT_TEXT = "退出" if ACTIVITY_INDICATOR_TEXT.startswith("ChatGPT 正") else "Exit"
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
@@ -334,11 +341,15 @@ def rgb(
 
 
 _WINDOW_KIND: dict[int, str] = {}
+_EXIT_ACTIONS: dict[int, Callable[[], None]] = {}
 _EDGE_BRUSH = gdi32.CreateSolidBrush(
     rgb(16, 163, 127)
 )
 _BANNER_BRUSH = gdi32.CreateSolidBrush(
     rgb(24, 26, 30)
+)
+_EXIT_BRUSH = gdi32.CreateSolidBrush(
+    rgb(190, 46, 55)
 )
 _BANNER_FONT = gdi32.CreateFontW(
     -20,
@@ -368,7 +379,17 @@ def _window_proc(
     handle = int(hwnd)
 
     if message == WM_NCHITTEST:
-        return HTTRANSPARENT
+        return (
+            HTCLIENT
+            if _WINDOW_KIND.get(handle) == EXIT_KIND
+            else HTTRANSPARENT
+        )
+
+    if message == WM_LBUTTONUP and _WINDOW_KIND.get(handle) == EXIT_KIND:
+        action = _EXIT_ACTIONS.get(handle)
+        if action is not None:
+            action()
+        return 0
 
     if message == WM_ERASEBKGND:
         return 1
@@ -394,13 +415,13 @@ def _window_proc(
             hdc,
             ctypes.byref(rect),
             (
-                _BANNER_BRUSH
-                if kind == BANNER_KIND
+                _BANNER_BRUSH if kind == BANNER_KIND
+                else _EXIT_BRUSH if kind == EXIT_KIND
                 else _EDGE_BRUSH
             ),
         )
 
-        if kind == BANNER_KIND:
+        if kind in (BANNER_KIND, EXIT_KIND):
             gdi32.SetBkMode(
                 hdc,
                 TRANSPARENT,
@@ -418,7 +439,7 @@ def _window_proc(
 
             user32.DrawTextW(
                 hdc,
-                ACTIVITY_INDICATOR_TEXT,
+                EXIT_TEXT if kind == EXIT_KIND else ACTIVITY_INDICATOR_TEXT,
                 -1,
                 ctypes.byref(rect),
                 (
@@ -460,6 +481,7 @@ class DesktopActivityIndicator:
         self._started = False
         self._visible = False
         self._active_sessions: set[str] = set()
+        self._stopped_sessions: set[str] = set()
         self._windows: list[int] = []
         self._error: str | None = None
 
@@ -468,6 +490,8 @@ class DesktopActivityIndicator:
         should_wait_for_show = False
 
         with self._lock:
+            if session in self._stopped_sessions:
+                raise RuntimeError("Desktop control stopped by user.")
             was_active = bool(
                 self._active_sessions
             )
@@ -515,6 +539,7 @@ class DesktopActivityIndicator:
 
         with self._lock:
             self._active_sessions.discard(session)
+            self._stopped_sessions.discard(session)
             if (
                 self._started
                 and self._visible
@@ -539,6 +564,16 @@ class DesktopActivityIndicator:
             return (
                 session in self._active_sessions
             )
+
+    def is_stopped(self, session: str) -> bool:
+        with self._lock:
+            return session in self._stopped_sessions
+
+    def stop_all(self) -> None:
+        with self._lock:
+            self._stopped_sessions.update(self._active_sessions)
+            self._active_sessions.clear()
+        self._wake.set()
 
     def _register_window_class(self) -> None:
         window_class = WndClassW()
@@ -596,10 +631,11 @@ class DesktopActivityIndicator:
         is_banner = (
             kind == BANNER_KIND
         )
+        is_exit = kind == EXIT_KIND
         hwnd = user32.CreateWindowExW(
             (
                 WS_EX_TOPMOST
-                | WS_EX_TRANSPARENT
+                | (0 if is_exit else WS_EX_TRANSPARENT)
                 | WS_EX_TOOLWINDOW
                 | WS_EX_LAYERED
                 | WS_EX_NOACTIVATE
@@ -638,6 +674,8 @@ class DesktopActivityIndicator:
 
         handle = int(hwnd)
         _WINDOW_KIND[handle] = kind
+        if is_exit:
+            _EXIT_ACTIONS[handle] = self.stop_all
 
         if is_banner and _BANNER_FONT:
             user32.SendMessageW(
@@ -647,7 +685,7 @@ class DesktopActivityIndicator:
                 True,
             )
 
-        if is_banner:
+        if is_banner or is_exit:
             region = gdi32.CreateRoundRectRgn(
                 0,
                 0,
@@ -711,7 +749,7 @@ class DesktopActivityIndicator:
             x
             + max(
                 0,
-                (width - BANNER_WIDTH) // 2,
+                (width - BANNER_WIDTH - EXIT_GAP - EXIT_WIDTH) // 2,
             )
         )
         banner_y = (
@@ -725,6 +763,14 @@ class DesktopActivityIndicator:
                 x=banner_x,
                 y=banner_y,
                 width=BANNER_WIDTH,
+                height=BANNER_HEIGHT,
+            ),
+            self._create_window(
+                kind=EXIT_KIND,
+                title=EXIT_TEXT,
+                x=banner_x + BANNER_WIDTH + EXIT_GAP,
+                y=banner_y,
+                width=EXIT_WIDTH,
                 height=BANNER_HEIGHT,
             ),
             self._create_window(
@@ -841,7 +887,7 @@ class DesktopActivityIndicator:
         for handle in windows:
             if (
                 _WINDOW_KIND.get(handle)
-                == BANNER_KIND
+                in (BANNER_KIND, EXIT_KIND)
             ):
                 continue
 
