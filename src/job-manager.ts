@@ -16,7 +16,10 @@ import {
 } from "./job-manager-types.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { JobPersistenceCoordinator } from "./job-persistence.js";
-import { spawnJobProcess } from "./job-process-controller.js";
+import {
+  cleanupStaleJobTempFiles,
+  spawnJobProcess,
+} from "./job-process-controller.js";
 import {
   JobQueryService,
   type JobOutputSlice,
@@ -37,6 +40,7 @@ export class JobManager {
     private readonly ownerWorkerId =
       `direct-${process.pid}`,
   ) {
+    void cleanupStaleJobTempFiles();
     this.#persistence =
       new JobPersistenceCoordinator(
         history,

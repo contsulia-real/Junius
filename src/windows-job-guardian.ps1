@@ -172,7 +172,10 @@ $job = [IntPtr]::Zero
 $owner = [IntPtr]::Zero
 $hostHandle = [IntPtr]::Zero
 $bootstrap = $null
-$nonce = [Guid]::NewGuid().ToString("N")
+$nonce = [string]$payload.nonce
+if ($nonce -cnotmatch '^[0-9a-f]{32}$') {
+    throw "job_guardian_nonce_invalid"
+}
 $readyFile = Join-Path (
     [IO.Path]::GetTempPath()
 ) (

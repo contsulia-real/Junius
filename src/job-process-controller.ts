@@ -1,8 +1,12 @@
+import { randomBytes } from "node:crypto";
 import {
   spawn,
   type ChildProcess,
 } from "node:child_process";
 import { PassThrough, type Readable } from "node:stream";
+import { rmSync } from "node:fs";
+import { lstat, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { environmentForSpawn } from "./execution-environment.js";
@@ -13,6 +17,32 @@ const READY_PREFIX =
   "@@JUNIUS_JOB_READY@@:";
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 const MAX_HANDSHAKE_BYTES = 4 * 1024;
+
+const STALE_JOB_TEMP_AGE_MS = 24 * 60 * 60 * 1_000;
+const JOB_TEMP_FILE_PATTERN =
+  /^junius-job-(?:ready-[a-f0-9]{32}\.txt|payload-[a-f0-9]{32}\.(?:json|tmp))$/u;
+let staleCleanup: Promise<void> | undefined;
+
+export function cleanupStaleJobTempFiles(): Promise<void> {
+  if (process.platform !== "win32") {
+    return Promise.resolve();
+  }
+  return (staleCleanup ??= (async () => {
+    const directory = tmpdir();
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isFile() || !JOB_TEMP_FILE_PATTERN.test(entry.name)) continue;
+      const path = join(directory, entry.name);
+      try {
+        const info = await lstat(path);
+        if (!info.isFile() || Date.now() - info.mtimeMs < STALE_JOB_TEMP_AGE_MS) continue;
+        await rm(path, { force: true });
+      } catch {
+        // The owning guardian may have removed it concurrently.
+      }
+    }
+  })());
+}
 
 export interface JobProcessController {
   readonly child: ChildProcess;
@@ -91,6 +121,8 @@ async function spawnWindowsGuardian(
   const environment = environmentForSpawn(
     prepared.env,
   );
+  const nonce = randomBytes(16).toString("hex");
+  const tempDirectory = tmpdir();
   const child = spawn(
     windowsPowerShell(environment),
     [
@@ -115,6 +147,21 @@ async function spawnWindowsGuardian(
     },
   );
 
+  // Forced process-tree termination bypasses the guardian's finally.
+  child.once("close", () => {
+    for (const name of [
+      `junius-job-ready-${nonce}.txt`,
+      `junius-job-payload-${nonce}.json`,
+      `junius-job-payload-${nonce}.tmp`,
+    ]) {
+      try {
+        rmSync(join(tempDirectory, name), { force: true });
+      } catch {
+        // Startup cleanup will retry after an abnormal exit.
+      }
+    }
+  });
+
   if (
     child.stdin === null ||
     child.stdout === null ||
@@ -135,6 +182,7 @@ async function spawnWindowsGuardian(
 
   const payload = Buffer.from(
     JSON.stringify({
+      nonce,
       executable: prepared.executable,
       args: [...prepared.args],
       cwd: prepared.cwd,
