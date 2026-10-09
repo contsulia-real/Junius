@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Removed the unreliable physical Escape interrupt mechanism from Browser and Desktop Computer Use, including the Windows keyboard hook and release assets; Desktop interruption now uses the visible Exit button.
+## 0.1.10-alpha
+
+- Added a clickable, localized Desktop Computer Use Exit button beside the control indicator. Exiting stops active Desktop control sessions, blocks further actions for the current turn, and permits a new session after cleanup.
+- Removed physical Escape as an unreliable interruption path for Browser and Desktop, including the Windows keyboard hook and release assets. Browser continues to use normal close and timeout handling.
 
 ## 0.1.9-alpha
 
